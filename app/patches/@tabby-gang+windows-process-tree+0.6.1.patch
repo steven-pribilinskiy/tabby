@@ -1,0 +1,14 @@
+diff --git a/node_modules/@tabby-gang/windows-process-tree/binding.gyp b/node_modules/@tabby-gang/windows-process-tree/binding.gyp
+index 1111111..2222222 100644
+--- a/node_modules/@tabby-gang/windows-process-tree/binding.gyp
++++ b/node_modules/@tabby-gang/windows-process-tree/binding.gyp
+@@ -19,9 +19,6 @@
+           ],
+           "include_dirs": [],
+           "libraries": [ 'psapi.lib' ],
+-          "msvs_configuration_attributes": {
+-            "SpectreMitigation": "Spectre"
+-          },
+           "msvs_settings": {
+             "VCCLCompilerTool": {
+               "AdditionalOptions": [

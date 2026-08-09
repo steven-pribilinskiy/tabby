@@ -89,15 +89,51 @@ sessions, and Electron's single-instance lock is keyed on the userData dir.
 Electron as plain Node — no window, but the correct native ABI. Use it to check that
 native modules load, instead of launching the app and stealing focus.
 
+## NEVER kill the running Tabby
+
+The installed Tabby runs live Claude Code agent sessions. **Never close, restart or kill
+it.** The dev build runs as **`electron.exe`**; the installed app is **`Tabby.exe`** — so
+`Get-Process electron | Stop-Process` is safe and `Get-Process Tabby` is off-limits.
+Always verify after killing anything: `(Get-Process Tabby).Count` must be unchanged.
+
 ## Local patches
 
-- `app/patches/node-pty+*.patch` — drops `'SpectreMitigation': 'Spectre'` from node-pty's
-  `binding.gyp`. Without it the build fails with MSVC `MSB8040`, because the
-  Spectre-mitigated VC libraries component is not installed. Applied by `patch-package`
-  from `app/postinstall`. **This patch is version-pinned in its filename** — when
-  upstream bumps node-pty it must be regenerated, or patch-package errors on the
-  mismatch. `patch-package <pkg>` auto-generates garbage here (it sweeps in
-  `build/Release` binaries and `.obj`/`.tlog` files); write the patch by hand.
+Two packages hardcode `SpectreMitigation` in their `binding.gyp` and fail to compile
+with MSVC `MSB8040`, because the Spectre-mitigated VC libraries component is not
+installed on this machine. Both are patched to drop it:
+
+- `app/patches/node-pty+*.patch`
+- `app/patches/@tabby-gang+windows-process-tree+*.patch`
+
+**`@tabby-gang/windows-process-tree` is an `optionalDependency`, which makes its failure
+silent** — yarn prints `info This module is OPTIONAL, you can safely ignore this error`,
+drops the package, and exits 0. The app then boots to a *different* error, because
+`tabby-electron/src/services/platform.service.ts` requires it and `windows-native-registry`
+in the **same `try` block**: the first require throwing means `var wnr` is never assigned,
+so the real symptom is `Cannot read properties of undefined (reading 'getRegistryKey')`
+with nothing about process-tree anywhere. Every `wnr` require in `tabby-electron` is
+`try { … } catch { }`, so resolution failures are invisible — instrument the catch before
+theorising.
+
+Chicken-and-egg on reinstall: yarn runs the package's own install script (which fails and
+removes it) *before* `patch-package` can fix it. To restore it, extract the tarball
+directly rather than installing:
+
+```bash
+npm pack @tabby-gang/windows-process-tree@0.6.1 --pack-destination <tmp>
+tar -xzf <tmp>/*.tgz -C <tmp> && cp -r <tmp>/package app/node_modules/@tabby-gang/windows-process-tree
+cd app && npx patch-package && cd .. && node scripts/build-native.mjs
+```
+
+**Never `npm install` in this repo.** It reconciles the yarn-managed tree to npm's layout
+(observed: "added 104, removed 62, changed 27"), which leaves two copies of Angular and
+breaks DI with `NullInjectorError: No provider for ShellProvider!` — a symptom that looks
+nothing like its cause. Recover with `cd app && yarn`.
+
+**Patch files must be written by hand.** `patch-package <pkg>` auto-generates garbage here:
+it sweeps in `build/Release` binaries, `.obj` and `.tlog` files (2273 lines for node-pty).
+Patches are also version-pinned in their filename — when upstream bumps either package,
+regenerate or patch-package errors on the mismatch.
 
 Do not commit `app/yarn.lock` churn. Yarn 1.x rewrites the aliased `string-width-cjs` /
 `strip-ansi-cjs` entries on every install; `git checkout -- app/yarn.lock` after
