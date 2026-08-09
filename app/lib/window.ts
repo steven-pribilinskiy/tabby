@@ -240,7 +240,9 @@ export class Window {
             nativeTheme.themeSource = 'dark'
         }
         // Re-apply the backing colour so it follows the new scheme.
-        if (process.platform !== 'darwin' && !this.lastVibrancy.enabled) {
+        // lastVibrancy is still null on the first call, which runs from
+        // did-finish-load before setVibrancy() has ever been invoked.
+        if (process.platform !== 'darwin' && !this.lastVibrancy?.enabled) {
             this.window.setBackgroundColor(this.opaqueBackgroundColor())
         }
     }
