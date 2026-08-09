@@ -30,11 +30,15 @@ app-root {
                     border-left: 1px solid transparent;
                     border-right: 1px solid transparent;
                     transition: 0.125s ease-out width;
-                    color: var(--theme-fg-more-2);
+                    // One step from the foreground, not two: --theme-fg-more-2 is
+                    // more(fg, 0.5), which on a dark scheme darkens the text by
+                    // half and leaves inactive titles barely legible. The active
+                    // tab still stands out via --theme-fg plus its background.
+                    color: var(--theme-fg-more);
 
                     .index {
                         color: var(--bs-body-color);
-                        opacity: 0.4;
+                        opacity: 0.6;
                     }
 
                     button {
@@ -461,4 +465,14 @@ window-controls {
     font-family: monospace;
     font-size: 11px;
     line-height: 1.5;
+}
+
+
+// The 2px bar above the active tab reads as a stray border in a vertical tab
+// bar, where the active tab is already distinguished by its background and
+// foreground colour. It still earns its place in a horizontal bar, which is the
+// familiar browser-tab affordance, so it is only suppressed when vertical.
+.content.tabs-on-left tab-header .current-tab-indicator,
+.content.tabs-on-right tab-header .current-tab-indicator {
+    display: none !important;
 }
