@@ -11,6 +11,8 @@ import { MenuItemOptions } from './api/menu'
 import { ProfilesService } from './services/profiles.service'
 import { TabsService } from './services/tabs.service'
 import { HotkeysService } from './services/hotkeys.service'
+import { TabRecoveryService } from './services/tabRecovery.service'
+import { HostAppService } from './api/hostApp'
 import { PromptModalComponent } from './components/promptModal.component'
 import { SplitLayoutProfilesService } from './profiles'
 import { TAB_COLORS } from './utils'
@@ -23,6 +25,8 @@ export class TabManagementContextMenu extends TabContextMenuItemProvider {
     constructor (
         private app: AppService,
         private translate: TranslateService,
+        private tabRecovery: TabRecoveryService,
+        private hostApp: HostAppService,
     ) {
         super()
     }
@@ -70,7 +74,8 @@ export class TabManagementContextMenu extends TabContextMenuItemProvider {
                     },
                 },
             ]
-        } else if (tab.parent instanceof SplitTabComponent) {
+        }
+        {
             const directions: SplitDirection[] = ['r', 'b', 'l', 't']
             items.push({
                 label: this.translate.instant('Split'),
@@ -88,9 +93,29 @@ export class TabManagementContextMenu extends TabContextMenuItemProvider {
                         t: this.translate.instant('Split to the up'),
                     }[dir],
                     click: () => {
-                        (tab.parent as SplitTabComponent).splitTab(tab, dir)
+                        // Tabs that were never split (Settings, the start page,
+                        // any plugin tab) have no SplitTabComponent parent, so
+                        // wrap them in one first — otherwise they can never be
+                        // put side by side with anything.
+                        const container = tab.parent instanceof SplitTabComponent
+                            ? tab.parent
+                            : this.app.wrapAndAddTab(tab)
+                        container.splitTab(tab, dir)
                     },
                 })) as MenuItemOptions[],
+            })
+
+            items.push({
+                label: this.translate.instant('Open in new window'),
+                enabled: !tab.effectivelyPinned,
+                click: async () => {
+                    const token = await this.tabRecovery.getFullRecoveryToken(tab, { includeState: true })
+                    if (!token) {
+                        return
+                    }
+                    this.hostApp.newWindow({ initialTab: token })
+                    this.app.closeTab(tab, false)
+                },
             })
         }
         return items

@@ -44,8 +44,8 @@ if (process.defaultApp) {
     app.setAsDefaultProtocolClient('tabby')
 }
 
-ipcMain.on('app:new-window', () => {
-    application.newWindow()
+ipcMain.on('app:new-window', (_event, options?: { initialTab?: any }) => {
+    application.newWindow(options)
 })
 
 process.on('uncaughtException', err => {

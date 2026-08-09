@@ -36,7 +36,7 @@ export abstract class HostAppService {
         this.logger = injector.get(LogService).create('hostApp')
     }
 
-    abstract newWindow (): void
+    abstract newWindow (options?: { initialTab?: any }): void
 
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     emitReady (): void { }

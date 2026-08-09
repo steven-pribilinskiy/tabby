@@ -108,6 +108,15 @@ export class AppService {
                 /** Continue to store the tabs even if the setting is currently off */
                 this.tabRecovery.enabled = true
             }
+
+            // This window was opened to adopt a tab from another one
+            // ("Open in new window"), so restore it here.
+            if (this.bootstrapData.initialTab) {
+                const tab = await this.tabRecovery.recoverTab(this.bootstrapData.initialTab)
+                if (tab) {
+                    this.openNewTabRaw(tab)
+                }
+            }
         })
 
         this.tabClosed$.subscribe(() => {

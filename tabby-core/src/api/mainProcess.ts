@@ -21,4 +21,6 @@ export interface BootstrapData {
     windowID: number
     installedPlugins: PluginInfo[]
     userPluginsPath: string
+    /** Recovery token of a tab this window was opened to adopt */
+    initialTab?: any
 }

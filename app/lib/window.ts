@@ -20,6 +20,8 @@ if (process.platform === 'win32') {
 
 export interface WindowOptions {
     hidden?: boolean
+    /** Recovery token of a tab to open in the new window (see hostApp.newWindow) */
+    initialTab?: any
 }
 
 abstract class GlasstronWindow extends BrowserWindow {
@@ -46,6 +48,7 @@ export class Window {
     private touchBarControl: any
     private isFluentVibrancy = false
     private dockHidden = false
+    private options: WindowOptions
 
     get visible$ (): Observable<boolean> { return this.visible }
     get closed$ (): Observable<void> { return this.closed }
@@ -53,6 +56,7 @@ export class Window {
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
     constructor (private application: Application, private configStore: any, options?: WindowOptions) {
         options = options ?? {}
+        this.options = options
 
         this.windowConfig = new ElectronConfig({ name: 'window' })
         this.windowBounds = this.windowConfig.get('windowBoundaries')
@@ -403,6 +407,7 @@ export class Window {
                 windowID: this.window.id,
                 isMainWindow: this.isMainWindow,
                 userPluginsPath: this.application.userPluginsPath,
+                initialTab: this.options.initialTab,
             })
         })
 

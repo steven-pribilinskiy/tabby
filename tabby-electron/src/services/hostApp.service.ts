@@ -54,8 +54,8 @@ export class ElectronHostAppService extends HostAppService {
         }
     }
 
-    newWindow (): void {
-        this.electron.ipcRenderer.send('app:new-window')
+    newWindow (options?: { initialTab?: any }): void {
+        this.electron.ipcRenderer.send('app:new-window', options)
     }
 
     async saveConfig (data: string): Promise<void> {
