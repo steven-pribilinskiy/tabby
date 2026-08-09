@@ -8,7 +8,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { LigaturesAddon } from '@xterm/addon-ligatures'
 import { ISearchOptions, SearchAddon } from '@xterm/addon-search'
 import { WebglAddon } from '@xterm/addon-webgl'
-import { UnicodeGraphemesAddon } from '@xterm/addon-unicode-graphemes'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import { ImageAddon } from '@xterm/addon-image'
 import { CanvasAddon } from '@xterm/addon-canvas'
@@ -107,8 +107,7 @@ export class XTermFrontend extends Frontend {
         this.xterm = new Terminal({
             allowTransparency: true,
             allowProposedApi: true,
-            // xterm 6 replaced the flat overviewRulerWidth with an options object
-            overviewRuler: { width: 8 },
+            overviewRulerWidth: 8,
             windowsPty: process.platform === 'win32' ? {
                 backend: this.configService.store.terminal.useConPTY ? 'conpty' : 'winpty',
                 buildNumber: getWindows10Build(),
@@ -143,12 +142,8 @@ export class XTermFrontend extends Frontend {
 
         this.xterm.loadAddon(this.fitAddon)
         this.xterm.loadAddon(this.serializeAddon)
-        // Grapheme clustering, not just per-codepoint widths. The Unicode 11
-        // addon ignores variation selectors, so VS16 (width 0) never promoted
-        // characters like U+2747 to the width-2 emoji presentation other
-        // terminals use, and emoji rendered one column narrow.
-        this.xterm.loadAddon(new UnicodeGraphemesAddon())
-        this.xterm.unicode.activeVersion = '15-graphemes'
+        this.xterm.loadAddon(new Unicode11Addon())
+        this.xterm.unicode.activeVersion = '11'
 
         if (this.configService.store.terminal.sixel) {
             this.xterm.loadAddon(new ImageAddon())
