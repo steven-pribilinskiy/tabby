@@ -19,7 +19,14 @@ appearance:
   vibrancyType: 'blur'
   lastTabClosesWindow: false
   spaciness: 1
-  colorSchemeMode: 'dark'
+  colorSchemeMode: 'auto'
+  # Width of the vertical tab bar (px), persisted when the splitter is dragged
+  sideTabBarWidth: 200
+  # Let the vertical tab bar flow into multiple columns as it gets wider
+  sideTabBarMultiColumn: false
+  # A column narrower than this is not created, so columns appear only once
+  # there is room for a whole one
+  sideTabBarMinColumnWidth: 100
 terminal:
   showBuiltinProfiles: true
   showRecentProfiles: 3
