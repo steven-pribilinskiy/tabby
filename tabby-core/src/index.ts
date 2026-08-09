@@ -205,7 +205,7 @@ export default class AppModule { // eslint-disable-line @typescript-eslint/no-ex
             }
         })
 
-        ngbTooltipConfig.openDelay = 750
+        ngbTooltipConfig.openDelay = 250
         ngbTooltipConfig.placement = 'top bottom auto'
         ngbTooltipConfig.container = 'body'
     }

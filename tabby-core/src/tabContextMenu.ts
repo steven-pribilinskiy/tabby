@@ -11,6 +11,7 @@ import { MenuItemOptions } from './api/menu'
 import { ProfilesService } from './services/profiles.service'
 import { TabsService } from './services/tabs.service'
 import { HotkeysService } from './services/hotkeys.service'
+import { ConfigService } from './services/config.service'
 import { TabRecoveryService } from './services/tabRecovery.service'
 import { HostAppService } from './api/hostApp'
 import { PromptModalComponent } from './components/promptModal.component'
@@ -27,11 +28,14 @@ export class TabManagementContextMenu extends TabContextMenuItemProvider {
         private translate: TranslateService,
         private tabRecovery: TabRecoveryService,
         private hostApp: HostAppService,
+        private config: ConfigService,
     ) {
         super()
     }
 
     async getItems (tab: BaseTabComponent): Promise<MenuItemOptions[]> {
+        const tabsLocation = this.config.store.appearance.tabsLocation
+        const verticalTabs = tabsLocation === 'left' || tabsLocation === 'right'
         let items: MenuItemOptions[] = [
             {
                 label: this.translate.instant('Close'),
@@ -58,7 +62,11 @@ export class TabManagementContextMenu extends TabContextMenuItemProvider {
                     },
                 },
                 {
-                    label: this.translate.instant('Close tabs to the right'),
+                    // The tab bar can be vertical, where "right"/"left" describe
+                    // the wrong axis entirely.
+                    label: verticalTabs
+                        ? this.translate.instant('Close tabs below')
+                        : this.translate.instant('Close tabs to the right'),
                     click: () => {
                         for (const t of this.app.tabs.slice(this.app.tabs.indexOf(tab) + 1)) {
                             this.app.closeTab(t, true)
@@ -66,7 +74,9 @@ export class TabManagementContextMenu extends TabContextMenuItemProvider {
                     },
                 },
                 {
-                    label: this.translate.instant('Close tabs to the left'),
+                    label: verticalTabs
+                        ? this.translate.instant('Close tabs above')
+                        : this.translate.instant('Close tabs to the left'),
                     click: () => {
                         for (const t of this.app.tabs.slice(0, this.app.tabs.indexOf(tab))) {
                             this.app.closeTab(t, true)
@@ -75,6 +85,7 @@ export class TabManagementContextMenu extends TabContextMenuItemProvider {
                 },
             ]
         }
+        items.push({ type: 'separator' })
         {
             const directions: SplitDirection[] = ['r', 'b', 'l', 't']
             items.push({
@@ -93,14 +104,18 @@ export class TabManagementContextMenu extends TabContextMenuItemProvider {
                         t: this.translate.instant('Split to the up'),
                     }[dir],
                     click: () => {
-                        // Tabs that were never split (Settings, the start page,
-                        // any plugin tab) have no SplitTabComponent parent, so
-                        // wrap them in one first — otherwise they can never be
-                        // put side by side with anything.
-                        const container = tab.parent instanceof SplitTabComponent
-                            ? tab.parent
-                            : this.app.wrapAndAddTab(tab)
-                        container.splitTab(tab, dir)
+                        if (tab instanceof SplitTabComponent) {
+                            // A tab header represents the split container itself
+                            // (openNewTabRaw wraps every tab), so split whichever
+                            // child is focused rather than nesting another
+                            // container around the whole thing.
+                            tab.splitTab(tab.getFocusedTab() ?? tab.getAllTabs()[0], dir)
+                        } else if (tab.parent instanceof SplitTabComponent) {
+                            tab.parent.splitTab(tab, dir)
+                        } else {
+                            // An unwrapped top-level tab: give it a container first.
+                            this.app.wrapAndAddTab(tab).splitTab(tab, dir)
+                        }
                     },
                 })) as MenuItemOptions[],
             })

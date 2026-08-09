@@ -77,7 +77,13 @@ export class Window {
             maximizable: true,
             frame: false,
             show: false,
-            backgroundColor: '#00000000',
+            // A transparent backing surface makes Chromium fall back from
+            // subpixel to grayscale antialiasing, which renders text thin with a
+            // halo around every glyph — invisible on dark themes, very visible on
+            // light. Only go transparent when vibrancy actually needs it.
+            backgroundColor: this.configStore.appearance?.vibrancy
+                ? '#00000000'
+                : (nativeTheme.shouldUseDarkColors ? '#131d27' : '#ffffff'),
             acceptFirstMouse: true,
         }
 
@@ -207,11 +213,6 @@ export class Window {
             } else {
                 DwmEnableBlurBehindWindow(this.window.getNativeWindowHandle(), enabled)
             }
-            // A transparent backing surface makes Chromium fall back from
-            // subpixel to grayscale antialiasing, which renders text thin with a
-            // halo around every glyph. It only shows up on light backgrounds, so
-            // keep the window opaque whenever we are not actually blurring.
-            this.window.setBackgroundColor(enabled ? '#00000000' : this.opaqueBackgroundColor())
         } else if (process.platform === 'linux') {
             this.window.setBackgroundColor(enabled ? '#00000000' : this.opaqueBackgroundColor())
             this.window.setBlur(enabled)
@@ -239,12 +240,11 @@ export class Window {
         } else {
             nativeTheme.themeSource = 'dark'
         }
-        // Re-apply the backing colour so it follows the new scheme.
-        // lastVibrancy is still null on the first call, which runs from
-        // did-finish-load before setVibrancy() has ever been invoked.
-        if (process.platform !== 'darwin' && !this.lastVibrancy?.enabled) {
-            this.window.setBackgroundColor(this.opaqueBackgroundColor())
-        }
+        // Deliberately not touching the window background here. Every
+        // config.changed$ reaches this method, and calling setBackgroundColor on
+        // a glasstron window from that path crashed the app natively (selecting
+        // Window frame > Full). The backing colour is chosen once at
+        // construction instead, which is where transparency actually matters.
     }
 
     focus (): void {

@@ -77,6 +77,17 @@ export class ThemesService {
         const bgGoesDarker = backgroundLightness >= 92 || isDark && backgroundLightness > 8
         const bgFactor = backgroundLightness >= 92 ? 0.3 : 1
 
+        // The mirror of bgMore, stepping toward the foreground. Without the
+        // gentler light-scheme factor this darkens white by a full 50% for
+        // --theme-bg-less-2, which backs the profile list hover — a mid-grey
+        // row under the cursor on a white page.
+        function bgLess (some, factor) {
+            const color = Color(some)
+            return isDark
+                ? color.lighten(factor * bgFactor)
+                : color.darken(factor * bgFactor)
+        }
+
         function bgMore (some, factor) {
             const color = Color(some)
             if (bgGoesDarker) {
@@ -129,8 +140,8 @@ export class ThemesService {
             vars['--theme-fg-less'] = less(theme.foreground, 0.25).string()
             vars['--theme-fg-less-2'] = less(theme.foreground, 0.5).string()
 
-            vars['--theme-bg-less-2'] = less(theme.background, 0.5).string()
-            vars['--theme-bg-less'] = less(theme.background, 0.25).string()
+            vars['--theme-bg-less-2'] = bgLess(theme.background, 0.5).string()
+            vars['--theme-bg-less'] = bgLess(theme.background, 0.25).string()
             vars['--theme-bg'] = theme.background
             vars['--theme-bg-more'] = backgroundMore
             vars['--theme-bg-more-2'] = bgMore(backgroundMore, 0.25).string()

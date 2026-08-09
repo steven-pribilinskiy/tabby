@@ -3,5 +3,7 @@ div(
     ngx-colors-trigger,
     [(ngModel)]='model',
     (ngModelChange)='modelChange.emit($event)',
-    [ngbTooltip]='hint'
+    [ngbTooltip]='hint',
+    [style.color]='labelColor',
+    [style.text-shadow]='labelShadow'
 ) {{ title }}
