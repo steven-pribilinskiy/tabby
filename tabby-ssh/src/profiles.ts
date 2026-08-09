@@ -1,4 +1,4 @@
-import { Injectable, InjectFlags, Injector } from '@angular/core'
+import { Injectable, Injector } from '@angular/core'
 import { NewTabParameters, PartialProfile, TranslateService, QuickConnectProfileProvider } from 'tabby-core'
 import { SSHProfileSettingsComponent } from './components/sshProfileSettings.component'
 import { SSHTabComponent } from './components/sshTab.component'
@@ -61,7 +61,7 @@ export class SSHProfilesService extends QuickConnectProfileProvider<SSHProfile> 
     }
 
     async getBuiltinProfiles (): Promise<PartialProfile<SSHProfile>[]> {
-        const importers = this.injector.get<SSHProfileImporter[]>(SSHProfileImporter as any, [], InjectFlags.Optional)
+        const importers = this.injector.get<SSHProfileImporter[]>(SSHProfileImporter as any, [], { optional: true })
         let imported: PartialProfile<SSHProfile>[] = []
         for (const importer of importers) {
             try {

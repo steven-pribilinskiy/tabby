@@ -153,7 +153,10 @@ export class WebPlatformService extends PlatformService {
 }
 
 class HTMLFileDownload extends FileDownload {
-    private buffers: Uint8Array[] = []
+    // Explicitly ArrayBuffer-backed: current lib typings widen a bare
+    // Uint8Array to ArrayBufferLike, which BlobPart rejects because it could
+    // be backed by a SharedArrayBuffer.
+    private buffers: Uint8Array<ArrayBuffer>[] = []
 
     constructor (
         private name: string,

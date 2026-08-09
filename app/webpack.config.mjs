@@ -80,7 +80,13 @@ export default () => ({
         path: 'commonjs path',
     },
     plugins: [
-        new wp.optimize.ModuleConcatenationPlugin(),
+        // Scope hoisting is disabled: Angular 21 splits its fesm2022 bundles
+        // into shared _*-chunk.mjs files, and concatenating them here emits
+        // `__webpack_require__(null)` for those chunks — the renderer then dies
+        // at startup with "Cannot find module 'null'" before any plugin loads.
+        // Still reproduces on webpack 5.109.2, and this build already sets
+        // optimization.minimize: false, so the loss is marginal.
+        // new wp.optimize.ModuleConcatenationPlugin(),
         new wp.DefinePlugin({
             'process.type': '"renderer"',
         }),

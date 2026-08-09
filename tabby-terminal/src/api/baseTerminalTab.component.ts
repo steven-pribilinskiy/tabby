@@ -1,7 +1,7 @@
 import { Observable, Subject, first, auditTime, debounce, interval } from 'rxjs'
 import { Spinner } from 'cli-spinner'
 import colors from 'ansi-colors'
-import { NgZone, OnInit, OnDestroy, Injector, ViewChild, HostBinding, Input, ElementRef, InjectFlags, Component } from '@angular/core'
+import { NgZone, OnInit, OnDestroy, Injector, ViewChild, HostBinding, Input, ElementRef, Component } from '@angular/core'
 import { trigger, transition, style, animate, AnimationTriggerMetadata } from '@angular/animations'
 import { AppService, ConfigService, BaseTabComponent, HostAppService, HotkeysService, NotificationsService, Platform, LogService, Logger, TabContextMenuItemProvider, SplitTabComponent, SubscriptionContainer, MenuItemOptions, PlatformService, HostWindowService, ResettableTimeout, TranslateService, ThemesService, FullyDefined } from 'tabby-core'
 
@@ -202,8 +202,8 @@ export class BaseTerminalTabComponent<P extends BaseTerminalProfile> extends Bas
         this.platform = injector.get(PlatformService)
         this.notifications = injector.get(NotificationsService)
         this.log = injector.get(LogService)
-        this.decorators = injector.get<any>(TerminalDecorator, null, InjectFlags.Optional) as TerminalDecorator[]
-        this.contextMenuProviders = injector.get<any>(TabContextMenuItemProvider, null, InjectFlags.Optional) as TabContextMenuItemProvider[]
+        this.decorators = injector.get<any>(TerminalDecorator, null, { optional: true }) as TerminalDecorator[]
+        this.contextMenuProviders = injector.get<any>(TabContextMenuItemProvider, null, { optional: true }) as TabContextMenuItemProvider[]
         this.hostWindow = injector.get(HostWindowService)
         this.translate = injector.get(TranslateService)
         this.multifocus = injector.get(MultifocusService)
@@ -482,11 +482,11 @@ export class BaseTerminalTabComponent<P extends BaseTerminalProfile> extends Bas
      * Feeds input into the active session
      */
     sendInput (data: string|Buffer): void {
-        if (!(data instanceof Buffer)) {
-            data = Buffer.from(data, 'utf-8')
-        }
-        this.session?.feedFromTerminal(data)
-        if (this.config.store.terminal.scrollOnInput && !data.equals(OSC_FOCUS_IN) && !data.equals(OSC_FOCUS_OUT)) {
+        // Buffer is generic in current @types/node, so `instanceof Buffer` no
+        // longer narrows the union — switch on the string side instead.
+        const buffer = typeof data === 'string' ? Buffer.from(data, 'utf-8') : data
+        this.session?.feedFromTerminal(buffer)
+        if (this.config.store.terminal.scrollOnInput && !buffer.equals(OSC_FOCUS_IN) && !buffer.equals(OSC_FOCUS_OUT)) {
             this.frontend?.scrollToBottom()
         }
     }
