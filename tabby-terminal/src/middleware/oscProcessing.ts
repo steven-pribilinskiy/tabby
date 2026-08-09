@@ -63,7 +63,21 @@ export class OSCProcessor extends SessionMiddleware {
             const [oscCodeString, ...oscParams] = oscString.split(';')
             const oscCode = parseInt(oscCodeString)
 
-            if (oscCode === 1337) {
+            if (oscCode === 7) {
+                // OSC 7 — `file://<host><path>`, the de-facto standard CWD report.
+                // Default bash/zsh setups (including WSL's) emit this and not the
+                // iTerm 1337 variant below, so without it a WSL tab never reports
+                // a working directory at all.
+                const cwd = this.parseOSC7(oscParams.join(';'))
+                if (cwd) {
+                    this.cwdReported.next(cwd)
+                }
+                // Passed through rather than swallowed: OSC 7 is purely
+                // informational and frontends/addons may also consume it, so
+                // dropping it here could regress something downstream. (OSC 1337
+                // is swallowed because it is Tabby-specific and noisy if printed.)
+                processedData.push(data.subarray(prefixIndex, foundSuffix[1] + foundSuffix[0].length))
+            } else if (oscCode === 1337) {
                 const paramString = oscParams.join(';')
                 if (paramString.startsWith('CurrentDir=')) {
                     let reportedCWD = paramString.split('=', 2)[1]
@@ -97,5 +111,35 @@ export class OSCProcessor extends SessionMiddleware {
         this.cwdReported.complete()
         this.copyRequested.complete()
         super.close()
+    }
+
+    /**
+     * `file://<host><path>` → `<path>`. The host is whatever the shell decided
+     * to call the machine and is not comparable to anything we know, so it is
+     * discarded; only the path is meaningful. Returns null for anything that
+     * isn't a well-formed file URL, so a malformed report is ignored rather
+     * than overwriting a good CWD with garbage.
+     */
+    private parseOSC7 (param: string): string | null {
+        if (!param.startsWith('file://')) {
+            return null
+        }
+        // Skip the authority; the path starts at the first `/` after it.
+        const pathStart = param.indexOf('/', 'file://'.length)
+        if (pathStart === -1) {
+            return null
+        }
+        let path = param.substring(pathStart)
+        try {
+            path = decodeURIComponent(path)
+        } catch {
+            // Malformed %-escape — a raw path is still more useful than nothing.
+        }
+        // Windows reports `/C:/Users/…`; strip the leading slash so the value
+        // matches what every other Windows API in Tabby produces.
+        if (/^\/[a-zA-Z]:[/\\]/.test(path)) {
+            path = path.substring(1)
+        }
+        return path || null
     }
 }
