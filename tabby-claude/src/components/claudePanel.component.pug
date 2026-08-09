@@ -27,7 +27,7 @@
 
         .status-row(*ngIf='options.showStatus')
             .status-label([ngClass]='"kind-" + sessionKind(session)') {{statusLabel(session)}}
-            .status-since {{relativeTime(session.lastActivityAt)}}
+            .status-since {{ago(session.lastActivityAt)}}
 
         .callout.waiting(*ngIf='waitingMessage(session)') {{waitingMessage(session)}}
         .callout.error(*ngIf='session.lastError') {{session.lastError}}
@@ -85,9 +85,26 @@
                     span.ms-1 {{linkLabel(link)}}
 
         .session-actions
+            button.btn.btn-sm.btn-link((click)='toggleDetails(session)')
+                i.fas(
+                    [class.fa-chevron-down]='!isExpanded(session)',
+                    [class.fa-chevron-up]='isExpanded(session)'
+                )
+                span.ms-1 {{isExpanded(session) ? ('Hide details'|translate) : ('Details'|translate)}}
             button.btn.btn-sm.btn-link((click)='openInStith(session)')
                 i.fas.fa-external-link-alt
                 span.ms-1 {{'Open in stith'|translate}}
+            button.btn.btn-sm.btn-link.kebab(
+                (click)='openMenu(session, $event)',
+                [ngbTooltip]='"More actions"|translate',
+                container='body'
+            )
+                i.fas.fa-ellipsis-v
+
+        .details(*ngIf='isExpanded(session) && details as record')
+            .detail-row(*ngFor='let row of detailRows(record)', (click)='copyDetail(row.value)', [title]='"Click to copy"|translate')
+                .detail-key {{row.key|translate}}
+                .detail-value {{row.value}}
 
     //- ── Blocked sessions ────────────────────────────────────────────
     .section(*ngIf='options.showWaiting && waitingSessions.length')
@@ -101,7 +118,9 @@
             .row-main
                 .row-title {{sessionTitle(session)}}
                 .row-sub(*ngIf='waitingMessage(session)') {{waitingMessage(session)}}
-            .row-time {{relativeTime(session.waitingSince ?? session.lastActivityAt)}}
+            .row-time {{ago(session.waitingSince ?? session.lastActivityAt)}}
+            button.row-kebab((click)='openMenu(session, $event)')
+                i.fas.fa-ellipsis-v
 
     //- ── Everything else running ─────────────────────────────────────
     .section(*ngIf='options.showSessionList && otherSessions.length')
@@ -118,32 +137,24 @@
                     span {{session.envLabel}}
                     span.ms-2(*ngIf='hasContext(session)') {{contextPercent(session)}}
                     span.ms-2(*ngIf='session.currentTool') {{session.currentTool}}
-            .row-time {{relativeTime(session.lastActivityAt)}}
+            .row-time {{ago(session.lastActivityAt)}}
+            button.row-kebab((click)='openMenu(session, $event)')
+                i.fas.fa-ellipsis-v
 
     //- ── Plan usage ──────────────────────────────────────────────────
-    .section(*ngIf='options.showUsage && usage.length')
+    .section(*ngIf='options.showUsage && usableUsage.length')
         .section-title {{'Usage'|translate}}
-        .usage-account(*ngFor='let account of usage')
+        .usage-account(*ngFor='let account of usableUsage')
             .usage-name
                 span {{account.account}}
                 span.badge-plan {{account.plan}}
-            .metric(*ngIf='account.session as usageWindow')
+            .metric(*ngFor='let entry of usageWindows(account)')
                 .metric-head
-                    span.metric-name {{'5h'|translate}}
-                    span.metric-value {{usageWindow.resetsIn}}
-                    span.metric-pct {{usageWindow.pct}}%
+                    span.metric-name {{entry.label|translate}}
+                    span.metric-value(*ngIf='entry.window.resetsIn') {{entry.window.resetsIn}}
+                    span.metric-pct {{entry.window.pct}}%
                 .bar
                     .bar-fill(
-                        [ngClass]='"sev-" + usageSeverity(usageWindow.pct)',
-                        [style.width.%]='usageWindow.pct'
-                    )
-            .metric(*ngIf='account.weekly as usageWindow')
-                .metric-head
-                    span.metric-name {{'Weekly'|translate}}
-                    span.metric-value {{usageWindow.resetsIn}}
-                    span.metric-pct {{usageWindow.pct}}%
-                .bar
-                    .bar-fill(
-                        [ngClass]='"sev-" + usageSeverity(usageWindow.pct)',
-                        [style.width.%]='usageWindow.pct'
+                        [ngClass]='"sev-" + usageSeverity(entry.window.pct)',
+                        [style.width.%]='entry.window.pct'
                     )

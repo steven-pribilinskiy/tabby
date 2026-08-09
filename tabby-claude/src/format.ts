@@ -60,12 +60,18 @@ const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
  * `1786303175122` → `2 minutes ago`. Uses the platform's own relative-time
  * formatter, so it is localised without pulling in a date library — Tabby has
  * none, and one row of text does not justify adding one.
+ *
+ * `now` is passed in rather than read from the clock. Templates call this
+ * during change detection, and Angular checks a view twice in dev mode: read
+ * the clock here and the two passes disagree the moment a second ticks over,
+ * which throws ExpressionChangedAfterItHasBeenChecked. Callers hold a `now`
+ * that only advances between cycles.
  */
-export function relativeTime (timestamp: number | null | undefined): string {
+export function relativeTime (timestamp: number | null | undefined, now: number = Date.now()): string {
     if (!timestamp) {
         return '—'
     }
-    const delta = timestamp - Date.now()
+    const delta = timestamp - now
     const magnitude = Math.abs(delta)
     let unit: Intl.RelativeTimeFormatUnit = 'second'
     let divisor = 1000

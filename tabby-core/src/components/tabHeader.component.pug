@@ -15,6 +15,11 @@ profile-icon(
 .pin-indicator(*ngIf='tab.pinned')
     i.fas.fa-thumbtack
 
+//- The card is anchored here rather than on the host element so its template
+//- can be declared in this component, where `tab` and `hoverProvider` are
+//- already in scope. NgbPopover in ng-bootstrap 14 has no context input — only
+//- open(context) — so binding it from the app root would have meant driving the
+//- popover manually and reimplementing its open delay.
 .name(
     #nameEl,
     [class.no-hover]='config.store.terminal.hideCloseButton && config.store.terminal.hideTabOptionsButton'
@@ -23,7 +28,18 @@ profile-icon(
     [cdkDragData]='tab',
     (cdkDragStarted)='onTabDragStart(tab)',
     (cdkDragEnded)='onTabDragEnd()',
+    [ngbPopover]='hoverProvider ? hoverCardTemplate : null',
+    [autoClose]='true',
+    triggers='mouseenter:mouseleave',
+    [openDelay]='400',
+    [closeDelay]='100',
+    [placement]='hoverPlacement',
+    popoverClass='tab-hover-popover',
+    container='body',
 ) {{tab.customTitle || tab.title}}
+
+ng-template(#hoverCardTemplate)
+    tab-hover-host([tab]='tab', [provider]='hoverProvider')
 
 .buttons
     button(*ngIf='!config.store.terminal.hideTabOptionsButton',(click)='onContextMenu($event)') !{require('../icons/tab-options.svg')}

@@ -1,6 +1,3 @@
-ng-template(#tabHoverCard, let-tab='tab', let-provider='provider')
-    tab-hover-host([tab]='tab', [provider]='provider')
-
 ng-template(#buildTooltip)
     .build-tooltip
         .build-tooltip-title Tabby {{buildVersion}}
@@ -24,7 +21,7 @@ title-bar(
 .window.h-100(
     [class.d-flex]='!sidePanelVisible',
     [class.window-with-panel]='sidePanelVisible',
-    [attr.data-panel-side]='sidePanelVisible ? config.store.sidePanel.side : null'
+    [attr.data-panel-side]='sidePanelVisible ? sidePanelSide : null'
 )
     profile-tree(
         *ngIf='ready && config.store.showProfileTree',
@@ -71,16 +68,7 @@ title-bar(
                     [@.disabled]='hasVerticalTabs() || !config.store.accessibility.animations',
                     (click)='app.selectTab(tab)',
                     [class.fully-draggable]='hostApp.platform !== Platform.macOS',
-                    [ngbTooltip]='tabHeader.hoverProvider ? "" : (tabHeader.titleTruncated ? (tab.customTitle || tab.title) : "")',
-                    [ngbPopover]='tabHeader.hoverProvider ? tabHoverCard : null',
-                    [popoverContext]='{ tab: tab, provider: tabHeader.hoverProvider }',
-                    [autoClose]='true',
-                    triggers='mouseenter:mouseleave',
-                    [openDelay]='400',
-                    [closeDelay]='100',
-                    [placement]='tabHoverPlacement',
-                    popoverClass='tab-hover-popover',
-                    container='body'
+                    [ngbTooltip]='tabHeader.hoverProvider ? "" : (tabHeader.titleTruncated ? (tab.customTitle || tab.title) : "")'
                 )
 
             .btn-group.background

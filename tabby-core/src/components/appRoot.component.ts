@@ -310,24 +310,19 @@ export class AppRootComponent {
     }
 
     get sidePanelVisible (): boolean {
-        return !!this.config.store.sidePanel?.enabled
+        // `.window` is one of the few elements rendered before `ready`, and
+        // ConfigService.store does not exist until the config has loaded, so
+        // this is evaluated at least once with no config at all.
+        return !!this.config.store?.sidePanel?.enabled
+    }
+
+    get sidePanelSide (): string {
+        return this.config.store?.sidePanel?.side ?? 'right'
     }
 
     toggleSidePanel (): void {
         this.config.store.sidePanel.enabled = !this.config.store.sidePanel.enabled
         this.config.save()
-    }
-
-    /**
-     * Where a tab's hover card opens. It must not cover the tab bar itself,
-     * so it comes off the edge opposite the bar and falls back to `auto` when
-     * there is no room there.
-     */
-    get tabHoverPlacement (): string {
-        if (this.hasVerticalTabs()) {
-            return this.config.store.appearance.tabsLocation === 'left' ? 'right auto' : 'left auto'
-        }
-        return this.config.store.appearance.tabsLocation === 'bottom' ? 'top auto' : 'bottom auto'
     }
 
     /**

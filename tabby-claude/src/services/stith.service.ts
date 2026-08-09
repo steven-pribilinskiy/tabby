@@ -78,6 +78,23 @@ export class StithService {
         }
     }
 
+    /**
+     * The full record for one session, fetched on demand.
+     *
+     * The list endpoint is what the panel polls; this is for the details view,
+     * where it is worth paying for a round trip to show the freshest values
+     * and any fields the list omits. Returns null when stith is unreachable so
+     * the caller can fall back to the polled copy.
+     */
+    async getSession (sessionId: string): Promise<ClaudeSession | null> {
+        try {
+            const raw = await this.get<any>(`/api/agents/${encodeURIComponent(sessionId)}`)
+            return raw ? this.toSession(raw) : null
+        } catch {
+            return null
+        }
+    }
+
     /** Force an immediate refresh, e.g. after the user clicks Retry. */
     refreshNow (): void {
         this.failures = 0

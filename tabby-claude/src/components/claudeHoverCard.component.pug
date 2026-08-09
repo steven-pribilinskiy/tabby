@@ -14,7 +14,7 @@
 
     .hover-status(*ngIf='options.showStatus')
         span.status-label([ngClass]='"kind-" + sessionKind(s)') {{statusLabel(s)}}
-        span.status-since {{relativeTime(s.lastActivityAt)}}
+        span.status-since {{ago(s.lastActivityAt)}}
 
     .callout.waiting(*ngIf='waitingMessage(s)') {{waitingMessage(s)}}
     .callout.error(*ngIf='s.lastError') {{s.lastError}}

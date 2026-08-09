@@ -168,14 +168,58 @@ tail of the transcript JSONL (`transcriptMetrics.service.ts`). Transcripts reach
 every live session. WSL transcripts are read over `\\wsl.localhost\<distro>\…`,
 built from stith's `wslDistro`.
 
-**Tabs are joined to sessions by working directory**, never by PID: a Claude
-session in WSL reports Linux PIDs that can never match Tabby's Windows conpty
-PIDs. Only an unambiguous 1:1 cwd pairing is trusted — a card on the wrong tab is
-worse than no card. This works because `OSCProcessor` now parses **OSC 7**
-(`file://host/path`) in addition to iTerm's OSC 1337; OSC 7 is what default
-bash/zsh (including WSL's) actually emit, so before this a WSL tab reported no
-working directory at all. That also makes `getWorkingDirectory()` correct for WSL
-tabs generally, which "New tab in same directory" benefits from.
+**Tabs are joined to sessions by directory**, never by PID: a Claude session in
+WSL reports Linux PIDs that can never match Tabby's Windows conpty PIDs. Only an
+unambiguous 1:1 pairing is trusted — a card on the wrong tab is worse than no
+card.
+
+Three things make that join work, each of which cost real debugging:
+
+1. **The join key is the *launch* directory, not `cwd`.** A session's reported
+   `cwd` comes from the hook payload, which follows every `cd` the agent makes
+   through the Bash tool — measured live, 2 of 13 sessions had already drifted.
+   Claude does record the launch directory, encoded into the transcript's
+   project folder (`~/.claude/projects/C--Users-steve-projects/`). That encoding
+   (`[\\/:]` → `-`) is lossy, so it is never decoded: the tab's directory is
+   encoded the same way and the encoded forms compared, which is exact.
+   Verified against the live registry — 11 of 13 reproduce, and the 2 that
+   don't are exactly the drifted ones.
+2. **The launch directory can be *recovered*** by walking the drifted cwd's
+   ancestors until one encodes to the project key. `claude --resume` only finds
+   a session from its launch directory, so this is what makes Resume work at
+   all — see `ClaudeSessionsService.launchDirectory()`.
+3. **`getWorkingDirectory()` alone never matches Windows tabs.** tabby-local
+   deliberately returns null when the shell's live directory still equals the
+   one it launched in (`tabby-local/src/session.ts`: "shell doesn't truly change
+   its process' CWD") — i.e. the common case of opening a terminal in a repo and
+   running `claude`. So `initialCWD` and the profile's cwd are used as
+   fallbacks.
+
+For WSL, `OSCProcessor` now parses **OSC 7** (`file://host/path`) as well as
+iTerm's OSC 1337; OSC 7 is what default bash/zsh (including WSL's) emit, so
+before this a WSL tab reported no working directory at all.
+
+### Verifying the UI without stealing focus
+
+Tabby's `--hidden` flag creates the window with `show: false` and skips
+`focus()`, so the full renderer boots with nothing on screen. Combined with
+`--remote-debugging-port` that allows rigorous verification while the machine is
+in use — and CDP checks layout better than a screenshot: read
+`getComputedStyle(...).gridTemplateAreas` and `getBoundingClientRect()` and
+assert the panel and terminal tile without overlap.
+
+```bash
+NODE_PATH=<repo>/app/node_modules TABBY_PLUGINS= TABBY_DEV=1 \
+TABBY_CONFIG_DIRECTORY=$P ./node_modules/electron/dist/electron.exe \
+  --user-data-dir=$P --remote-debugging-port=9238 app --hidden
+```
+
+Gotchas found the hard way: a **second** dev instance on the same
+`--user-data-dir` exits silently with code 0 (single-instance lock) — use a
+separate profile. `window.ng.applyChanges(cmp)` is needed after poking a
+component directly, since that bypasses the zone-patched listener that would
+normally run change detection. And `app.tabs` holds `SplitTabComponent`
+wrappers, not terminals — descend via `getAllTabs()`.
 
 Verify the network path without a GUI — Node's fetch uses its own CA bundle, so
 only a real renderer proves the mkcert cert is trusted:

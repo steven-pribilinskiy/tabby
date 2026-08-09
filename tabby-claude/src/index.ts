@@ -34,6 +34,7 @@ import { ClaudeSettingsTabProvider, ClaudeSidePanelProvider, ClaudeTabHoverProvi
 export default class ClaudeModule { } // eslint-disable-line @typescript-eslint/no-extraneous-class
 
 export * from './api'
+export { ClaudeActionsService, ClaudeSessionAction } from './services/claudeActions.service'
 export { ClaudeSessionsService } from './services/claudeSessions.service'
 export { StithService } from './services/stith.service'
 export { TranscriptMetricsService } from './services/transcriptMetrics.service'

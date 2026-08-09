@@ -123,6 +123,16 @@ export class ClaudeSessionsService {
         return [...all].sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0]
     }
 
+    /** Whether this window has a tab running the session. */
+    hasTabFor (session: ClaudeSession): boolean {
+        for (const candidate of this.byTab.values()) {
+            if (candidate.sessionId === session.sessionId) {
+                return true
+            }
+        }
+        return false
+    }
+
     /** Focus the Tabby tab running a session, if it is in this window. */
     revealTab (session: ClaudeSession): boolean {
         for (const [tab, candidate] of this.byTab) {
@@ -212,19 +222,15 @@ export class ClaudeSessionsService {
         // never called from a render path.
         const tabCwds = new Map<BaseTabComponent, string>()
         await Promise.all(tabs.map(async tab => {
-            try {
-                const cwd = await (tab as any).session?.getWorkingDirectory?.()
-                if (cwd) {
-                    tabCwds.set(tab, this.normalize(cwd))
-                }
-            } catch {
-                // A closing tab, or a session that cannot report — skip it.
+            const cwd = await this.resolveTabCwd(tab)
+            if (cwd) {
+                tabCwds.set(tab, cwd)
             }
         }))
 
         const sessionsByCwd = new Map<string, ClaudeSession[]>()
         for (const session of sessions) {
-            const key = this.normalize(session.cwd)
+            const key = this.sessionProjectKey(session)
             if (!key) {
                 continue
             }
@@ -235,9 +241,10 @@ export class ClaudeSessionsService {
 
         const tabsByCwd = new Map<string, BaseTabComponent[]>()
         for (const [tab, cwd] of tabCwds) {
-            const list = tabsByCwd.get(cwd) ?? []
+            const key = this.encodeProjectKey(cwd)
+            const list = tabsByCwd.get(key) ?? []
             list.push(tab)
-            tabsByCwd.set(cwd, list)
+            tabsByCwd.set(key, list)
         }
 
         const next = new Map<BaseTabComponent, ClaudeSession>()
@@ -249,6 +256,44 @@ export class ClaudeSessionsService {
             }
         }
         this.byTab = next
+    }
+
+    /**
+     * The directory a tab is "in", for matching against a session's launch
+     * directory.
+     *
+     * `getWorkingDirectory()` alone is not enough. On Windows, tabby-local
+     * deliberately returns null when the shell's live directory still equals
+     * the one it was launched in (session.ts: "shell doesn't truly change its
+     * process' CWD") — which is exactly the common case of opening a terminal
+     * in a repo and running `claude` there. So the launch directory is used as
+     * a fallback, and it is arguably the better key anyway: Claude records the
+     * directory it was started from, and it runs as a child of the shell, so
+     * the shell cannot cd away while a session is alive.
+     *
+     * `initialCWD` is private to the local session; it is read defensively
+     * here, and a rename upstream degrades to "no match" rather than an error.
+     */
+    private async resolveTabCwd (tab: BaseTabComponent): Promise<string> {
+        const session = (tab as any).session
+        if (!session) {
+            return ''
+        }
+        try {
+            const reported = await session.getWorkingDirectory?.()
+            if (reported) {
+                return this.normalize(reported)
+            }
+        } catch {
+            // A tab mid-close, or a session that cannot report.
+        }
+        const fallbacks = [session.initialCWD, (tab as any).profile?.options?.cwd]
+        for (const candidate of fallbacks) {
+            if (typeof candidate === 'string' && candidate) {
+                return this.normalize(candidate)
+            }
+        }
+        return ''
     }
 
     private collectTerminalTabs (): BaseTabComponent[] {
@@ -273,5 +318,76 @@ export class ClaudeSessionsService {
             return ''
         }
         return path.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+    }
+
+    /**
+     * The key both sides of the join are reduced to: the directory Claude was
+     * *launched* from.
+     *
+     * A session's reported `cwd` cannot be used directly — it comes from the
+     * hook payload, which follows every `cd` the agent makes through the Bash
+     * tool, so it drifts away from the launch directory mid-session. Measured
+     * against the live registry, 2 of 13 sessions had already drifted.
+     *
+     * Claude does record the launch directory, though: it encodes it into the
+     * name of the transcript's project folder under `~/.claude/projects`. That
+     * encoding is lossy in one direction (a hyphen in a directory name is
+     * indistinguishable from a separator), so it is never decoded — the tab's
+     * directory is encoded the same way and the encoded forms are compared,
+     * which is exact.
+     */
+    private sessionProjectKey (session: ClaudeSession): string {
+        return this.projectKeyFromTranscript(session.transcriptPath)
+            || this.encodeProjectKey(session.cwd)
+    }
+
+    /** `…/.claude/projects/<encoded>/<id>.jsonl` → `<encoded>`. */
+    private projectKeyFromTranscript (transcriptPath: string): string {
+        const parts = this.normalize(transcriptPath).split('/')
+        return parts.length >= 2 ? parts[parts.length - 2] : ''
+    }
+
+    /** `C:\Users\steve\projects` → `c--users-steve-projects`. */
+    private encodeProjectKey (cwd: string): string {
+        return this.normalize(cwd).replace(/[\\/:]/g, '-')
+    }
+
+    /**
+     * The directory Claude was launched from — the one `claude --resume` has to
+     * run in, and the session's real project root.
+     *
+     * The reported `cwd` drifts as the agent cds, so it cannot be used
+     * directly. The encoded launch directory is known from the transcript path
+     * but cannot be decoded (a hyphen in a directory name is indistinguishable
+     * from a separator). It can be *recovered*, though: the drifted directory
+     * is virtually always a descendant of the launch directory, so walking up
+     * its ancestors and encoding each one finds the launch directory exactly,
+     * with no guessing. Falls back to the reported cwd when there is no match —
+     * e.g. the agent cd'd somewhere outside the project entirely.
+     */
+    launchDirectory (session: ClaudeSession): string {
+        const wanted = this.projectKeyFromTranscript(session.transcriptPath)
+        if (!wanted || !session.cwd) {
+            return session.cwd
+        }
+        // Operate on the raw path so the returned value keeps its original
+        // separators and casing — it goes into a shell command.
+        let candidate = session.cwd.replace(/[\\/]+$/, '')
+        while (candidate) {
+            if (this.encodeProjectKey(candidate) === wanted) {
+                return candidate
+            }
+            const cut = Math.max(candidate.lastIndexOf('/'), candidate.lastIndexOf('\\'))
+            if (cut <= 0) {
+                break
+            }
+            const next = candidate.substring(0, cut)
+            // `C:` alone is not a directory; stop rather than loop forever.
+            if (next === candidate || /^[a-zA-Z]:$/.test(next)) {
+                break
+            }
+            candidate = next
+        }
+        return session.cwd
     }
 }

@@ -332,6 +332,65 @@
     &:hover {
         background: var(--theme-bg-less);
     }
+
+    // The kebab only appears on hover: a column of them down the list would
+    // compete with the session names for attention.
+    &:hover .row-kebab, .row-kebab:focus {
+        opacity: 0.55;
+    }
+}
+
+.row-kebab {
+    flex: none;
+    background: none;
+    border: none;
+    color: inherit;
+    padding: 2px 4px;
+    line-height: 1;
+    font-size: 11px;
+    opacity: 0;
+    cursor: pointer;
+    transition: 0.1s opacity;
+
+    &:hover {
+        opacity: 1 !important;
+    }
+}
+
+// ── Details ──────────────────────────────────────────────────────────
+
+.details {
+    margin-top: 8px;
+    padding-top: 7px;
+    border-top: 1px solid var(--theme-bg-more-2);
+    font-size: 11px;
+}
+
+.detail-row {
+    display: flex;
+    gap: 8px;
+    padding: 2px 0;
+    cursor: pointer;
+    border-radius: 3px;
+
+    &:hover {
+        background: var(--theme-bg-more);
+    }
+}
+
+.detail-key {
+    flex: none;
+    width: 96px;
+    opacity: 0.5;
+}
+
+.detail-value {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-family: monospace;
+    font-size: 10px;
+    opacity: 0.85;
 }
 
 .row-main {

@@ -59,6 +59,20 @@ export class TabHeaderComponent extends BaseComponent {
         }) ?? null
     }
 
+    /**
+     * Where the hover card opens: off the edge opposite the tab bar, so it
+     * never covers the bar itself, falling back to `auto` when there is no
+     * room there.
+     */
+    get hoverPlacement (): string {
+        switch (this.config.store.appearance.tabsLocation) {
+            case 'left': return 'right auto'
+            case 'right': return 'left auto'
+            case 'bottom': return 'top auto'
+            default: return 'bottom auto'
+        }
+    }
+
     updateTitleTruncation (): void {
         const el = this.nameEl?.nativeElement
         // 1px of tolerance: sub-pixel text metrics can leave scrollWidth a

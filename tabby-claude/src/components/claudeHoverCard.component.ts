@@ -22,6 +22,13 @@ export class ClaudeHoverCardComponent {
 
     session: ClaudeSession | null = null
 
+    /**
+     * Fixed when the card opens. A card lives for as long as a hover, so it
+     * never needs to tick — and a value read from the clock during change
+     * detection would differ between Angular's check and verify passes.
+     */
+    now = Date.now()
+
     formatTokens = formatTokens
     relativeTime = relativeTime
     sessionKind = sessionKind
@@ -36,6 +43,11 @@ export class ClaudeHoverCardComponent {
 
     ngOnInit (): void {
         this.session = this.claude.forTab(this.tab)
+        this.now = Date.now()
+    }
+
+    ago (timestamp: number | null | undefined): string {
+        return relativeTime(timestamp, this.now)
     }
 
     get options (): any {

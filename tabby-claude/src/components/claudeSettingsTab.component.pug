@@ -31,6 +31,20 @@ h3.mb-3(translate) Claude
 
 .form-line
     .header
+        .title(translate) Clicking a session
+        .description(translate) Every action is always available from the ⋮ menu; this is just the one a plain click runs
+    select.form-control(
+        [(ngModel)]='config.store.claude.clickAction',
+        (ngModelChange)='saveConfiguration()',
+    )
+        option(value='focus') {{'Focus tab'|translate}}
+        option(value='details') {{'Show details'|translate}}
+        option(value='newTab') {{'Open new tab here'|translate}}
+        option(value='resume') {{'Resume in new tab'|translate}}
+        option(value='stith') {{'Open in stith'|translate}}
+
+.form-line
+    .header
         .title(translate) Refresh interval
         .description(translate) Milliseconds between session refreshes while the window is focused. Backs off automatically when unfocused
     input.form-control(
