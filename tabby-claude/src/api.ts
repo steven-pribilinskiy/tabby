@@ -55,8 +55,28 @@ export interface ClaudeSession {
     compactions: number
     transcriptBytes: number
 
+    /** Saved notes and links, when the session has been bookmarked in stith. */
+    bookmark?: ClaudeBookmark | null
+
     // ── Local transcript enrichment ──────────────────────────────────
     metrics?: TranscriptMetrics
+}
+
+/** A reference attached to a bookmark. Only `link` targets are openable. */
+export interface ClaudeBookmarkLink {
+    kind: 'link' | 'file' | 'branch' | string
+    label?: string
+    target: string
+}
+
+export interface ClaudeBookmark {
+    description?: string
+    tags?: string[]
+    links?: ClaudeBookmarkLink[]
+    bookmarkCount?: number
+    resumeCount?: number
+    savedAt?: string
+    updatedAt?: string
 }
 
 /**

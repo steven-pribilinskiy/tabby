@@ -65,6 +65,25 @@
             .prompt-label {{'Queued'|translate}} ({{queuedPrompts(session).length}})
             .queued-item(*ngFor='let item of queuedPrompts(session)') {{item}}
 
+        .bookmark(*ngIf='options.showBookmark && bookmarkDescription(session)')
+            .prompt-label
+                i.fas.fa-bookmark
+                span.ms-1 {{'Bookmark'|translate}}
+            .prompt-text {{bookmarkDescription(session)}}
+            .bookmark-links(*ngIf='bookmarkLinks(session).length')
+                .bookmark-link(
+                    *ngFor='let link of bookmarkLinks(session)',
+                    [class.openable]='isOpenableLink(link)',
+                    (click)='openLink(link)',
+                    [title]='link.target'
+                )
+                    i.fas.fa-fw(
+                        [class.fa-link]='link.kind === "link"',
+                        [class.fa-file]='link.kind === "file"',
+                        [class.fa-code-branch]='link.kind === "branch"'
+                    )
+                    span.ms-1 {{linkLabel(link)}}
+
         .session-actions
             button.btn.btn-sm.btn-link((click)='openInStith(session)')
                 i.fas.fa-external-link-alt

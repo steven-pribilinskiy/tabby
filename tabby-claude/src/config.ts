@@ -25,6 +25,7 @@ export class ClaudeConfigProvider extends ConfigProvider {
                 showStats: true,
                 showLastPrompt: true,
                 showQueued: true,
+                showBookmark: true,
                 showWaiting: true,
                 showSessionList: true,
                 showUsage: true,

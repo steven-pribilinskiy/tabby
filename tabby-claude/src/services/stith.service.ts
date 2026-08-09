@@ -1,5 +1,5 @@
 import { Injectable, NgZone } from '@angular/core'
-import { Observable, Subject, BehaviorSubject } from 'rxjs'
+import { Observable, BehaviorSubject } from 'rxjs'
 import { ConfigService, LogService, Logger } from 'tabby-core'
 
 import { ClaudeSession, ClaudeUsage, StithHealth } from '../api'
@@ -31,7 +31,6 @@ export class StithService {
     private sessions = new BehaviorSubject<ClaudeSession[]>([])
     private usage = new BehaviorSubject<ClaudeUsage[]>([])
     private health = new BehaviorSubject<StithHealth>('never-tried')
-    private changed = new Subject<void>()
 
     private timer: ReturnType<typeof setTimeout> | null = null
     private inFlight = false
@@ -52,8 +51,6 @@ export class StithService {
     ) {
         this.logger = log.create('claude-stith')
     }
-
-    get changed$ (): Observable<void> { return this.changed }
 
     /**
      * Ref-counted start. Every surface that needs live data calls this and
@@ -96,9 +93,10 @@ export class StithService {
         if (this.timer) {
             clearTimeout(this.timer)
         }
-        // Outside Angular: a background poll must not trigger a change
-        // detection pass on every tick. The subjects re-enter the zone below
-        // only when data actually changed.
+        // Outside Angular: a background poll must not schedule a change
+        // detection pass on every tick. Only the health and usage subjects
+        // re-enter the zone here; sessions are published outside it and the
+        // consumer decides when a render is warranted.
         this.zone.runOutsideAngular(() => {
             this.timer = setTimeout(() => void this.tick(), delay)
         })
@@ -160,52 +158,14 @@ export class StithService {
         }
     }
 
-    private publish (sessions: ClaudeSession[]): void {
-        // Re-entering the zone on every poll would run change detection twice a
-        // second for an unchanged list. Compare first.
-        if (this.isSameShape(this.sessions.value, sessions)) {
-            // Still swap the array so hover cards read fresh counters, but
-            // without waking Angular.
-            this.sessions.next(sessions)
-            return
-        }
-        this.zone.run(() => {
-            this.sessions.next(sessions)
-            this.changed.next()
-        })
-    }
-
     /**
-     * Cheap equality over the fields the UI actually renders. Deliberately
-     * ignores `lastActivityAt`, which changes on every poll for an active
-     * session and would defeat the whole check.
+     * Emits outside the Angular zone on purpose. Deciding whether a poll is
+     * worth a change-detection pass needs the locally-derived metrics too, so
+     * that call belongs to whoever merges them — see ClaudeSessionsService.
+     * Waking Angular here as well would run the pass twice.
      */
-    private isSameShape (a: ClaudeSession[], b: ClaudeSession[]): boolean {
-        if (a.length !== b.length) {
-            return false
-        }
-        for (let i = 0; i < a.length; i++) {
-            const x = a[i]
-            const y = b[i]
-            if (
-                x.sessionId !== y.sessionId ||
-                x.status !== y.status ||
-                x.currentTool !== y.currentTool ||
-                x.waitingOnPermission !== y.waitingOnPermission ||
-                x.awaitingInput !== y.awaitingInput ||
-                x.waitingMessage !== y.waitingMessage ||
-                x.compacting !== y.compacting ||
-                x.subagentCount !== y.subagentCount ||
-                x.turns !== y.turns ||
-                x.toolCalls !== y.toolCalls ||
-                x.model !== y.model ||
-                x.gitBranch !== y.gitBranch ||
-                x.lastError !== y.lastError
-            ) {
-                return false
-            }
-        }
-        return true
+    private publish (sessions: ClaudeSession[]): void {
+        this.sessions.next(sessions)
     }
 
     private async get<T> (path: string): Promise<T | null> {
@@ -263,6 +223,7 @@ export class StithService {
             toolCalls: a.toolCalls ?? 0,
             compactions: a.compactions ?? 0,
             transcriptBytes: a.transcriptBytes ?? 0,
+            bookmark: a.bookmark ?? null,
         }
     }
 

@@ -94,6 +94,15 @@ h4.mt-4.mb-2(translate) Panel contents
 
 .form-line
     .header
+        .title(translate) Bookmark
+        .description(translate) Notes and links saved against the session in stith
+    toggle(
+        [(ngModel)]='config.store.claude.panel.showBookmark',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
         .title(translate) Sessions waiting on you
     toggle(
         [(ngModel)]='config.store.claude.panel.showWaiting',

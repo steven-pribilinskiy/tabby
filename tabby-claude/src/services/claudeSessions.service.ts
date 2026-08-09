@@ -6,6 +6,9 @@ import { ClaudeSession } from '../api'
 import { StithService } from './stith.service'
 import { TranscriptMetricsService } from './transcriptMetrics.service'
 
+/** How often the tab↔session mapping is rebuilt when nothing forces it. */
+const TAB_MAP_INTERVAL_MS = 5000
+
 /**
  * Joins the stith session registry to Tabby's tabs, and enriches each session
  * with locally-computed transcript metrics.
@@ -29,6 +32,9 @@ export class ClaudeSessionsService {
     private byTab = new Map<BaseTabComponent, ClaudeSession>()
     private watchHandle: { close: () => void } | null = null
     private watchers = 0
+    private lastSignature = ''
+    private tabMapBuiltAt = 0
+    private tabMapDirty = true
 
     constructor (
         private stith: StithService,
@@ -39,6 +45,12 @@ export class ClaudeSessionsService {
     ) {
         this.stith.sessions$.subscribe(sessions => {
             void this.onSessions(sessions)
+        })
+        // A tab opening, closing or being split invalidates the mapping
+        // immediately; otherwise it would be up to a whole interval out of date
+        // and a brand-new tab would show no hover card.
+        this.app.tabsChanged$.subscribe(() => {
+            this.tabMapDirty = true
         })
     }
 
@@ -127,18 +139,72 @@ export class ClaudeSessionsService {
     }
 
     private async onSessions (sessions: ClaudeSession[]): Promise<void> {
-        if (this.config.store.claude?.readTranscripts !== false) {
-            // Enrich in parallel; each read is a stat plus at most a 256KB
-            // bounded read, and unreadable transcripts resolve to {}.
+        if (this.config.store.claude.readTranscripts) {
+            // Enrich in parallel; each read is a throttled stat plus at most a
+            // 256KB bounded read, and unreadable transcripts resolve to {}.
             await Promise.all(sessions.map(async session => {
                 session.metrics = await this.metrics.read(session)
             }))
         }
         await this.rebuildTabMap(sessions)
+
+        // Only wake Angular when something a surface actually renders has
+        // changed. Without this the panel would force a change-detection pass
+        // every poll — twice a second, forever, for a window nobody is looking
+        // at — which is exactly the kind of ambient cost that shows up later as
+        // "Tabby feels slow".
+        const signature = this.renderSignature(sessions)
+        if (signature === this.lastSignature) {
+            this.sessions.next(sessions)
+            return
+        }
+        this.lastSignature = signature
         this.zone.run(() => this.sessions.next(sessions))
     }
 
+    /**
+     * Everything the panel and hover card draw, and nothing else. Notably
+     * excludes `lastActivityAt`, which ticks on every poll for a live session
+     * and would make the check always fail — the relative timestamps it feeds
+     * are re-rendered by the next genuine change anyway.
+     */
+    private renderSignature (sessions: ClaudeSession[]): string {
+        return sessions.map(x => [
+            x.sessionId,
+            x.status,
+            x.currentTool,
+            x.waitingOnPermission,
+            x.awaitingInput,
+            x.waitingMessage,
+            x.compacting,
+            x.subagentCount,
+            x.turns,
+            x.toolCalls,
+            x.compactions,
+            x.model,
+            x.effort,
+            x.gitBranch,
+            x.lastError,
+            x.metrics?.contextTokens,
+            x.metrics?.mode,
+            x.metrics?.permissionMode,
+            x.metrics?.aiTitle,
+            x.metrics?.lastPrompt,
+            x.metrics?.queuedPrompts?.length,
+        ].join('')).join('')
+    }
+
     private async rebuildTabMap (sessions: ClaudeSession[]): Promise<void> {
+        // Resolving a tab's directory can cost a native call per tab, so it is
+        // not redone on every poll. Tab membership changing forces it; short of
+        // that a launch directory does not move, so a slow refresh is enough.
+        const now = Date.now()
+        if (!this.tabMapDirty && now - this.tabMapBuiltAt < TAB_MAP_INTERVAL_MS) {
+            return
+        }
+        this.tabMapDirty = false
+        this.tabMapBuiltAt = now
+
         const tabs = this.collectTerminalTabs()
 
         // Resolve every tab's directory once. getWorkingDirectory() is async

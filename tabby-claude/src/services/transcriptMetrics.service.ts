@@ -6,6 +6,9 @@ import { ClaudeSession, TranscriptMetrics } from '../api'
 /** How much of the transcript tail to read. */
 const TAIL_BYTES = 256 * 1024
 
+/** Floor on how often a given transcript is re-stat'd. */
+const STAT_INTERVAL_MS = 4000
+
 /**
  * Context window sizes. Claude Code does not record the window size in the
  * transcript, so it is inferred: anything that has fitted more than the small
@@ -28,7 +31,7 @@ const LARGE_CONTEXT = 1_000_000
  */
 @Injectable({ providedIn: 'root' })
 export class TranscriptMetricsService {
-    private cache = new Map<string, { key: string, value: TranscriptMetrics }>()
+    private cache = new Map<string, { key: string, value: TranscriptMetrics, checkedAt: number }>()
 
     /**
      * Translate a transcript path into something this Windows process can open.
@@ -76,6 +79,16 @@ export class TranscriptMetricsService {
             return {}
         }
 
+        const cached = this.cache.get(path)
+        // A WSL transcript is stat'd across the `\\wsl.localhost` share, which
+        // is far from free. The session list refreshes every couple of seconds
+        // and context usage moves on the scale of a turn, so re-checking that
+        // often buys nothing — serve the cache until the floor has passed.
+        const now = Date.now()
+        if (cached && now - cached.checkedAt < STAT_INTERVAL_MS) {
+            return cached.value
+        }
+
         let stat: fs.Stats | null = null
         try {
             stat = await fs.promises.stat(path)
@@ -84,8 +97,8 @@ export class TranscriptMetricsService {
         }
 
         const key = `${stat.size}:${stat.mtimeMs}`
-        const cached = this.cache.get(path)
         if (cached?.key === key) {
+            cached.checkedAt = now
             return cached.value
         }
 
@@ -98,7 +111,7 @@ export class TranscriptMetricsService {
 
         const value = this.parse(buffer)
         value.readAt = stat.mtimeMs
-        this.cache.set(path, { key, value })
+        this.cache.set(path, { key, value, checkedAt: now })
         return value
     }
 

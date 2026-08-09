@@ -275,6 +275,34 @@
     margin-bottom: 2px;
 }
 
+.bookmark {
+    margin-top: 9px;
+}
+
+.bookmark-links {
+    margin-top: 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.bookmark-link {
+    font-size: 11px;
+    opacity: 0.6;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &.openable {
+        cursor: pointer;
+
+        &:hover {
+            opacity: 1;
+            text-decoration: underline;
+        }
+    }
+}
+
 .session-actions {
     margin-top: 8px;
 

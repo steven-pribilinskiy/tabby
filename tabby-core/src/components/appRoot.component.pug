@@ -74,7 +74,7 @@ title-bar(
                     [ngbTooltip]='tabHeader.hoverProvider ? "" : (tabHeader.titleTruncated ? (tab.customTitle || tab.title) : "")',
                     [ngbPopover]='tabHeader.hoverProvider ? tabHoverCard : null',
                     [popoverContext]='{ tab: tab, provider: tabHeader.hoverProvider }',
-                    [autoClose]='false',
+                    [autoClose]='true',
                     triggers='mouseenter:mouseleave',
                     [openDelay]='400',
                     [closeDelay]='100',

@@ -1,7 +1,7 @@
 import { Component } from '@angular/core'
 import { AppService, BaseComponent, ConfigService, PlatformService } from 'tabby-core'
 
-import { ClaudeSession, ClaudeUsage, StithHealth } from '../api'
+import { ClaudeBookmarkLink, ClaudeSession, ClaudeUsage, StithHealth } from '../api'
 import { formatTokens, permissionBadge, relativeTime, sessionKind, sessionTitle, statusLabel } from '../format'
 import { ClaudeSessionsService } from '../services/claudeSessions.service'
 import { StithService } from '../services/stith.service'
@@ -119,6 +119,42 @@ export class ClaudePanelComponent extends BaseComponent {
 
     waitingMessage (session: ClaudeSession): string {
         return session.waitingMessage ?? ''
+    }
+
+    bookmarkDescription (session: ClaudeSession): string {
+        return session.bookmark?.description ?? ''
+    }
+
+    /**
+     * Only `link` targets are openable — `file` and `branch` targets are paths
+     * inside whichever machine the session runs on, so they are shown as
+     * context rather than pretending they are clickable from here.
+     */
+    bookmarkLinks (session: ClaudeSession): ClaudeBookmarkLink[] {
+        return session.bookmark?.links ?? []
+    }
+
+    isOpenableLink (link: ClaudeBookmarkLink): boolean {
+        return link.kind === 'link' && /^https?:\/\//.test(link.target)
+    }
+
+    linkLabel (link: ClaudeBookmarkLink): string {
+        if (link.label) {
+            return link.label
+        }
+        // Fall back to the last meaningful path/URL segment rather than a full
+        // 80-character path that would blow the panel out.
+        const trimmed = link.target.replace(/\/+$/, '')
+        const segment = trimmed.split(/[/\\]/).pop()
+        // A target that is all separators leaves an empty segment; fall back to
+        // the raw target rather than rendering a blank row.
+        return segment ? segment : link.target
+    }
+
+    openLink (link: ClaudeBookmarkLink): void {
+        if (this.isOpenableLink(link)) {
+            this.platform.openExternal(link.target)
+        }
     }
 
     /** Bars go amber then red as a window fills, matching the statusline. */
