@@ -13,6 +13,8 @@ import '@angular/localize/init'
 import { AppRootComponent } from './components/appRoot.component'
 import { CheckboxComponent } from './components/checkbox.component'
 import { TabBodyComponent } from './components/tabBody.component'
+import { SidePanelHostComponent } from './components/sidePanelHost.component'
+import { TabHoverHostComponent } from './components/tabHoverHost.component'
 import { PromptModalComponent } from './components/promptModal.component'
 import { SafeModeModalComponent } from './components/safeModeModal.component'
 import { StartPageComponent } from './components/startPage.component'
@@ -38,7 +40,7 @@ import { FastHtmlBindDirective } from './directives/fastHtmlBind.directive'
 import { DropZoneDirective } from './directives/dropZone.directive'
 import { CdkAutoDropGroup } from './directives/cdkAutoDropGroup.directive'
 
-import { Theme, CLIHandler, TabContextMenuItemProvider, TabRecoveryProvider, HotkeyProvider, ConfigProvider, PlatformService, FileProvider, ProfilesService, ProfileProvider, QuickConnectProfileProvider, SelectorOption, Profile, SelectorService, CommandProvider, PartialProfileGroup, ProfileGroup } from './api'
+import { Theme, CLIHandler, TabContextMenuItemProvider, TabRecoveryProvider, HotkeyProvider, ConfigProvider, PlatformService, FileProvider, ProfilesService, ProfileProvider, QuickConnectProfileProvider, SelectorOption, Profile, SelectorService, CommandProvider, PartialProfileGroup, ProfileGroup, ToolbarButtonProvider } from './api'
 
 import { AppService } from './services/app.service'
 import { ConfigService } from './services/config.service'
@@ -54,6 +56,7 @@ import { TaskCompletionContextMenu, CommonOptionsContextMenu, TabManagementConte
 import { LastCLIHandler, ProfileCLIHandler } from './cli'
 import { SplitLayoutProfilesService } from './profiles'
 import { CoreCommandProvider } from './commands'
+import { SidePanelToolbarButtonProvider } from './sidePanelToolbar'
 
 export function TranslateMessageFormatCompilerFactory (): TranslateMessageFormatCompiler {
     return new TranslateMessageFormatCompiler()
@@ -61,6 +64,7 @@ export function TranslateMessageFormatCompilerFactory (): TranslateMessageFormat
 
 const PROVIDERS = [
     { provide: HotkeyProvider, useClass: AppHotkeyProvider, multi: true },
+    { provide: ToolbarButtonProvider, useClass: SidePanelToolbarButtonProvider, multi: true },
     { provide: Theme, useClass: NewTheme, multi: true },
     { provide: ConfigProvider, useClass: CoreConfigProvider, multi: true },
     { provide: TabContextMenuItemProvider, useClass: CommonOptionsContextMenu, multi: true },
@@ -111,6 +115,8 @@ const PROVIDERS = [
         PromptModalComponent,
         StartPageComponent,
         TabBodyComponent,
+        SidePanelHostComponent,
+        TabHoverHostComponent,
         TabHeaderComponent,
         TitleBarComponent,
         ToggleComponent,

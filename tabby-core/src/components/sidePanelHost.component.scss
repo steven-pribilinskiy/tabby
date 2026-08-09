@@ -1,0 +1,132 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+    background: var(--theme-bg-more-2);
+    color: var(--theme-fg);
+}
+
+// The handle sits on the edge facing the terminal, so the grab target is where
+// the boundary actually is regardless of which edge the panel is docked to.
+.panel-resize-handle {
+    position: absolute;
+    z-index: 10;
+    background: transparent;
+    transition: 0.15s background;
+
+    &:hover, :host(.dragging) & {
+        background: var(--theme-fg-less-2);
+    }
+}
+
+:host(.side-left) .panel-resize-handle {
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 4px;
+    cursor: col-resize;
+}
+
+:host(.side-right) .panel-resize-handle {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 4px;
+    cursor: col-resize;
+}
+
+:host(.side-top) .panel-resize-handle {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4px;
+    cursor: row-resize;
+}
+
+:host(.side-bottom) .panel-resize-handle {
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 4px;
+    cursor: row-resize;
+}
+
+.panel-header {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 4px 0 10px;
+    height: calc(30px * var(--spaciness));
+    border-bottom: 1px solid var(--theme-bg-less);
+}
+
+.panel-title {
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.7;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.panel-tabs {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.panel-tab {
+    background: none;
+    border: none;
+    color: inherit;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
+    opacity: 0.55;
+    cursor: pointer;
+    white-space: nowrap;
+
+    &:hover {
+        opacity: 0.85;
+    }
+
+    &.active {
+        opacity: 1;
+        font-weight: bold;
+    }
+}
+
+.panel-actions {
+    flex: none;
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+}
+
+.panel-action {
+    color: var(--theme-fg);
+    opacity: 0.5;
+    padding: 2px 7px;
+    line-height: 1;
+    text-decoration: none;
+
+    &:hover {
+        opacity: 1;
+        color: var(--theme-fg);
+    }
+}
+
+.panel-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    overflow: auto;
+}

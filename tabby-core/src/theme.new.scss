@@ -519,3 +519,19 @@ window-controls {
         font-size: 11px;
     }
 }
+
+// Tab hover cards. Rendered into <body> by ngbPopover, so these have to be
+// global. Unlike a tooltip these carry structured content, so the default
+// 200px popover cap and centred text both have to go.
+.tab-hover-popover {
+    max-width: 420px;
+
+    .popover-body {
+        padding: 0;
+        color: var(--theme-fg);
+    }
+
+    .popover-header {
+        display: none;
+    }
+}

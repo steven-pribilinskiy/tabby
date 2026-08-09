@@ -2,6 +2,7 @@
 import { Component, Input, Optional, Inject, HostBinding, HostListener, NgZone, ViewChild, ElementRef } from '@angular/core'
 import { auditTime } from 'rxjs'
 import { TabContextMenuItemProvider } from '../api/tabContextMenuProvider'
+import { TabHoverProvider } from '../api/tabHoverProvider'
 import { BaseTabComponent } from './baseTab.component'
 import { SplitTabComponent } from './splitTab.component'
 import { HotkeysService } from '../services/hotkeys.service'
@@ -34,9 +35,30 @@ export class TabHeaderComponent extends BaseComponent {
      */
     titleTruncated = false
 
+    /**
+     * The provider supplying this tab's hover card, if any. Resolved on
+     * mouseenter rather than during change detection so `isApplicable` is
+     * called once per hover instead of once per tab per cycle; the hover card's
+     * open delay is far longer than the gap between this and the popover
+     * opening.
+     */
+    hoverProvider: TabHoverProvider|null = null
+
     @ViewChild('nameEl') private nameEl?: ElementRef<HTMLElement>
 
     @HostListener('mouseenter')
+    onMouseEnter (): void {
+        this.updateTitleTruncation()
+        this.hoverProvider = this.hoverProviders?.find(provider => {
+            try {
+                return provider.isApplicable(this.tab)
+            } catch {
+                // A broken provider must not take the tab bar down with it.
+                return false
+            }
+        }) ?? null
+    }
+
     updateTitleTruncation (): void {
         const el = this.nameEl?.nativeElement
         // 1px of tolerance: sub-pixel text metrics can leave scrollWidth a
@@ -52,8 +74,10 @@ export class TabHeaderComponent extends BaseComponent {
         private platform: PlatformService,
         private zone: NgZone,
         @Optional() @Inject(TabContextMenuItemProvider) protected contextMenuProviders: TabContextMenuItemProvider[],
+        @Optional() @Inject(TabHoverProvider) private hoverProviders: TabHoverProvider[]|null,
     ) {
         super()
+        this.hoverProviders?.sort((a, b) => a.weight - b.weight)
         this.subscribeUntilDestroyed(this.hotkeys.hotkey$, (hotkey) => {
             if (this.app.activeTab === this.tab) {
                 if (hotkey === 'rename-tab') {

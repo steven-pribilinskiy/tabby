@@ -1,0 +1,45 @@
+.panel-header
+    .panel-tabs(*ngIf='availableProviders.length > 1')
+        button.panel-tab(
+            *ngFor='let provider of availableProviders',
+            [class.active]='provider === activeProvider',
+            (click)='selectProvider(provider)'
+        ) {{provider.name}}
+    .panel-title(*ngIf='availableProviders.length <= 1') {{activeProvider?.name}}
+
+    .panel-actions
+        .dropdown(ngbDropdown, container='body', placement='bottom-end')
+            button.btn.btn-link.panel-action(
+                ngbDropdownToggle,
+                [ngbTooltip]='"Dock to another edge"|translate',
+                container='body'
+            )
+                i.fas.fa-columns
+            div(ngbDropdownMenu)
+                button.dropdown-item(ngbDropdownItem, (click)='setSide("left")', [class.active]='side == "left"')
+                    i.fas.fa-fw.fa-arrow-left
+                    span.ms-2 {{'Left'|translate}}
+                button.dropdown-item(ngbDropdownItem, (click)='setSide("right")', [class.active]='side == "right"')
+                    i.fas.fa-fw.fa-arrow-right
+                    span.ms-2 {{'Right'|translate}}
+                button.dropdown-item(ngbDropdownItem, (click)='setSide("top")', [class.active]='side == "top"')
+                    i.fas.fa-fw.fa-arrow-up
+                    span.ms-2 {{'Top'|translate}}
+                button.dropdown-item(ngbDropdownItem, (click)='setSide("bottom")', [class.active]='side == "bottom"')
+                    i.fas.fa-fw.fa-arrow-down
+                    span.ms-2 {{'Bottom'|translate}}
+
+        button.btn.btn-link.panel-action(
+            (click)='close()',
+            [ngbTooltip]='"Hide panel"|translate',
+            container='body'
+        )
+            i.fas.fa-times
+
+.panel-body
+    ng-template(#placeholder)
+
+.panel-resize-handle(
+    (mousedown)='onHandleMouseDown($event)',
+    (dblclick)='onHandleDoubleClick()'
+)

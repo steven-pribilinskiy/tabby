@@ -186,6 +186,9 @@ export class AppRootComponent {
             if (hotkey === 'toggle-fullscreen') {
                 hostWindow.toggleFullscreen()
             }
+            if (hotkey === 'toggle-side-panel') {
+                this.toggleSidePanel()
+            }
         })
 
         this.hostWindow.windowCloseRequest$.subscribe(async () => {
@@ -304,6 +307,27 @@ export class AppRootComponent {
 
     hasVerticalTabs () {
         return this.config.store.appearance.tabsLocation === 'left' || this.config.store.appearance.tabsLocation === 'right'
+    }
+
+    get sidePanelVisible (): boolean {
+        return !!this.config.store.sidePanel?.enabled
+    }
+
+    toggleSidePanel (): void {
+        this.config.store.sidePanel.enabled = !this.config.store.sidePanel.enabled
+        this.config.save()
+    }
+
+    /**
+     * Where a tab's hover card opens. It must not cover the tab bar itself,
+     * so it comes off the edge opposite the bar and falls back to `auto` when
+     * there is no room there.
+     */
+    get tabHoverPlacement (): string {
+        if (this.hasVerticalTabs()) {
+            return this.config.store.appearance.tabsLocation === 'left' ? 'right auto' : 'left auto'
+        }
+        return this.config.store.appearance.tabsLocation === 'bottom' ? 'top auto' : 'bottom auto'
     }
 
     /**

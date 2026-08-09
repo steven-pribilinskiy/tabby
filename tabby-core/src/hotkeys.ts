@@ -20,6 +20,10 @@ export class AppHotkeyProvider extends HotkeyProvider {
             name: this.translate.instant('Toggle fullscreen mode'),
         },
         {
+            id: 'toggle-side-panel',
+            name: this.translate.instant('Toggle the docked panel'),
+        },
+        {
             id: 'rename-tab',
             name: this.translate.instant('Rename tab'),
         },

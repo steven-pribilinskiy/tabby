@@ -58,6 +58,71 @@
     }
 }
 
+// Docked side panel. Grid rather than flex so a panel can attach to any of the
+// four edges without reordering the DOM or re-nesting the terminal area — the
+// panel component is never destroyed when the user moves it, so it keeps its
+// state. The panel track is `auto`, so the host sizing itself is what sizes the
+// track; that keeps the resize drag entirely inside the panel component.
+// Without a panel the layout stays the original flex row, unchanged.
+.window.window-with-panel {
+    display: grid;
+    min-height: 0;
+    min-width: 0;
+
+    &[data-panel-side='left'] {
+        grid-template-columns: auto auto 1fr;
+        grid-template-areas: 'tree panel content';
+    }
+
+    &[data-panel-side='right'] {
+        grid-template-columns: auto 1fr auto;
+        grid-template-areas: 'tree content panel';
+    }
+
+    &[data-panel-side='top'] {
+        grid-template-columns: auto 1fr;
+        grid-template-rows: auto 1fr;
+        grid-template-areas: 'tree panel' 'tree content';
+    }
+
+    &[data-panel-side='bottom'] {
+        grid-template-columns: auto 1fr;
+        grid-template-rows: 1fr auto;
+        grid-template-areas: 'tree content' 'tree panel';
+    }
+
+    > profile-tree {
+        grid-area: tree;
+    }
+
+    > side-panel-host {
+        grid-area: panel;
+    }
+
+    > .content.main {
+        grid-area: content;
+        min-width: 0;
+        min-height: 0;
+    }
+}
+
+// While a panel is being resized, keep the cursor consistent and stop the
+// terminal from swallowing the pointer — same guard as the tab-bar splitter.
+:host-context(body.side-panel-resizing-h) {
+    cursor: col-resize;
+}
+
+:host-context(body.side-panel-resizing-v) {
+    cursor: row-resize;
+}
+
+:host-context(body.side-panel-resizing-h),
+:host-context(body.side-panel-resizing-v) {
+    iframe, .content-tab {
+        pointer-events: none;
+    }
+}
+
 $tab-border-radius: 4px;
 
 .wrap {
