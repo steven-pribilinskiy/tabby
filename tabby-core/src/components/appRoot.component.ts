@@ -80,6 +80,16 @@ export class AppRootComponent {
     activeTransfers: FileTransfer[] = []
     /** Live width while the splitter is being dragged; null when not dragging. */
     sideTabBarDragWidth: number|null = null
+
+    /**
+     * Short identifier of the running build, shown in the tab bar. With several
+     * frozen build slots side by side, "which build is this window?" is
+     * otherwise unanswerable from inside the app.
+     */
+    buildHint = ''
+    /** Full build provenance, shown on hover and copied on click. */
+    buildHintDetail = ''
+    private buildDetailLines: string[] = []
     private logger: Logger
 
     constructor (
@@ -90,7 +100,7 @@ export class AppRootComponent {
         public hostApp: HostAppService,
         public config: ConfigService,
         public app: AppService,
-        platform: PlatformService,
+        private platform: PlatformService,
         log: LogService,
         ngbModal: NgbModal,
         _themes: ThemesService,
@@ -199,6 +209,8 @@ export class AppRootComponent {
             this.app.emitReady()
         })
 
+        this.initBuildHint()
+
         // While the window is being dragged, suppress the split-pane layout
         // transition (see splitTab.component.scss). Animating pane geometry on
         // every resize frame triggers a full-layer repaint that flickers the
@@ -223,6 +235,29 @@ export class AppRootComponent {
     @HostListener('drop')
     onDrop () {
         return false
+    }
+
+    /**
+     * Build provenance is injected at compile time by app/webpack.config.mjs
+     * (DefinePlugin), so it identifies the exact source of THIS bundle rather
+     * than whatever the repo happens to be at now.
+     */
+    private initBuildHint (): void {
+        const sha = process.env.TABBY_BUILD_SHA ?? 'unknown'
+        const branch = process.env.TABBY_BUILD_BRANCH ?? 'unknown'
+        const date = process.env.TABBY_BUILD_DATE ?? 'unknown'
+        const version = this.platform.getAppVersion()
+        this.buildHint = sha
+        this.buildDetailLines = [
+            `Tabby ${version}`,
+            `commit ${sha} (${branch})`,
+            `built ${date}`,
+        ]
+        this.buildHintDetail = [...this.buildDetailLines, 'Click to copy'].join('\n')
+    }
+
+    copyBuildHint (): void {
+        this.platform.setClipboard({ text: this.buildDetailLines.join('\n') })
     }
 
     hasVerticalTabs () {

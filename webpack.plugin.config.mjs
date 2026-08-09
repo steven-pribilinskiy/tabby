@@ -8,7 +8,27 @@ const bundleAnalyzer = new BundleAnalyzerPlugin({
     analyzerPort: 0,
 })
 
+import { execSync } from 'child_process'
 import { createEs2015LinkerPlugin } from '@angular/compiler-cli/linker/babel'
+
+// Build provenance, baked into the bundle so a running instance can report
+// exactly which source it came from. tabby-core renders this in the tab bar;
+// with several frozen build slots side by side it is otherwise impossible to
+// tell which build a window is.
+const gitInfo = (cmd, fallback) => {
+    try {
+        return execSync(cmd, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+    } catch {
+        return fallback
+    }
+}
+const BUILD_SHA = gitInfo('git rev-parse --short HEAD', 'unknown')
+const BUILD_BRANCH = gitInfo('git rev-parse --abbrev-ref HEAD', 'unknown')
+const pad = n => String(n).padStart(2, '0')
+const buildTime = new Date()
+// Local time deliberately: the stamp is read by the person on this machine, so
+// UTC would just be a number they have to convert.
+const BUILD_DATE = `${buildTime.getFullYear()}-${pad(buildTime.getMonth() + 1)}-${pad(buildTime.getDate())} ${pad(buildTime.getHours())}:${pad(buildTime.getMinutes())}`
 const linkerPlugin = createEs2015LinkerPlugin({
     linkerJitMode: true,
     fileSystem: {
@@ -170,6 +190,11 @@ export default options => {
             ...options.externals || [],
         ],
         plugins: [
+            new wp.DefinePlugin({
+                'process.env.TABBY_BUILD_SHA': JSON.stringify(BUILD_SHA),
+                'process.env.TABBY_BUILD_BRANCH': JSON.stringify(BUILD_BRANCH),
+                'process.env.TABBY_BUILD_DATE': JSON.stringify(BUILD_DATE),
+            }),
             new devtoolPlugin(sourceMapOptions),
             new AngularWebpackPlugin({
                 tsconfig: path.resolve(options.dirname, 'tsconfig.json'),

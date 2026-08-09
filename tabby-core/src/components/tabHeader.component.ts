@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/explicit-module-boundary-types */
-import { Component, Input, Optional, Inject, HostBinding, HostListener, NgZone } from '@angular/core'
+import { Component, Input, Optional, Inject, HostBinding, HostListener, NgZone, ViewChild, ElementRef } from '@angular/core'
 import { auditTime } from 'rxjs'
 import { TabContextMenuItemProvider } from '../api/tabContextMenuProvider'
 import { BaseTabComponent } from './baseTab.component'
@@ -24,6 +24,25 @@ export class TabHeaderComponent extends BaseComponent {
     @Input() tab: BaseTabComponent
     @Input() progress: number|null
     Platform = Platform
+
+    /**
+     * Whether the title is actually clipped. The tab tooltip just repeated a
+     * fully-visible title otherwise, which is noise. Measured on hover rather
+     * than per change-detection cycle so reading scrollWidth cannot thrash
+     * layout — the global 250ms tooltip openDelay means this always lands
+     * before the tooltip is shown.
+     */
+    titleTruncated = false
+
+    @ViewChild('nameEl') private nameEl?: ElementRef<HTMLElement>
+
+    @HostListener('mouseenter')
+    updateTitleTruncation (): void {
+        const el = this.nameEl?.nativeElement
+        // 1px of tolerance: sub-pixel text metrics can leave scrollWidth a
+        // fraction above clientWidth on a title that is not visibly clipped.
+        this.titleTruncated = !!el && el.scrollWidth > el.clientWidth + 1
+    }
 
     constructor (
         public app: AppService,

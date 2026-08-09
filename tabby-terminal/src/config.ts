@@ -121,7 +121,11 @@ export class TerminalConfigProvider extends ConfigProvider {
         },
         [Platform.Windows]: {
             terminal: {
-                font: 'Consolas',
+                // Cascadia Code ships with Windows Terminal and modern Windows;
+                // Consolas is the fallback for anything it lacks (and for
+                // machines without Cascadia installed at all).
+                font: 'Cascadia Code',
+                fallbackFont: 'Consolas',
                 rightClick: 'clipboard',
                 pasteOnMiddleClick: false,
                 copyOnSelect: true,

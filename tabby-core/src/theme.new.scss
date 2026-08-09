@@ -450,3 +450,15 @@ window-controls {
         fill: var(--theme-fg) !important;
     }
 }
+
+
+// The build hint's tooltip is multi-line; ngbTooltip inserts it as plain text,
+// so without this the newlines collapse into one run-on sentence.
+.build-hint-tooltip .tooltip-inner {
+    white-space: pre-line;
+    text-align: left;
+    max-width: none;
+    font-family: monospace;
+    font-size: 11px;
+    line-height: 1.5;
+}

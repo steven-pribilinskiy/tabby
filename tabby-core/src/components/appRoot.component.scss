@@ -16,6 +16,25 @@
     --side-tab-min-column-width: 100px;
 }
 
+// Identifies which build this window is running. Deliberately quiet — it sits
+// in the tab bar permanently, so it reads as a label rather than a control.
+.build-hint {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    font-size: 11px;
+    font-family: monospace;
+    opacity: 0.45;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    color: var(--theme-fg);
+
+    &:hover {
+        opacity: 0.9;
+    }
+}
+
 // Splitter between a vertical tab bar and the terminal content.
 .side-tab-bar-splitter {
     flex: 0 0 4px;

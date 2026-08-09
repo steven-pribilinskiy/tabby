@@ -40,6 +40,7 @@ title-bar(
                 cdkAutoDropGroup='app-tabs'
             )
                 tab-header(
+                    #tabHeader,
                     *ngFor='let tab of app.tabs; let idx = index',
                     [index]='idx',
                     [tab]='tab',
@@ -48,7 +49,7 @@ title-bar(
                     [@.disabled]='hasVerticalTabs() || !config.store.accessibility.animations',
                     (click)='app.selectTab(tab)',
                     [class.fully-draggable]='hostApp.platform !== Platform.macOS',
-                    [ngbTooltip]='tab.customTitle || tab.title'
+                    [ngbTooltip]='tabHeader.titleTruncated ? (tab.customTitle || tab.title) : ""'
                 )
 
             .btn-group.background
@@ -60,6 +61,13 @@ title-bar(
                         (click)='button.run && button.run()',
                         [fastHtmlBind]='button.icon'
                     )
+
+                .build-hint(
+                    [ngbTooltip]='buildHintDetail',
+                    tooltipClass='build-hint-tooltip',
+                    placement='top',
+                    (click)='copyBuildHint()'
+                ) {{buildHint}}
 
                 .d-flex(
                     ngbDropdown,
