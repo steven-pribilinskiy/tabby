@@ -456,16 +456,6 @@ window-controls {
 }
 
 
-// The build hint's tooltip is multi-line; ngbTooltip inserts it as plain text,
-// so without this the newlines collapse into one run-on sentence.
-.build-hint-tooltip .tooltip-inner {
-    white-space: pre-line;
-    text-align: left;
-    max-width: none;
-    font-family: monospace;
-    font-size: 11px;
-    line-height: 1.5;
-}
 
 
 // The 2px bar above the active tab reads as a stray border in a vertical tab
@@ -475,4 +465,57 @@ window-controls {
 .content.tabs-on-left tab-header .current-tab-indicator,
 .content.tabs-on-right tab-header .current-tab-indicator {
     display: none !important;
+}
+
+// Rich build tooltip. ngbTooltip renders a TemplateRef, so this is real markup
+// rather than innerHTML — escaped by Angular and styleable. The tooltip is
+// attached to <body>, hence a global rule rather than a component-scoped one.
+.build-hint-tooltip .tooltip-inner {
+    max-width: none;
+    text-align: left;
+    padding: 8px 10px;
+}
+
+.build-tooltip {
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: nowrap;
+
+    .build-tooltip-title {
+        font-weight: 600;
+        margin-bottom: 2px;
+    }
+
+    .build-tooltip-row {
+        .k {
+            display: inline-block;
+            min-width: 46px;
+            opacity: 0.6;
+        }
+
+        .v {
+            font-family: monospace;
+        }
+
+        .branch {
+            margin-left: 6px;
+            padding: 0 5px;
+            border-radius: 3px;
+            font-size: 11px;
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .abs {
+            margin-left: 6px;
+            opacity: 0.6;
+        }
+    }
+
+    .build-tooltip-hint {
+        margin-top: 4px;
+        padding-top: 4px;
+        border-top: 1px solid rgba(255, 255, 255, 0.15);
+        opacity: 0.6;
+        font-size: 11px;
+    }
 }

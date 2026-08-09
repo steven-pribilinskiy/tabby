@@ -22,6 +22,9 @@ const BUILD_BRANCH = gitDescribe('git rev-parse --abbrev-ref HEAD', 'unknown')
 const pad = n => String(n).padStart(2, '0')
 const buildTime = new Date()
 const BUILD_DATE = `${buildTime.getFullYear()}-${pad(buildTime.getMonth() + 1)}-${pad(buildTime.getDate())} ${pad(buildTime.getHours())}:${pad(buildTime.getMinutes())}`
+// Epoch millis too, so "N ago" is computed from an unambiguous instant rather
+// than by re-parsing a formatted local-time string.
+const BUILD_TIMESTAMP = buildTime.getTime()
 const linkerPlugin = createEs2015LinkerPlugin({
     linkerJitMode: true,
     fileSystem: {
@@ -102,6 +105,7 @@ export default () => ({
             'process.env.TABBY_BUILD_SHA': JSON.stringify(BUILD_SHA),
             'process.env.TABBY_BUILD_BRANCH': JSON.stringify(BUILD_BRANCH),
             'process.env.TABBY_BUILD_DATE': JSON.stringify(BUILD_DATE),
+            'process.env.TABBY_BUILD_TIMESTAMP': JSON.stringify(String(BUILD_TIMESTAMP)),
         }),
         new AngularWebpackPlugin({
             tsconfig: path.resolve(__dirname, 'tsconfig.json'),

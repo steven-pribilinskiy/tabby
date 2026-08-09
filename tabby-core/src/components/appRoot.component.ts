@@ -21,6 +21,31 @@ import { AppService, Command, CommandLocation, FileTransfer, HostWindowService, 
 const MIN_SIDE_TAB_BAR_WIDTH = 100
 const MAX_SIDE_TAB_BAR_WIDTH = 800
 
+/** Largest unit first, so "2 days ago" wins over "48 hours ago". */
+const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
+    ['year', 365 * 24 * 60 * 60 * 1000],
+    ['month', 30 * 24 * 60 * 60 * 1000],
+    ['day', 24 * 60 * 60 * 1000],
+    ['hour', 60 * 60 * 1000],
+    ['minute', 60 * 1000],
+]
+
+/**
+ * "3 hours ago" for a past instant. Uses Intl.RelativeTimeFormat, which is
+ * built into the platform and localised, rather than adding a date library.
+ */
+function formatRelativeTime (timestamp: number, now: number): string {
+    const elapsed = timestamp - now
+    const magnitude = Math.abs(elapsed)
+    const format = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+    for (const [unit, ms] of RELATIVE_UNITS) {
+        if (magnitude >= ms) {
+            return format.format(Math.round(elapsed / ms), unit)
+        }
+    }
+    return format.format(Math.round(elapsed / 1000), 'second')
+}
+
 function makeTabAnimation (dimension: string, size: number) {
     return [
         state('in', style({
@@ -87,9 +112,13 @@ export class AppRootComponent {
      * otherwise unanswerable from inside the app.
      */
     buildHint = ''
-    /** Full build provenance, shown on hover and copied on click. */
-    buildHintDetail = ''
-    private buildDetailLines: string[] = []
+    /** Fields behind the rich build tooltip. */
+    buildVersion = ''
+    buildSha = ''
+    buildBranch = ''
+    buildDateDisplay = ''
+    builtAgo = ''
+    private buildTimestamp: number|null = null
     private logger: Logger
 
     constructor (
@@ -243,21 +272,34 @@ export class AppRootComponent {
      * than whatever the repo happens to be at now.
      */
     private initBuildHint (): void {
-        const sha = process.env.TABBY_BUILD_SHA ?? 'unknown'
-        const branch = process.env.TABBY_BUILD_BRANCH ?? 'unknown'
-        const date = process.env.TABBY_BUILD_DATE ?? 'unknown'
-        const version = this.platform.getAppVersion()
-        this.buildHint = sha
-        this.buildDetailLines = [
-            `Tabby ${version}`,
-            `commit ${sha} (${branch})`,
-            `built ${date}`,
-        ]
-        this.buildHintDetail = [...this.buildDetailLines, 'Click to copy'].join('\n')
+        this.buildSha = process.env.TABBY_BUILD_SHA ?? 'unknown'
+        this.buildBranch = process.env.TABBY_BUILD_BRANCH ?? 'unknown'
+        this.buildDateDisplay = process.env.TABBY_BUILD_DATE ?? 'unknown'
+        this.buildVersion = this.platform.getAppVersion()
+        this.buildHint = this.buildSha
+        const ts = parseInt(process.env.TABBY_BUILD_TIMESTAMP ?? '', 10)
+        this.buildTimestamp = isNaN(ts) ? null : ts
+        this.refreshBuiltAgo()
+    }
+
+    /**
+     * Recomputed on hover so the age is current every time the tooltip opens,
+     * rather than frozen at whatever it was when the window started.
+     */
+    refreshBuiltAgo (): void {
+        this.builtAgo = this.buildTimestamp === null
+            ? 'unknown'
+            : formatRelativeTime(this.buildTimestamp, Date.now())
     }
 
     copyBuildHint (): void {
-        this.platform.setClipboard({ text: this.buildDetailLines.join('\n') })
+        this.platform.setClipboard({
+            text: [
+                `Tabby ${this.buildVersion}`,
+                `commit ${this.buildSha} (${this.buildBranch})`,
+                `built ${this.builtAgo} (${this.buildDateDisplay})`,
+            ].join('\n'),
+        })
     }
 
     hasVerticalTabs () {
