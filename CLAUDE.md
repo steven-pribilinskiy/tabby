@@ -149,6 +149,20 @@ installing. Upstream edits that file often, so local noise there causes sync pai
 
 ## Planned
 
+- **Emoji width.** `❇️ ` (U+2747 + VS16) renders one column narrower than Windows Terminal,
+  leaving a stray space. `xtermFrontend.ts:145-146` already loads `Unicode11Addon` with
+  `unicode.activeVersion = '11'` — but the Unicode 11 addon computes width per codepoint
+  and ignores variation selectors, so VS16 (width 0) never promotes U+2747 from width 1
+  to the emoji-presentation width 2 that other terminals use. Fix is
+  `@xterm/addon-unicode-graphemes` (grapheme clustering + VS16), which needs `@xterm/xterm`
+  moved off the pinned 5.4.0 — a renderer-wide upgrade, so do it deliberately and
+  regression-test the terminal.
+- **Crash and slowdown instrumentation.** Find the gaps: `render-process-gone`,
+  `child-process-gone`, `unresponsive`, main-process `uncaughtException`, renderer
+  `unhandledrejection`, and plugin-load failures (several are swallowed by bare
+  `catch {}` — see the `wnr` case above). Add timing around boot phases and frame/write
+  latency so slowdowns show up in logs rather than as a feeling.
+
 - A **Settings page listing upstream commits this fork lacks** — compares
   `local` against `upstream/master` and shows what has not been pulled in.
 - **Splash screen should follow the system theme.** It is hardcoded dark today:
