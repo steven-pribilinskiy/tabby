@@ -65,12 +65,37 @@ export class ThemesService {
             return Color(some).lighten(factor)
         }
 
+        // Elevated background surfaces need their own ladder. more() moves a
+        // colour away from the foreground, which on a light scheme means
+        // lightening — a no-op on white, collapsing --theme-bg-more(-2) into the
+        // page. Those back --bs-border-color, --bs-form-control-bg, the vertical
+        // tab bar and the title bar, so controls lose their borders entirely.
+        // Decide the direction once from the scheme background (so the ladder
+        // stays monotonic) and step gently on light schemes, where darkening
+        // moves much further per unit than it does on an already-dark colour.
+        const backgroundLightness = Color(theme.background).lightness()
+        const bgGoesDarker = backgroundLightness >= 92 || isDark && backgroundLightness > 8
+        const bgFactor = backgroundLightness >= 92 ? 0.3 : 1
+
+        function bgMore (some, factor) {
+            const color = Color(some)
+            if (bgGoesDarker) {
+                return color.darken(factor * bgFactor)
+            }
+            if (color.lightness() <= 8) {
+                // lighten() scales HSL lightness, so it cannot move #000 at all.
+                // Step additively for near-black schemes.
+                return color.lightness(color.lightness() + factor * 20)
+            }
+            return color.lighten(factor * bgFactor)
+        }
+
         let background = Color(theme.background)
         if (this.getConfigStoreOrDefaults().appearance.vibrancy) {
             background = background.fade(0.6)
         }
         // const background = theme.background
-        const backgroundMore = more(background.string(), 0.25).string()
+        const backgroundMore = bgMore(background.string(), 0.25).string()
         // const backgroundMore =more(theme.background, 0.25).string()
         const accentIndex = 4
         const vars: Record<string, string> = {}
@@ -108,7 +133,7 @@ export class ThemesService {
             vars['--theme-bg-less'] = less(theme.background, 0.25).string()
             vars['--theme-bg'] = theme.background
             vars['--theme-bg-more'] = backgroundMore
-            vars['--theme-bg-more-2'] = more(backgroundMore, 0.25).string()
+            vars['--theme-bg-more-2'] = bgMore(backgroundMore, 0.25).string()
 
             contrastPairs.push(['--theme-bg', '--theme-fg'])
             contrastPairs.push(['--theme-bg-less', '--theme-fg-less'])
