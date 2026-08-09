@@ -1,0 +1,350 @@
+:host {
+    display: block;
+    font-size: 12px;
+    color: var(--theme-fg);
+}
+
+.claude-panel {
+    padding: 8px 10px 16px;
+}
+
+.notice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 4px;
+    opacity: 0.65;
+
+    &.offline {
+        opacity: 1;
+    }
+}
+
+.offline-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.offline-hint {
+    font-family: monospace;
+    font-size: 11px;
+    opacity: 0.6;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.section {
+    margin-bottom: 14px;
+
+    &:last-child {
+        margin-bottom: 0;
+    }
+}
+
+.section-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.5;
+    margin-bottom: 5px;
+}
+
+// ── Active session ───────────────────────────────────────────────────
+
+.active-session {
+    background: var(--theme-bg-less);
+    border-radius: 5px;
+    padding: 9px 10px;
+}
+
+.session-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.title-text {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.status-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--theme-fg-less-2);
+
+    &.kind-working {
+        background: #f59e0b;
+    }
+
+    &.kind-waiting {
+        background: #3b82f6;
+    }
+
+    &.kind-error {
+        background: #ef4444;
+    }
+}
+
+.badge-env, .badge-mode, .badge-plan {
+    flex: none;
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--theme-bg-more);
+    opacity: 0.8;
+    white-space: nowrap;
+}
+
+.badge-plan {
+    margin-left: 6px;
+    text-transform: uppercase;
+}
+
+.session-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    margin-top: 5px;
+    font-size: 11px;
+    opacity: 0.7;
+}
+
+.status-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 7px;
+}
+
+.status-label {
+    font-weight: 600;
+
+    &.kind-working {
+        color: #f59e0b;
+    }
+
+    &.kind-waiting {
+        color: #3b82f6;
+    }
+
+    &.kind-error {
+        color: #ef4444;
+    }
+
+    &.kind-idle {
+        opacity: 0.6;
+        font-weight: normal;
+    }
+}
+
+.status-since {
+    font-size: 11px;
+    opacity: 0.5;
+    white-space: nowrap;
+}
+
+.callout {
+    margin-top: 7px;
+    padding: 5px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    line-height: 1.4;
+    border-left: 2px solid transparent;
+
+    &.waiting {
+        background: rgba(59, 130, 246, 0.12);
+        border-left-color: #3b82f6;
+    }
+
+    &.error {
+        background: rgba(239, 68, 68, 0.12);
+        border-left-color: #ef4444;
+    }
+}
+
+// ── Metrics ──────────────────────────────────────────────────────────
+
+.metric {
+    margin-top: 9px;
+}
+
+.metric-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 11px;
+    margin-bottom: 3px;
+}
+
+.metric-name {
+    opacity: 0.55;
+}
+
+.metric-value {
+    opacity: 0.75;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.metric-pct {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.bar {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--theme-bg-more-2);
+    overflow: hidden;
+}
+
+.bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: 0.25s width;
+    background: #22c55e;
+
+    &.sev-warning {
+        background: #f59e0b;
+    }
+
+    &.sev-critical {
+        background: #ef4444;
+    }
+}
+
+.stats {
+    display: flex;
+    gap: 14px;
+    margin-top: 9px;
+}
+
+.stat-value {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.stat-name {
+    font-size: 10px;
+    opacity: 0.5;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+// ── Prompts ──────────────────────────────────────────────────────────
+
+.prompt-block {
+    margin-top: 9px;
+}
+
+.prompt-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.5;
+    margin-bottom: 3px;
+}
+
+.prompt-text, .queued-item {
+    font-size: 11px;
+    line-height: 1.4;
+    opacity: 0.85;
+    // Long prompts must not push the panel wide or run on forever.
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}
+
+.queued-item {
+    -webkit-line-clamp: 1;
+    padding-left: 8px;
+    border-left: 2px solid var(--theme-bg-more-2);
+    margin-bottom: 2px;
+}
+
+.session-actions {
+    margin-top: 8px;
+
+    .btn-link {
+        padding: 0;
+        font-size: 11px;
+        color: var(--theme-fg);
+        opacity: 0.55;
+        text-decoration: none;
+
+        &:hover {
+            opacity: 1;
+        }
+    }
+}
+
+// ── Session rows ─────────────────────────────────────────────────────
+
+.session-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+
+    &:hover {
+        background: var(--theme-bg-less);
+    }
+}
+
+.row-main {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.row-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.row-sub {
+    font-size: 10px;
+    opacity: 0.5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.row-time {
+    flex: none;
+    font-size: 10px;
+    opacity: 0.45;
+    white-space: nowrap;
+}
+
+.usage-account {
+    margin-bottom: 8px;
+}
+
+.usage-name {
+    display: flex;
+    align-items: center;
+    font-size: 11px;
+    opacity: 0.75;
+
+    > span:first-child {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}

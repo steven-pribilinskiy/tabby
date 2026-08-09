@@ -1,0 +1,165 @@
+// The card renders inside an ngbPopover attached to <body>, so it cannot rely
+// on anything inherited from the tab bar.
+.hover-card {
+    padding: 9px 11px;
+    font-size: 12px;
+    min-width: 240px;
+    max-width: 400px;
+    color: var(--theme-fg);
+}
+
+.hover-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.hover-title {
+    font-weight: 600;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.status-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--theme-fg-less-2);
+
+    &.kind-working { background: #f59e0b; }
+    &.kind-waiting { background: #3b82f6; }
+    &.kind-error { background: #ef4444; }
+}
+
+.badge-env, .badge-mode {
+    flex: none;
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--theme-bg-more);
+    opacity: 0.8;
+    white-space: nowrap;
+}
+
+.hover-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px 8px;
+    margin-top: 4px;
+    font-size: 11px;
+    opacity: 0.7;
+}
+
+.hover-status {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.status-label {
+    font-weight: 600;
+
+    &.kind-working { color: #f59e0b; }
+    &.kind-waiting { color: #3b82f6; }
+    &.kind-error { color: #ef4444; }
+    &.kind-idle { opacity: 0.6; font-weight: normal; }
+}
+
+.status-since {
+    font-size: 11px;
+    opacity: 0.5;
+    white-space: nowrap;
+}
+
+.callout {
+    margin-top: 6px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    line-height: 1.4;
+    border-left: 2px solid transparent;
+
+    &.waiting {
+        background: rgba(59, 130, 246, 0.12);
+        border-left-color: #3b82f6;
+    }
+
+    &.error {
+        background: rgba(239, 68, 68, 0.12);
+        border-left-color: #ef4444;
+    }
+}
+
+.metric {
+    margin-top: 8px;
+}
+
+.metric-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 11px;
+    margin-bottom: 3px;
+}
+
+.metric-name { opacity: 0.55; }
+.metric-value { opacity: 0.75; }
+
+.metric-pct {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.bar {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--theme-bg-more-2);
+    overflow: hidden;
+}
+
+.bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: #22c55e;
+
+    &.sev-warning { background: #f59e0b; }
+    &.sev-critical { background: #ef4444; }
+}
+
+.hover-stats {
+    display: flex;
+    gap: 12px;
+    margin-top: 7px;
+    font-size: 11px;
+    opacity: 0.6;
+}
+
+.prompt-text {
+    margin-top: 7px;
+    font-size: 11px;
+    line-height: 1.4;
+    opacity: 0.8;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}
+
+.hover-path {
+    margin-top: 7px;
+    padding-top: 6px;
+    border-top: 1px solid var(--theme-bg-more-2);
+    font-family: monospace;
+    font-size: 10px;
+    opacity: 0.5;
+    overflow-wrap: anywhere;
+}

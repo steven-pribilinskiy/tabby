@@ -1,0 +1,130 @@
+.claude-panel
+    .notice(*ngIf='!sessions.length && health === "ok"')
+        i.fas.fa-moon
+        span.ms-2 {{'No Claude sessions running'|translate}}
+
+    .notice.offline(*ngIf='health === "unreachable"')
+        i.fas.fa-plug
+        .offline-text
+            div {{'Session registry unreachable'|translate}}
+            .offline-hint {{stithBaseURL}}
+        button.btn.btn-sm.btn-secondary((click)='retry()') {{'Retry'|translate}}
+
+    //- ── Active session ──────────────────────────────────────────────
+    .section.active-session(*ngIf='options.showActiveSession && activeSession as session')
+        .session-title
+            .status-dot([ngClass]='"kind-" + sessionKind(session)')
+            .title-text([title]='session.cwd') {{sessionTitle(session)}}
+            .badge-env {{session.envLabel}}
+
+        .session-meta
+            span.meta-item(*ngIf='session.model') {{session.model}}
+            span.meta-item(*ngIf='session.effort') {{session.effort}}
+            span.meta-item.badge-mode(*ngIf='permissionBadge(session)') {{permissionBadge(session)}}
+            span.meta-item(*ngIf='session.gitBranch')
+                i.fas.fa-code-branch
+                span.ms-1 {{session.gitBranch}}
+
+        .status-row(*ngIf='options.showStatus')
+            .status-label([ngClass]='"kind-" + sessionKind(session)') {{statusLabel(session)}}
+            .status-since {{relativeTime(session.lastActivityAt)}}
+
+        .callout.waiting(*ngIf='waitingMessage(session)') {{waitingMessage(session)}}
+        .callout.error(*ngIf='session.lastError') {{session.lastError}}
+
+        .metric(*ngIf='options.showContext && hasContext(session)')
+            .metric-head
+                span.metric-name {{'Context'|translate}}
+                span.metric-value {{contextLabel(session)}}
+                span.metric-pct {{contextPercent(session)}}
+            .bar
+                .bar-fill(
+                    [ngClass]='"sev-" + contextSeverity(session)',
+                    [style.width]='contextWidth(session)'
+                )
+
+        .stats(*ngIf='options.showStats')
+            .stat
+                .stat-value {{session.turns}}
+                .stat-name {{'turns'|translate}}
+            .stat
+                .stat-value {{session.toolCalls}}
+                .stat-name {{'tools'|translate}}
+            .stat(*ngIf='session.compactions')
+                .stat-value {{session.compactions}}
+                .stat-name {{'compactions'|translate}}
+            .stat(*ngIf='session.subagentCount')
+                .stat-value {{session.subagentCount}}
+                .stat-name {{'agents'|translate}}
+
+        .prompt-block(*ngIf='options.showLastPrompt && lastPrompt(session)')
+            .prompt-label {{'Last prompt'|translate}}
+            .prompt-text {{lastPrompt(session)}}
+
+        .prompt-block(*ngIf='options.showQueued && queuedPrompts(session).length')
+            .prompt-label {{'Queued'|translate}} ({{queuedPrompts(session).length}})
+            .queued-item(*ngFor='let item of queuedPrompts(session)') {{item}}
+
+        .session-actions
+            button.btn.btn-sm.btn-link((click)='openInStith(session)')
+                i.fas.fa-external-link-alt
+                span.ms-1 {{'Open in stith'|translate}}
+
+    //- ── Blocked sessions ────────────────────────────────────────────
+    .section(*ngIf='options.showWaiting && waitingSessions.length')
+        .section-title {{'Waiting on you'|translate}} ({{waitingSessions.length}})
+        .session-row(
+            *ngFor='let session of waitingSessions',
+            (click)='selectSession(session)',
+            [title]='session.cwd'
+        )
+            .status-dot.kind-waiting
+            .row-main
+                .row-title {{sessionTitle(session)}}
+                .row-sub(*ngIf='waitingMessage(session)') {{waitingMessage(session)}}
+            .row-time {{relativeTime(session.waitingSince ?? session.lastActivityAt)}}
+
+    //- ── Everything else running ─────────────────────────────────────
+    .section(*ngIf='options.showSessionList && otherSessions.length')
+        .section-title {{'Other sessions'|translate}} ({{otherSessions.length}})
+        .session-row(
+            *ngFor='let session of otherSessions',
+            (click)='selectSession(session)',
+            [title]='session.cwd'
+        )
+            .status-dot([ngClass]='"kind-" + sessionKind(session)')
+            .row-main
+                .row-title {{sessionTitle(session)}}
+                .row-sub
+                    span {{session.envLabel}}
+                    span.ms-2(*ngIf='hasContext(session)') {{contextPercent(session)}}
+                    span.ms-2(*ngIf='session.currentTool') {{session.currentTool}}
+            .row-time {{relativeTime(session.lastActivityAt)}}
+
+    //- ── Plan usage ──────────────────────────────────────────────────
+    .section(*ngIf='options.showUsage && usage.length')
+        .section-title {{'Usage'|translate}}
+        .usage-account(*ngFor='let account of usage')
+            .usage-name
+                span {{account.account}}
+                span.badge-plan {{account.plan}}
+            .metric(*ngIf='account.session as usageWindow')
+                .metric-head
+                    span.metric-name {{'5h'|translate}}
+                    span.metric-value {{usageWindow.resetsIn}}
+                    span.metric-pct {{usageWindow.pct}}%
+                .bar
+                    .bar-fill(
+                        [ngClass]='"sev-" + usageSeverity(usageWindow.pct)',
+                        [style.width.%]='usageWindow.pct'
+                    )
+            .metric(*ngIf='account.weekly as usageWindow')
+                .metric-head
+                    span.metric-name {{'Weekly'|translate}}
+                    span.metric-value {{usageWindow.resetsIn}}
+                    span.metric-pct {{usageWindow.pct}}%
+                .bar
+                    .bar-fill(
+                        [ngClass]='"sev-" + usageSeverity(usageWindow.pct)',
+                        [style.width.%]='usageWindow.pct'
+                    )

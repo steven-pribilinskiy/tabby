@@ -1,0 +1,37 @@
+.hover-card(*ngIf='session as s')
+    .hover-head
+        .status-dot([ngClass]='"kind-" + sessionKind(s)')
+        .hover-title {{sessionTitle(s)}}
+        .badge-env {{s.envLabel}}
+
+    .hover-meta
+        span(*ngIf='s.model') {{s.model}}
+        span(*ngIf='s.effort') {{s.effort}}
+        span.badge-mode(*ngIf='permissionBadge(s)') {{permissionBadge(s)}}
+        span(*ngIf='s.gitBranch')
+            i.fas.fa-code-branch
+            span.ms-1 {{s.gitBranch}}
+
+    .hover-status(*ngIf='options.showStatus')
+        span.status-label([ngClass]='"kind-" + sessionKind(s)') {{statusLabel(s)}}
+        span.status-since {{relativeTime(s.lastActivityAt)}}
+
+    .callout.waiting(*ngIf='waitingMessage(s)') {{waitingMessage(s)}}
+    .callout.error(*ngIf='s.lastError') {{s.lastError}}
+
+    .metric(*ngIf='options.showContext && hasContext(s)')
+        .metric-head
+            span.metric-name {{'Context'|translate}}
+            span.metric-value {{contextLabel(s)}}
+            span.metric-pct {{contextPercent(s)}}
+        .bar
+            .bar-fill([ngClass]='"sev-" + contextSeverity(s)', [style.width]='contextWidth(s)')
+
+    .hover-stats(*ngIf='options.showStats')
+        span {{s.turns}} {{'turns'|translate}}
+        span {{s.toolCalls}} {{'tools'|translate}}
+        span(*ngIf='s.subagentCount') {{s.subagentCount}} {{'agents'|translate}}
+
+    .prompt-text(*ngIf='options.showLastPrompt && lastPrompt(s)') {{lastPrompt(s)}}
+
+    .hover-path {{s.cwd}}

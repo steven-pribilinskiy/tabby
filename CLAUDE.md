@@ -139,6 +139,52 @@ Do not commit `app/yarn.lock` churn. Yarn 1.x rewrites the aliased `string-width
 `strip-ansi-cjs` entries on every install; `git checkout -- app/yarn.lock` after
 installing. Upstream edits that file often, so local noise there causes sync pain.
 
+## Claude Code integration (`tabby-claude`)
+
+Claude session awareness is **built into the fork**, not a plugin: `tabby-claude/`
+is a builtin package (listed in `scripts/vars.mjs`), so it ships inside a build slot
+and is frozen with it. It provides a docked session panel and a tab hover card.
+
+It rests on two new **generic** extension points in `tabby-core`, both add-only files:
+
+- `SidePanelProvider` — contributes a panel to the dock host. The host
+  (`sidePanelHost.component.*`) owns the header, edge picker and resize handle;
+  `appRoot` places it with a **CSS grid area**, so moving a panel between edges
+  never re-creates the component. `.window` keeps its original flex layout when no
+  panel is shown, so the diff against upstream is one class binding plus one line.
+- `TabHoverProvider` — contributes a rich hover card for a tab header, rendered
+  through `tab-hover-host`. Falls back to the plain title tooltip when no provider
+  applies. `isApplicable()` runs on every hover, so it must stay cheap.
+
+**Data comes from stith** (`https://stith.lvh.me/api/{agents,waiting,usage}`), the
+session registry — *not* from the hook spool. This is deliberate: the spool is
+consume-and-delete, so a second reader would steal events from
+`tabby-claude-status`, which still owns audio, tab decoration and session restore.
+Reading stith means zero conflict and no plugin changes.
+
+stith does not compute context-window usage, so that is derived locally from the
+tail of the transcript JSONL (`transcriptMetrics.service.ts`). Transcripts reach
+**160 MB**, so never read one whole — a 256 KB tail is enough, verified against
+every live session. WSL transcripts are read over `\\wsl.localhost\<distro>\…`,
+built from stith's `wslDistro`.
+
+**Tabs are joined to sessions by working directory**, never by PID: a Claude
+session in WSL reports Linux PIDs that can never match Tabby's Windows conpty
+PIDs. Only an unambiguous 1:1 cwd pairing is trusted — a card on the wrong tab is
+worse than no card. This works because `OSCProcessor` now parses **OSC 7**
+(`file://host/path`) in addition to iTerm's OSC 1337; OSC 7 is what default
+bash/zsh (including WSL's) actually emit, so before this a WSL tab reported no
+working directory at all. That also makes `getWorkingDirectory()` correct for WSL
+tabs generally, which "New tab in same directory" benefits from.
+
+Verify the network path without a GUI — Node's fetch uses its own CA bundle, so
+only a real renderer proves the mkcert cert is trusted:
+
+```bash
+./node_modules/electron/dist/electron.exe --user-data-dir=<scratch> fetch-test.js
+# BrowserWindow({ show: false }) + webContents.executeJavaScript(fetch(...))
+```
+
 ## Known issues to fix in this fork
 
 - **Emoji width**: `❇️ ` (and other VS16 emoji) render one column too wide, leaving a

@@ -1,0 +1,160 @@
+h3.mb-3(translate) Claude
+
+.form-line
+    .header
+        .title(translate) Session registry URL
+        .description(translate) stith provides the session list, including sessions running in WSL and on other machines
+    input.form-control(
+        type='text',
+        [(ngModel)]='config.store.claude.stithURL',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Connection
+        .description {{testResult}}
+    button.btn.btn-secondary(
+        (click)='testConnection()',
+        [disabled]='testing'
+    )
+        span(translate) Test connection
+
+.form-line
+    .header
+        .title(translate) Read session transcripts
+        .description(translate) Derives context window usage locally. Turn off to avoid reading transcript files at all
+    toggle(
+        [(ngModel)]='config.store.claude.readTranscripts',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Refresh interval
+        .description(translate) Milliseconds between session refreshes while the window is focused. Backs off automatically when unfocused
+    input.form-control(
+        type='number',
+        min='500',
+        step='500',
+        [(ngModel)]='config.store.claude.pollIntervalMs',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+h4.mt-4.mb-2(translate) Panel contents
+
+.form-line
+    .header
+        .title(translate) Active session
+    toggle(
+        [(ngModel)]='config.store.claude.panel.showActiveSession',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Status
+    toggle(
+        [(ngModel)]='config.store.claude.panel.showStatus',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Context window
+    toggle(
+        [(ngModel)]='config.store.claude.panel.showContext',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Counters
+        .description(translate) Turns, tool calls, compactions and subagents
+    toggle(
+        [(ngModel)]='config.store.claude.panel.showStats',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Last prompt
+    toggle(
+        [(ngModel)]='config.store.claude.panel.showLastPrompt',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Queued prompts
+    toggle(
+        [(ngModel)]='config.store.claude.panel.showQueued',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Sessions waiting on you
+    toggle(
+        [(ngModel)]='config.store.claude.panel.showWaiting',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Other sessions
+    toggle(
+        [(ngModel)]='config.store.claude.panel.showSessionList',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Plan usage
+    toggle(
+        [(ngModel)]='config.store.claude.panel.showUsage',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+h4.mt-4.mb-2(translate) Tab hover card
+
+.form-line
+    .header
+        .title(translate) Show a card when hovering a tab
+        .description(translate) Only for tabs running a Claude session; other tabs keep the plain title tooltip
+    toggle(
+        [(ngModel)]='config.store.claude.hover.enabled',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Status
+    toggle(
+        [(ngModel)]='config.store.claude.hover.showStatus',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Context window
+    toggle(
+        [(ngModel)]='config.store.claude.hover.showContext',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Counters
+    toggle(
+        [(ngModel)]='config.store.claude.hover.showStats',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Last prompt
+    toggle(
+        [(ngModel)]='config.store.claude.hover.showLastPrompt',
+        (ngModelChange)='saveConfiguration()',
+    )
