@@ -317,6 +317,30 @@ h3.mt-4(translate) Tabs
         label.btn.btn-secondary(for='tabsLocationRight')
             span(translate) Right
 
+.form-line(*ngIf='config.store.appearance.tabsLocation == "left" || config.store.appearance.tabsLocation == "right"')
+    .header
+        .title(translate) Multi-column tab bar
+        .description(translate) Flow the vertical tab bar into more columns as you widen it
+    toggle(
+        [(ngModel)]='config.store.appearance.sideTabBarMultiColumn',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line(*ngIf='config.store.appearance.sideTabBarMultiColumn && (config.store.appearance.tabsLocation == "left" || config.store.appearance.tabsLocation == "right")')
+    .header
+        .title(translate) Minimum column width
+        .description(translate) A new column appears only when there is room for a whole one at this width
+    .input-group.w-25
+        input.form-control(
+            type='number',
+            min='60',
+            max='400',
+            step='10',
+            [(ngModel)]='config.store.appearance.sideTabBarMinColumnWidth',
+            (ngModelChange)='saveConfiguration()',
+        )
+        .input-group-text px
+
 .form-line
     .header
         .title(translate) Tabs width

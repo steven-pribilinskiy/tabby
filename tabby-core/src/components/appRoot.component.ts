@@ -18,6 +18,9 @@ import { TabBodyComponent } from './tabBody.component'
 import { SplitTabComponent } from './splitTab.component'
 import { AppService, Command, CommandLocation, FileTransfer, HostWindowService, PlatformService } from '../api'
 
+const MIN_SIDE_TAB_BAR_WIDTH = 100
+const MAX_SIDE_TAB_BAR_WIDTH = 800
+
 function makeTabAnimation (dimension: string, size: number) {
     return [
         state('in', style({
@@ -75,6 +78,8 @@ export class AppRootComponent {
     unsortedTabs: BaseTabComponent[] = []
     updatesAvailable = false
     activeTransfers: FileTransfer[] = []
+    /** Live width while the splitter is being dragged; null when not dragging. */
+    sideTabBarDragWidth: number|null = null
     private logger: Logger
 
     constructor (
@@ -222,6 +227,53 @@ export class AppRootComponent {
 
     hasVerticalTabs () {
         return this.config.store.appearance.tabsLocation === 'left' || this.config.store.appearance.tabsLocation === 'right'
+    }
+
+    /**
+     * Width of the vertical tab bar, clamped so the splitter can never drag it
+     * to a size that hides the tabs or swallows the terminal.
+     */
+    get sideTabBarWidth (): number {
+        const width = this.config.store.appearance.sideTabBarWidth ?? 200
+        return Math.min(Math.max(width, MIN_SIDE_TAB_BAR_WIDTH), MAX_SIDE_TAB_BAR_WIDTH)
+    }
+
+    onSplitterMouseDown (event: MouseEvent): void {
+        event.preventDefault()
+        const onRight = this.config.store.appearance.tabsLocation === 'right'
+        const startX = event.clientX
+        const startWidth = this.sideTabBarWidth
+
+        const onMove = (e: MouseEvent) => {
+            // Dragging right widens a left-hand bar and narrows a right-hand one.
+            const delta = onRight ? startX - e.clientX : e.clientX - startX
+            this.sideTabBarDragWidth = Math.min(
+                Math.max(startWidth + delta, MIN_SIDE_TAB_BAR_WIDTH),
+                MAX_SIDE_TAB_BAR_WIDTH,
+            )
+        }
+
+        const onUp = () => {
+            document.removeEventListener('mousemove', onMove)
+            document.removeEventListener('mouseup', onUp)
+            document.body.classList.remove('side-tab-bar-resizing')
+            if (this.sideTabBarDragWidth !== null) {
+                this.config.store.appearance.sideTabBarWidth = this.sideTabBarDragWidth
+                this.sideTabBarDragWidth = null
+                this.config.save()
+            }
+        }
+
+        document.body.classList.add('side-tab-bar-resizing')
+        document.addEventListener('mousemove', onMove)
+        document.addEventListener('mouseup', onUp)
+    }
+
+    /** Double-clicking the splitter restores the default width. */
+    onSplitterDoubleClick (): void {
+        this.sideTabBarDragWidth = null
+        this.config.store.appearance.sideTabBarWidth = 200
+        this.config.save()
     }
 
     get targetTabSize (): any {

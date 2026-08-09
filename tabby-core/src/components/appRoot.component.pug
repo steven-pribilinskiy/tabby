@@ -19,6 +19,9 @@ title-bar(
         [class.tabs-on-left]='hasVerticalTabs() && config.store.appearance.tabsLocation == "left"',
         [class.tabs-titlebar-enabled]='isTitleBarNeeded()',
         [class.tabs-on-right]='hasVerticalTabs() && config.store.appearance.tabsLocation == "right"',
+        [class.side-tab-bar-multi-column]='hasVerticalTabs() && config.store.appearance.sideTabBarMultiColumn',
+        [style.--side-tab-width.px]='hasVerticalTabs() ? (sideTabBarDragWidth ?? sideTabBarWidth) : null',
+        [style.--side-tab-min-column-width.px]='config.store.appearance.sideTabBarMinColumnWidth',
     )
         .tab-bar(
             *ngIf='!hostWindow.isFullscreen || config.store.appearance.tabsInFullscreen',
@@ -106,6 +109,14 @@ title-bar(
             div.window-controls-spacer(
                 *ngIf='config.store.appearance.frame == "thin" && (hostApp.platform == Platform.Windows) && (config.store.appearance.tabsLocation == "top")',
             )
+        .side-tab-bar-splitter(
+            *ngIf='hasVerticalTabs() && (!hostWindow.isFullscreen || config.store.appearance.tabsInFullscreen)',
+            [class.dragging]='sideTabBarDragWidth !== null',
+            (mousedown)='onSplitterMouseDown($event)',
+            (dblclick)='onSplitterDoubleClick()',
+            [ngbTooltip]='"Drag to resize, double-click to reset"|translate',
+        )
+
         .content
             start-page.content-tab.content-tab-active(*ngIf='ready && app.tabs.length == 0')
 
