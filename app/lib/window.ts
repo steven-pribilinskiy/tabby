@@ -120,7 +120,9 @@ export class Window {
                 this.setVibrancy(true)
             }
 
-            this.setDarkMode(this.configStore.appearance?.colorSchemeMode ?? 'dark')
+            // Must match appearance.colorSchemeMode in configDefaults.yaml —
+            // this reads the raw stored config, which is not merged with defaults.
+            this.setDarkMode(this.configStore.appearance?.colorSchemeMode ?? 'auto')
 
             if (!options.hidden) {
                 if (maximized) {
@@ -201,23 +203,41 @@ export class Window {
             } else {
                 DwmEnableBlurBehindWindow(this.window.getNativeWindowHandle(), enabled)
             }
+            // A transparent backing surface makes Chromium fall back from
+            // subpixel to grayscale antialiasing, which renders text thin with a
+            // halo around every glyph. It only shows up on light backgrounds, so
+            // keep the window opaque whenever we are not actually blurring.
+            this.window.setBackgroundColor(enabled ? '#00000000' : this.opaqueBackgroundColor())
         } else if (process.platform === 'linux') {
-            this.window.setBackgroundColor(enabled ? '#00000000' : '#131d27')
+            this.window.setBackgroundColor(enabled ? '#00000000' : this.opaqueBackgroundColor())
             this.window.setBlur(enabled)
         } else {
             this.window.setVibrancy(enabled ? macOSVibrancyType : null)
         }
     }
 
+    /**
+     * An opaque window background matching the OS scheme, so text keeps
+     * subpixel antialiasing. Only the few pixels not covered by the page ever
+     * show, so an approximate colour is fine — what matters is the alpha.
+     */
+    private opaqueBackgroundColor (): string {
+        return nativeTheme.shouldUseDarkColors ? '#131d27' : '#ffffff'
+    }
+
     setDarkMode (mode: string): void {
-        if (process.platform === 'darwin') {
-            if ('light' === mode ) {
-                nativeTheme.themeSource = 'light'
-            } else if ('auto' === mode) {
-                nativeTheme.themeSource = 'system'
-            } else {
-                nativeTheme.themeSource = 'dark'
-            }
+        // Not macOS-only: nativeTheme drives the native chrome on Windows and
+        // Linux too, and opaqueBackgroundColor() reads shouldUseDarkColors.
+        if ('light' === mode) {
+            nativeTheme.themeSource = 'light'
+        } else if ('auto' === mode) {
+            nativeTheme.themeSource = 'system'
+        } else {
+            nativeTheme.themeSource = 'dark'
+        }
+        // Re-apply the backing colour so it follows the new scheme.
+        if (process.platform !== 'darwin' && !this.lastVibrancy.enabled) {
+            this.window.setBackgroundColor(this.opaqueBackgroundColor())
         }
     }
 
