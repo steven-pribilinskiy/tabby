@@ -54,8 +54,8 @@ function slotName (now, sha) {
  * which prefers it to the executable's version resource — a slot binary
  * reports 1.0.0, because electron-builder stamps it from app/package.json.
  */
-function buildInfo (slot, sha, branch, upstream, now) {
-    const commits = git(`log --oneline ${upstream.base}..HEAD`, '')
+function buildInfo (slot, sha, head, branch, upstream, now) {
+    const commits = git(`log --oneline ${upstream.base}..${head}`, '')
     return [
         'Tabby fork - immutable build slot',
         '================================',
@@ -63,7 +63,7 @@ function buildInfo (slot, sha, branch, upstream, now) {
         `Slot:          ${slot}`,
         `Built:         ${now.toISOString()}`,
         `Repo:          ${repo}   (branch: ${branch})`,
-        `Commit:        ${git('rev-parse HEAD')}`,
+        `Commit:        ${head}`,
         `Upstream base: ${upstream.base}  (Eugeny/tabby master${upstream.tag ? `, tag ${upstream.tag}` : ''})`,
         '',
         'Versions',
@@ -153,7 +153,10 @@ function freeze (dir) {
 }
 
 const now = new Date()
-const sha = git('rev-parse --short=8 HEAD')
+// Resolved once: a commit made while the build runs would otherwise leave the
+// slot's name and its recorded commit disagreeing.
+const head = git('rev-parse HEAD')
+const sha = head.slice(0, 8)
 const branch = git('rev-parse --abbrev-ref HEAD')
 const upstream = upstreamBase()
 const slot = slotName(now, sha)
@@ -200,7 +203,7 @@ if (!dryRun) {
     if (fs.existsSync(shared) && !fs.existsSync(plugins)) {
         execFileSync('cmd', ['/c', 'mklink', '/J', plugins, shared], { stdio: 'ignore' })
     }
-    fs.writeFileSync(path.join(target, 'BUILD-INFO.txt'), buildInfo(slot, sha, branch, upstream, now))
+    fs.writeFileSync(path.join(target, 'BUILD-INFO.txt'), buildInfo(slot, sha, head, branch, upstream, now))
     freeze(target)
 }
 
