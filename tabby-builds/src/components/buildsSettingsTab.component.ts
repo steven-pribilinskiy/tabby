@@ -403,7 +403,7 @@ export class BuildsSettingsTabComponent extends BaseComponent {
     }
 
     get taskbarShortcutPath (): string {
-        return this.taskbar.shortcutPath()
+        return this.taskbar.pinDirectory()
     }
 
     reveal (build: TabbyBuild): void {

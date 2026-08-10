@@ -1,13 +1,26 @@
-import * as fs from 'fs/promises'
 import * as path from 'path'
 import { execFile } from 'child_process'
 import { Injectable } from '@angular/core'
 
 /** What a taskbar pin points at. */
 export interface TaskbarPin {
+    /** The .lnk file itself. */
+    shortcut: string
     target: string
     arguments: string
     workingDirectory: string
+}
+
+/**
+ * Does this pin launch a Tabby? Either the app binary directly, or an Electron
+ * running a checkout — which is how a source build is pinned.
+ */
+function isTabbyTarget (pin: TaskbarPin): boolean {
+    const name = path.basename(pin.target).toLowerCase()
+    if (name === 'tabby.exe' || name === 'tabby') {
+        return true
+    }
+    return /^electron(\.exe)?$/.test(name) && /(^|\s)app(\s|$)/.test(pin.arguments)
 }
 
 /** How the shortcut is described so it is recognisable in a jump list. */
@@ -60,48 +73,68 @@ export class TaskbarService {
      * Where the taskbar keeps its pins. Still the Internet Explorer Quick Launch
      * path, twenty years on.
      */
-    shortcutPath (): string {
+    pinDirectory (): string {
         return path.join(
             process.env.APPDATA ?? '',
-            'Microsoft', 'Internet Explorer', 'Quick Launch', 'User Pinned', 'TaskBar', 'Tabby.lnk',
+            'Microsoft', 'Internet Explorer', 'Quick Launch', 'User Pinned', 'TaskBar',
         )
     }
 
-    async isPinned (): Promise<boolean> {
+    /**
+     * Every pinned shortcut that launches a Tabby, whatever it happens to be
+     * called.
+     *
+     * Assuming a single pin named `Tabby.lnk` was wrong on this machine: a
+     * second pin called `Tabby-fork` existed for the fork builds, was invisible
+     * to a name-based lookup, and was left pointing at a directory that had
+     * been renamed out from under it. Discovering pins by what they *launch*
+     * means the count and the names stop mattering.
+     */
+    async pins (): Promise<TaskbarPin[]> {
+        if (!this.isSupported()) {
+            return []
+        }
+        const script = `
+$ErrorActionPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$shell = New-Object -ComObject WScript.Shell
+$rows = foreach ($f in Get-ChildItem -LiteralPath ${psString(this.pinDirectory())} -Filter *.lnk) {
+    $link = $shell.CreateShortcut($f.FullName)
+    [pscustomobject]@{
+        shortcut = $f.FullName
+        target = $link.TargetPath
+        arguments = $link.Arguments
+        workingDirectory = $link.WorkingDirectory
+    }
+}
+$json = @($rows) | ConvertTo-Json -Depth 3 -Compress
+if (-not $json) { $json = '[]' }
+if ($json[0] -ne '[') { $json = "[$json]" }
+Write-Output $json
+`
         try {
-            await fs.access(this.shortcutPath())
-            return true
+            const rows = JSON.parse(await runPowerShell(script) || '[]')
+            return rows
+                .map((row: any) => ({
+                    shortcut: row.shortcut ?? '',
+                    target: row.target ?? '',
+                    arguments: row.arguments ?? '',
+                    workingDirectory: row.workingDirectory ?? '',
+                }))
+                .filter((pin: TaskbarPin) => isTabbyTarget(pin))
         } catch {
-            return false
+            return []
         }
     }
 
-    /** What the pin currently launches, or null when Tabby is not pinned. */
+    async isPinned (): Promise<boolean> {
+        return (await this.pins()).length > 0
+    }
+
+    /** What the pins currently launch — the first one, for display. */
     async read (): Promise<TaskbarPin | null> {
-        if (!this.isSupported() || !await this.isPinned()) {
-            return null
-        }
-        const script = `
-$ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$shell = New-Object -ComObject WScript.Shell
-$link = $shell.CreateShortcut(${psString(this.shortcutPath())})
-[pscustomobject]@{
-    target = $link.TargetPath
-    arguments = $link.Arguments
-    workingDirectory = $link.WorkingDirectory
-} | ConvertTo-Json -Compress
-`
-        try {
-            const parsed = JSON.parse(await runPowerShell(script))
-            return {
-                target: parsed.target ?? '',
-                arguments: parsed.arguments ?? '',
-                workingDirectory: parsed.workingDirectory ?? '',
-            }
-        } catch {
-            return null
-        }
+        const pins = await this.pins()
+        return pins.length ? pins[0] : null
     }
 
     /**
@@ -109,28 +142,35 @@ $link = $shell.CreateShortcut(${psString(this.shortcutPath())})
      * a .lnk dropped into that folder is not a pin — the taskbar only shows what
      * is also listed in the Taskband registry value, which is not ours to forge.
      */
-    async repoint (spec: PinSpec): Promise<void> {
+    async repoint (spec: PinSpec): Promise<number> {
         if (!this.isSupported()) {
             throw new Error('Taskbar pinning is a Windows feature')
         }
-        if (!await this.isPinned()) {
+        const pins = await this.pins()
+        if (!pins.length) {
             throw new Error('Tabby is not pinned to the taskbar yet — pin it once from the taskbar, then this can retarget it')
         }
-        // The icon is always rewritten, so a repointed pin cannot keep showing
-        // the previous build's icon. It is not always the target: a source
-        // build's target is electron.exe, which would put Electron's icon on
-        // the taskbar.
-        const script = `
-$ErrorActionPreference = 'Stop'
-$shell = New-Object -ComObject WScript.Shell
-$link = $shell.CreateShortcut(${psString(this.shortcutPath())})
+        // Every Tabby pin is retargeted, not just the first: leaving a second
+        // one behind is how you end up with a pin aimed at a directory that no
+        // longer exists.
+        //
+        // The icon is always rewritten too, so a repointed pin cannot keep
+        // showing the previous build's. It is not always the target — a source
+        // build's target is electron.exe, whose icon is Electron's.
+        const script = pins.map(pin => `
+$link = $shell.CreateShortcut(${psString(pin.shortcut)})
 $link.TargetPath = ${psString(spec.target)}
 $link.Arguments = ${psString(spec.args.join(' '))}
 $link.WorkingDirectory = ${psString(spec.cwd)}
 $link.IconLocation = ${psString(`${spec.icon},0`)}
 $link.Description = ${psString(spec.description)}
 $link.Save()
-`
-        await runPowerShell(script)
+`).join('\n')
+        await runPowerShell(`
+$ErrorActionPreference = 'Stop'
+$shell = New-Object -ComObject WScript.Shell
+${script}
+`)
+        return pins.length
     }
 }
