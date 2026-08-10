@@ -46,7 +46,7 @@ h3.mb-3(translate) Claude
 .form-line
     .header
         .title(translate) Refresh interval
-        .description(translate) Milliseconds between session refreshes while the window is focused. Backs off automatically when unfocused
+        .description(translate) Milliseconds between session refreshes while this window is focused. Never polls faster than this: unfocused it slows to at least 6s, minimised or hidden to at least 15s, and if stith stops answering it doubles each failure up to 60s
     input.form-control(
         type='number',
         min='500',

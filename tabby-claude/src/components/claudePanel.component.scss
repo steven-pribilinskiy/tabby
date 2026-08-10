@@ -27,7 +27,7 @@
 
 .offline-hint {
     font-family: monospace;
-    font-size: 11px;
+    font-size: 0.917em;
     opacity: 0.6;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -41,8 +41,126 @@
     }
 }
 
+.panel-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 4px;
+}
+
+.tool-btn {
+    background: none;
+    border: none;
+    padding: 2px 4px;
+    border-radius: 3px;
+    color: var(--theme-fg);
+    opacity: 0.45;
+    cursor: pointer;
+
+    &:hover {
+        opacity: 1;
+        background: rgba(128, 128, 128, 0.18);
+    }
+}
+
+.section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.view-switch {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 5px;
+}
+
+.view-btn {
+    background: none;
+    border: none;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.833em;
+    color: var(--theme-fg);
+    opacity: 0.4;
+    cursor: pointer;
+
+    &:hover {
+        opacity: 0.8;
+    }
+
+    &.active {
+        opacity: 1;
+        background: rgba(128, 128, 128, 0.22);
+    }
+}
+
+// ── Usage pies ───────────────────────────────────────────────────────
+
+.usage-pies {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    margin-top: 4px;
+}
+
+.usage-pie {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+}
+
+.pie {
+    width: 26px;
+    height: 26px;
+    flex: none;
+    // Start the wedge at twelve o'clock rather than three.
+    transform: rotate(-90deg);
+}
+
+.pie-track {
+    fill: none;
+    stroke: rgba(128, 128, 128, 0.3);
+    stroke-width: 10;
+}
+
+.pie-value {
+    fill: none;
+    stroke-width: 10;
+
+    &.sev-ok { stroke: var(--bs-success); }
+    &.sev-warn { stroke: var(--bs-warning); }
+    &.sev-high { stroke: var(--bs-danger); }
+    &.sev-critical { stroke: var(--bs-danger); }
+}
+
+.pie-body {
+    min-width: 0;
+    line-height: 1.2;
+}
+
+.pie-pct {
+    font-weight: 600;
+    font-size: 1em;
+
+    &.sev-ok { color: var(--bs-success); }
+    &.sev-warn { color: var(--bs-warning); }
+    &.sev-high, &.sev-critical { color: var(--bs-danger); }
+}
+
+.pie-label {
+    font-size: 0.833em;
+    opacity: 0.65;
+}
+
+.pie-reset {
+    font-size: 0.833em;
+    opacity: 0.45;
+}
+
 .section-title {
-    font-size: 10px;
+    font-size: 0.833em;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     opacity: 0.5;
@@ -95,7 +213,7 @@
 
 .badge-env, .badge-mode, .badge-plan {
     flex: none;
-    font-size: 10px;
+    font-size: 0.833em;
     padding: 1px 5px;
     border-radius: 3px;
     background: var(--theme-bg-more);
@@ -113,7 +231,7 @@
     flex-wrap: wrap;
     gap: 4px 8px;
     margin-top: 5px;
-    font-size: 11px;
+    font-size: 0.917em;
     opacity: 0.7;
 }
 
@@ -147,7 +265,7 @@
 }
 
 .status-since {
-    font-size: 11px;
+    font-size: 0.917em;
     opacity: 0.5;
     white-space: nowrap;
 }
@@ -156,7 +274,7 @@
     margin-top: 7px;
     padding: 5px 7px;
     border-radius: 4px;
-    font-size: 11px;
+    font-size: 0.917em;
     line-height: 1.4;
     border-left: 2px solid transparent;
 
@@ -181,7 +299,7 @@
     display: flex;
     align-items: baseline;
     gap: 6px;
-    font-size: 11px;
+    font-size: 0.917em;
     margin-bottom: 3px;
 }
 
@@ -236,7 +354,7 @@
 }
 
 .stat-name {
-    font-size: 10px;
+    font-size: 0.833em;
     opacity: 0.5;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -249,7 +367,7 @@
 }
 
 .prompt-label {
-    font-size: 10px;
+    font-size: 0.833em;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     opacity: 0.5;
@@ -257,7 +375,7 @@
 }
 
 .prompt-text, .queued-item {
-    font-size: 11px;
+    font-size: 0.917em;
     line-height: 1.4;
     opacity: 0.85;
     // Long prompts must not push the panel wide or run on forever.
@@ -287,7 +405,7 @@
 }
 
 .bookmark-link {
-    font-size: 11px;
+    font-size: 0.917em;
     opacity: 0.6;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -305,10 +423,15 @@
 
 .session-actions {
     margin-top: 8px;
+    // The buttons have their padding stripped to read as links, which leaves
+    // them touching each other without an explicit gap.
+    display: flex;
+    align-items: center;
+    gap: 12px;
 
     .btn-link {
         padding: 0;
-        font-size: 11px;
+        font-size: 0.917em;
         color: var(--theme-fg);
         opacity: 0.55;
         text-decoration: none;
@@ -347,7 +470,7 @@
     color: inherit;
     padding: 2px 4px;
     line-height: 1;
-    font-size: 11px;
+    font-size: 0.917em;
     opacity: 0;
     cursor: pointer;
     transition: 0.1s opacity;
@@ -363,7 +486,7 @@
     margin-top: 8px;
     padding-top: 7px;
     border-top: 1px solid var(--theme-bg-more-2);
-    font-size: 11px;
+    font-size: 0.917em;
 }
 
 .detail-row {
@@ -389,7 +512,7 @@
     min-width: 0;
     overflow-wrap: anywhere;
     font-family: monospace;
-    font-size: 10px;
+    font-size: 0.833em;
     opacity: 0.85;
 }
 
@@ -405,7 +528,7 @@
 }
 
 .row-sub {
-    font-size: 10px;
+    font-size: 0.833em;
     opacity: 0.5;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -414,7 +537,7 @@
 
 .row-time {
     flex: none;
-    font-size: 10px;
+    font-size: 0.833em;
     opacity: 0.45;
     white-space: nowrap;
 }
@@ -426,7 +549,7 @@
 .usage-name {
     display: flex;
     align-items: center;
-    font-size: 11px;
+    font-size: 0.917em;
     opacity: 0.75;
 
     > span:first-child {

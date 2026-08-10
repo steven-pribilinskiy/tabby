@@ -71,6 +71,16 @@ async function readDirSafe (dir: string): Promise<{ name: string, isDirectory: (
 export class BuildDoctorService {
     constructor (private config: ConfigService) { }
 
+    /**
+     * Is there anything here a health check could say? An installer is a single
+     * file that is never run in place — it has no payload to be missing and no
+     * process to be stuck — so every check returns nothing and the button only
+     * promises an answer it cannot give.
+     */
+    isCheckable (build: TabbyBuild): boolean {
+        return build.kind !== 'installer'
+    }
+
     async examine (build: TabbyBuild): Promise<BuildHealth> {
         const findings: HealthFinding[] = []
         findings.push(...await this.checkPayload(build))

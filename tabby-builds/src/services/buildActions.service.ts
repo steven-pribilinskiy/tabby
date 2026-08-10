@@ -115,8 +115,11 @@ export class BuildActionsService {
             })
         }
         items.push({
+            // Both guards, not just the current-window one: the active build
+            // is equally undeletable, and offering the item only to refuse it
+            // afterwards is a menu that lies.
             label: this.deleteLabel(build),
-            enabled: !build.isCurrent,
+            enabled: !this.deleteBlockedReason(build),
             click: () => void this.delete(build, onChanged),
         })
         return items

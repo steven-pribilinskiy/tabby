@@ -199,6 +199,7 @@ ng-template(#buildList)
                     i.fas.fa-fw.fa-arrows-rotate.me-1
                     span(translate) Restart
                 button.btn.btn-sm.btn-outline-secondary(
+                    *ngIf='canDiagnose(build)',
                     (click)='diagnose(build)',
                     [title]='"Re-run the health check"|translate'
                 )

@@ -1,5 +1,6 @@
-import { Component } from '@angular/core'
+import { Component, HostBinding } from '@angular/core'
 import { AppService, BaseComponent, ConfigService, PlatformService } from 'tabby-core'
+import { SettingsTabComponent } from 'tabby-settings'
 
 import { ClaudeBookmarkLink, ClaudeSession, ClaudeUsage, ClaudeUsageWindow, StithHealth } from '../api'
 import { formatTokens, permissionBadge, relativeTime, sessionKind, sessionTitle, statusLabel } from '../format'
@@ -78,6 +79,45 @@ export class ClaudePanelComponent extends BaseComponent {
         this.subscribeUntilDestroyed(this.app.activeTabChange$, () => {
             this.activeSession = this.claude.focusedSession
         })
+    }
+
+    /** Scales the whole panel: every size inside is em against this. */
+    @HostBinding('style.font-size.px') get fontSize (): number {
+        return this.config.store.claude.panel.fontSize ?? 12
+    }
+
+    /** Jump straight to this panel's own settings. */
+    openSettings (): void {
+        const existing = this.app.tabs.find(tab => tab instanceof SettingsTabComponent)
+        if (existing instanceof SettingsTabComponent) {
+            existing.activeTab = 'claude'
+            this.app.selectTab(existing)
+            return
+        }
+        this.app.openNewTabRaw({
+            type: SettingsTabComponent,
+            inputs: { activeTab: 'claude' },
+        })
+    }
+
+    get usageView (): string {
+        return this.config.store.claude.panel.usageView ?? 'bars'
+    }
+
+    setUsageView (view: string): void {
+        this.config.store.claude.panel.usageView = view
+        this.config.save()
+    }
+
+    /**
+     * `stroke-dasharray` for a pie wedge. The circle is r=5 with a stroke wide
+     * enough to close the middle, so the dash length walks the circumference
+     * and reads as a filled slice rather than a ring.
+     */
+    pieDash (pct: number): string {
+        const circumference = 2 * Math.PI * 5
+        const filled = Math.max(0, Math.min(100, pct)) / 100 * circumference
+        return `${filled} ${circumference}`
     }
 
     ngOnDestroy (): void {

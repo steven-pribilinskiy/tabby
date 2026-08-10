@@ -139,13 +139,17 @@ export class BuildsSettingsTabComponent extends BaseComponent {
      * `quiet` is the periodic refresh: it must not flash the spinner or wipe
      * the list, or the page would flicker every minute while being read.
      */
-    async rescan (quiet = false): Promise<void> {
+    async rescan (quiet = false, force = false): Promise<void> {
         // `scanning` drives the spinner and so is only set for a visible scan;
         // `busy` is what actually stops two scans overlapping.
         if (this.busy) {
             return
         }
-        if (quiet && this.paused) {
+        // `force` is for refreshes that follow something the user just did.
+        // Those must never be swallowed by the unfocused pause — and a native
+        // confirm dialog leaves the window briefly unfocused, which is exactly
+        // when a post-action refresh runs.
+        if (quiet && !force && this.paused) {
             return
         }
         this.busy = true
@@ -284,10 +288,14 @@ export class BuildsSettingsTabComponent extends BaseComponent {
 
     /** Cheap enough to run for every build on every scan — all `access` calls. */
     async diagnoseAll (): Promise<void> {
-        for (const build of this.builds) {
+        for (const build of this.builds.filter(x => this.doctor.isCheckable(x))) {
             build.health = await this.doctor.examine(build)
         }
         this.now = Date.now()
+    }
+
+    canDiagnose (build: TabbyBuild): boolean {
+        return this.doctor.isCheckable(build)
     }
 
     async diagnose (build: TabbyBuild): Promise<void> {
@@ -303,7 +311,7 @@ export class BuildsSettingsTabComponent extends BaseComponent {
     applyFix (build: TabbyBuild, finding: HealthFinding): void {
         switch (finding.fix) {
             case 'restart':
-                void this.actions.restart(build, () => void this.rescan(true))
+                void this.actions.restart(build, () => void this.rescan(true, true))
                 break
             case 'reinstall':
                 void this.doctor.findRepairInstaller(build, this.builds)
@@ -327,7 +335,7 @@ export class BuildsSettingsTabComponent extends BaseComponent {
     }
 
     restart (build: TabbyBuild): void {
-        void this.actions.restart(build, () => void this.rescan(true))
+        void this.actions.restart(build, () => void this.rescan(true, true))
     }
 
     // ── Summary ──────────────────────────────────────────────────────────
@@ -395,7 +403,7 @@ export class BuildsSettingsTabComponent extends BaseComponent {
     }
 
     makeActive (build: TabbyBuild): void {
-        void this.actions.setActive(build, () => void this.rescan(true))
+        void this.actions.setActive(build, () => void this.rescan(true, true))
     }
 
     get taskbarSupported (): boolean {
@@ -416,7 +424,7 @@ export class BuildsSettingsTabComponent extends BaseComponent {
 
     menu (build: TabbyBuild, event: MouseEvent): void {
         event.stopPropagation()
-        this.actions.popupMenu(build, () => void this.rescan(true), event)
+        this.actions.popupMenu(build, () => void this.rescan(true, true), event)
     }
 
     quit (build: TabbyBuild): void {
@@ -424,7 +432,14 @@ export class BuildsSettingsTabComponent extends BaseComponent {
     }
 
     delete (build: TabbyBuild): void {
-        void this.actions.delete(build, () => void this.rescan(true))
+        void this.actions.delete(build, () => {
+            // Drop it here rather than waiting for the scan to notice: the
+            // build is gone the moment the delete returns, and leaving its card
+            // on screen until the next poll reads as "that did not work".
+            this.builds = this.builds.filter(x => x.exists)
+            this.regroup()
+            void this.rescan(true, true)
+        })
     }
 
     deleteLabel (build: TabbyBuild): string {

@@ -20,6 +20,16 @@ export class ClaudeSettingsTabComponent {
         private stith: StithService,
     ) { }
 
+    /**
+     * Test on arrival. The connection state is the first thing anyone opens
+     * this page to find out, and making them press a button to learn it —
+     * while the panel three inches away already knows — is a page asking a
+     * question it can answer itself.
+     */
+    ngOnInit (): void {
+        void this.testConnection()
+    }
+
     saveConfiguration (): void {
         this.config.save()
     }

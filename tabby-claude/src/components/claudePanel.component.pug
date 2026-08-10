@@ -1,4 +1,13 @@
 .claude-panel
+    // The panel's own controls. The dock host's header belongs to the host,
+    // so anything panel-specific has to live in the panel.
+    .panel-toolbar
+        button.tool-btn(
+            (click)='openSettings()',
+            [title]='"Claude settings"|translate'
+        )
+            i.fas.fa-gear
+
     .notice(*ngIf='!sessions.length && health === "ok"')
         i.fas.fa-moon
         span.ms-2 {{'No Claude sessions running'|translate}}
@@ -143,18 +152,52 @@
 
     //- ── Plan usage ──────────────────────────────────────────────────
     .section(*ngIf='options.showUsage && usableUsage.length')
-        .section-title {{'Usage'|translate}}
+        .section-head
+            .section-title {{'Usage'|translate}}
+            .flex-fill
+            .view-switch
+                button.view-btn(
+                    [class.active]='usageView === "bars"',
+                    (click)='setUsageView("bars")',
+                    [title]='"Bars"|translate'
+                )
+                    i.fas.fa-align-left
+                button.view-btn(
+                    [class.active]='usageView === "pies"',
+                    (click)='setUsageView("pies")',
+                    [title]='"Pies"|translate'
+                )
+                    i.fas.fa-chart-pie
+
         .usage-account(*ngFor='let account of usableUsage')
             .usage-name
                 span {{account.account}}
                 span.badge-plan {{account.plan}}
-            .metric(*ngFor='let entry of usageWindows(account)')
-                .metric-head
-                    span.metric-name {{entry.label|translate}}
-                    span.metric-value(*ngIf='entry.window.resetsIn') {{entry.window.resetsIn}}
-                    span.metric-pct {{entry.window.pct}}%
-                .bar
-                    .bar-fill(
-                        [ngClass]='"sev-" + usageSeverity(entry.window.pct)',
-                        [style.width.%]='entry.window.pct'
-                    )
+
+            // Pies put both windows on one line, which is what makes the
+            // section short enough to leave open in a docked panel.
+            .usage-pies(*ngIf='usageView === "pies"')
+                .usage-pie(*ngFor='let entry of usageWindows(account)')
+                    svg.pie(viewBox='0 0 20 20', [attr.aria-label]='entry.window.pct + "%"')
+                        circle.pie-track(cx='10', cy='10', r='5')
+                        circle.pie-value(
+                            cx='10', cy='10', r='5',
+                            [ngClass]='"sev-" + usageSeverity(entry.window.pct)',
+                            [attr.stroke-dasharray]='pieDash(entry.window.pct)'
+                        )
+                    .pie-body
+                        .pie-pct([ngClass]='"sev-" + usageSeverity(entry.window.pct)') {{entry.window.pct}}%
+                        .pie-label {{entry.label|translate}}
+                        .pie-reset(*ngIf='entry.window.resetsIn') {{entry.window.resetsIn}}
+
+            ng-container(*ngIf='usageView === "bars"')
+                .metric(*ngFor='let entry of usageWindows(account)')
+                    .metric-head
+                        span.metric-name {{entry.label|translate}}
+                        span.metric-value(*ngIf='entry.window.resetsIn') {{entry.window.resetsIn}}
+                        span.metric-pct {{entry.window.pct}}%
+                    .bar
+                        .bar-fill(
+                            [ngClass]='"sev-" + usageSeverity(entry.window.pct)',
+                            [style.width.%]='entry.window.pct'
+                        )

@@ -37,6 +37,12 @@ export class ClaudeConfigProvider extends ConfigProvider {
 
             /** Which sections the docked panel renders. */
             panel: {
+                /**
+                 * Base font size for the panel, in px. Everything inside is
+                 * sized in em against it, so this scales the whole panel
+                 * rather than just the body text.
+                 */
+                fontSize: 12,
                 showActiveSession: true,
                 showContext: true,
                 showStatus: true,
@@ -47,6 +53,12 @@ export class ClaudeConfigProvider extends ConfigProvider {
                 showWaiting: true,
                 showSessionList: true,
                 showUsage: true,
+                /**
+                 * How usage is drawn: 'bars' reads well in a narrow dock,
+                 * 'pies' matches stith's Accounts view and packs both windows
+                 * onto one line.
+                 */
+                usageView: 'bars',
             },
 
             /** Which rows the tab hover card renders. */
