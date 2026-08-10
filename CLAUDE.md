@@ -250,6 +250,24 @@ The bits that cost real time:
   path, and two builds both called `Tabby.exe` are otherwise indistinguishable.
   Linux reads `/proc` directly rather than spawning `ps`; the poll pauses while
   the window is unfocused, because it costs a subprocess.
+- **Discovery is one walk of the search roots that classifies each directory**
+  — checkout, application directory, or neither — and stops descending as soon
+  as it knows, because a build holds three thousand files nobody needs to list.
+  A **standalone application directory** (binary + `resources`) counts wherever
+  it is: the frozen build slots under `~\Tabby\builds\` live outside any
+  checkout, so nothing else would ever find them. A `data` directory beside the
+  binary means portable, which is what lets a slot run alongside the installed
+  app. `~\Tabby` is therefore a default search root.
+- **A slot's `BUILD-INFO.txt` wins over its version resource.** Slot binaries
+  report `1.0.0`; the sidecar carries the real version, the commit, the branch,
+  the originating checkout and the upstream base it was forked from. Taking
+  `builtFrom` from the slot and `head` from that checkout is what makes "this
+  slot is behind the tree" visible.
+- **A Windows junction is not a directory to `lstat`.** `data\plugins` in a slot
+  is a junction into `%APPDATA%\tabby\plugins`; Node reports it as a symlink, so
+  the size walk skips it and `fs.rm` unlinks it rather than following it —
+  verified on a decoy, and confirmed by arithmetic (the slots differ by 52 files,
+  not by the plugin directory's 289).
 - **Versions come from the executable's own version resource**, not from
   `resources/builtin-plugins/tabby-core/package.json` — that stamp goes stale
   (the installed 1.0.230 here still carries a 1.0.197 plugin stamp).

@@ -162,6 +162,9 @@ ng-template(#buildList)
                     .fact-label(translate) Built from
                     .fact-value.mono {{build.git.builtFrom}}
                         span.muted.ms-1(*ngIf='isStale(build)') → {{build.git.head}}
+                .fact(*ngIf='build.upstreamBase')
+                    .fact-label(translate) Upstream base
+                    .fact-value.mono {{build.upstreamBase}}
 
             .build-path([title]='build.root', (click)='copyPath(build)') {{shortPath(build.root, 90)}}
             .build-path.muted(*ngIf='build.configPath', [title]='build.configPath')

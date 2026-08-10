@@ -15,7 +15,23 @@ const SKIP_DIRS = new Set(['node_modules', '.git', '.yarn', '.cache', 'venv', '_
 const INSTALLER_PATTERN = /^tabby[-_. ].*\.(exe|msi|dmg|appimage|deb|rpm|zip|snap)$/i
 
 /** Running build first, then by kind, then newest build first. */
-const KIND_ORDER: Record<BuildKind, number> = { installed: 0, source: 1, packaged: 2, installer: 3 }
+const KIND_ORDER: Record<BuildKind, number> = {
+    installed: 0, portable: 1, source: 2, packaged: 3, installer: 4,
+}
+
+/**
+ * What a frozen build slot records about itself, in a BUILD-INFO.txt beside the
+ * binary. Worth reading: a slot's executable carries no real version resource
+ * (it reports 1.0.0), and its directory name is the only other clue.
+ */
+interface SlotBuildInfo {
+    slot: string | null
+    version: string | null
+    commit: string | null
+    branch: string | null
+    repo: string | null
+    upstreamBase: string | null
+}
 
 /** A build before it has been enriched with versions, sizes and processes. */
 interface Seed {
@@ -28,6 +44,7 @@ interface Seed {
     repoPath: string | null
     detail: string
     uninstaller?: string | null
+    buildInfo?: SlotBuildInfo | null
 }
 
 /** `IMAGE_FILE_HEADER.Machine`, so arch is read from the file, not assumed. */
@@ -134,6 +151,29 @@ async function readJSON (p: string): Promise<any | null> {
     }
 }
 
+/** Parse the fields a build slot records about itself. Absent file → null. */
+async function readBuildInfo (dir: string): Promise<SlotBuildInfo | null> {
+    const text = await readTextSafe(path.join(dir, 'BUILD-INFO.txt'))
+    if (!text) {
+        return null
+    }
+    const field = (name: string): string | null => {
+        const match = new RegExp(`^${name}:\\s*(.+?)\\s*$`, 'mi').exec(text)
+        return match ? match[1] : null
+    }
+    const repoLine = field('Repo')
+    const slot = field('Slot')
+    return {
+        slot,
+        // The slot id is <version>-<sha>-<date>; only the leading part is a version.
+        version: slot ? /^(\d+\.\d+\.\d+(?:-[a-z0-9.]+)?)/i.exec(slot)?.[1] ?? null : null,
+        commit: field('Commit'),
+        branch: repoLine ? /\(branch:\s*([^)]+)\)/.exec(repoLine)?.[1]?.trim() ?? null : null,
+        repo: repoLine ? repoLine.replace(/\s*\(branch:.*$/, '').trim() : null,
+        upstreamBase: field('Upstream base')?.split(/\s+/)[0] ?? null,
+    }
+}
+
 /**
  * Finds every Tabby build on this machine and describes it.
  *
@@ -151,19 +191,18 @@ export class BuildScannerService {
         seeds.push(...await this.wellKnownInstalls())
 
         const roots = this.searchRoots()
-        const trees = await this.findSourceTrees(roots)
+        const found = await this.walkRoots(roots)
+        seeds.push(...found.apps, ...found.installers)
+
         // The checkout this window is running from may live outside the
         // configured roots; it is never the one you want missing.
+        const trees = found.trees
         const currentTree = await this.currentSourceTree()
-        if (currentTree && !trees.includes(currentTree)) {
+        if (currentTree && !trees.some(x => normalize(x) === normalize(currentTree))) {
             trees.push(currentTree)
         }
         for (const tree of trees) {
             seeds.push(...await this.describeSourceTree(tree))
-        }
-
-        if (this.config.store.builds.includeInstallers) {
-            seeds.push(...await this.findInstallers(roots))
         }
 
         const unique = new Map<string, Seed>()
@@ -246,12 +285,27 @@ export class BuildScannerService {
         return seeds
     }
 
-    /** Bounded breadth-first walk; a checkout more than a few levels deep is not a thing. */
-    private async findSourceTrees (roots: string[]): Promise<string[]> {
+    /**
+     * One bounded breadth-first walk of the configured roots that classifies
+     * everything it meets: source checkouts, standalone application directories
+     * (a frozen build slot lives outside any checkout, so nothing else finds
+     * one), and installer files.
+     *
+     * A single walk rather than one per kind — the readdir cost is the whole
+     * cost here, and a build directory holds three thousand files nobody needs
+     * to enumerate, so the walk stops the moment a directory is identified.
+     */
+    private async walkRoots (roots: string[]): Promise<{
+        trees: string[], apps: Seed[], installers: Seed[],
+    }> {
         const maxDepth: number = this.config.store.builds.searchDepth ?? 3
-        const found: string[] = []
+        const includeInstallers = this.config.store.builds.includeInstallers
+        const trees: string[] = []
+        const apps: Seed[] = []
+        const installers: Seed[] = []
         const queue: { dir: string, depth: number }[] = roots.map(dir => ({ dir, depth: 0 }))
         const seen = new Set<string>()
+
         while (queue.length) {
             const { dir, depth } = queue.shift()!
             const key = normalize(dir)
@@ -259,22 +313,74 @@ export class BuildScannerService {
                 continue
             }
             seen.add(key)
+
             if (await this.isSourceTree(dir)) {
-                found.push(dir)
-                // Nothing below a checkout is another checkout.
+                // Nothing below a checkout is another checkout; its own builds
+                // are enumerated from the checkout itself.
+                trees.push(dir)
                 continue
             }
-            if (depth >= maxDepth) {
+
+            const app = await this.appSeed(dir)
+            if (app) {
+                apps.push(app)
                 continue
             }
+
             for (const entry of await readDirSafe(dir)) {
-                if (!entry.isDirectory() || SKIP_DIRS.has(entry.name) || entry.name.startsWith('.')) {
-                    continue
+                const full = path.join(dir, entry.name)
+                if (entry.isDirectory()) {
+                    if (depth < maxDepth && !SKIP_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
+                        queue.push({ dir: full, depth: depth + 1 })
+                    }
+                } else if (includeInstallers && INSTALLER_PATTERN.test(entry.name)) {
+                    installers.push(installerSeed(full, entry.name, null))
                 }
-                queue.push({ dir: path.join(dir, entry.name), depth: depth + 1 })
             }
         }
-        return found
+        return { trees, apps, installers }
+    }
+
+    /**
+     * A directory that *is* an application: the binary plus the resources
+     * beside it. A `data` directory next to them means it is portable — it
+     * keeps its own profile rather than using %APPDATA%, which is what makes a
+     * frozen build slot safe to run alongside the installed app.
+     */
+    private async appSeed (dir: string): Promise<Seed | null> {
+        const executable = await firstExisting([
+            path.join(dir, 'Tabby.exe'),
+            path.join(dir, 'tabby'),
+            path.join(dir, 'Tabby.app', 'Contents', 'MacOS', 'Tabby'),
+        ])
+        if (!executable) {
+            return null
+        }
+        const hasResources = await exists(path.join(dir, 'resources'))
+            || await exists(path.join(dir, 'Tabby.app', 'Contents', 'Resources'))
+        if (!hasResources) {
+            return null
+        }
+
+        const info = await readBuildInfo(dir)
+        const portable = await exists(path.join(dir, 'data'))
+        return {
+            kind: portable ? 'portable' : 'packaged',
+            name: info?.commit ? `slot ${info.commit.slice(0, 8)}` : path.basename(dir),
+            root: dir,
+            extraPaths: [],
+            executable,
+            stampPath: executable,
+            // Only if the checkout it names is still there — the repo may have
+            // been moved or deleted since the slot was frozen.
+            repoPath: info?.repo && await exists(info.repo) ? info.repo : null,
+            buildInfo: info,
+            detail: info
+                ? 'Frozen build slot — self-contained, with its own data directory'
+                : portable
+                    ? 'Portable application directory'
+                    : 'Unpacked application directory',
+        }
     }
 
     private async isSourceTree (dir: string): Promise<boolean> {
@@ -377,32 +483,6 @@ export class BuildScannerService {
         return out
     }
 
-    private async findInstallers (roots: string[]): Promise<Seed[]> {
-        const maxDepth: number = this.config.store.builds.searchDepth ?? 3
-        const seeds: Seed[] = []
-        const queue: { dir: string, depth: number }[] = roots.map(dir => ({ dir, depth: 0 }))
-        const seen = new Set<string>()
-        while (queue.length) {
-            const { dir, depth } = queue.shift()!
-            const key = normalize(dir)
-            if (seen.has(key)) {
-                continue
-            }
-            seen.add(key)
-            for (const entry of await readDirSafe(dir)) {
-                const full = path.join(dir, entry.name)
-                if (entry.isDirectory()) {
-                    if (depth < maxDepth && !SKIP_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
-                        queue.push({ dir: full, depth: depth + 1 })
-                    }
-                } else if (INSTALLER_PATTERN.test(entry.name)) {
-                    seeds.push(installerSeed(full, entry.name, null))
-                }
-            }
-        }
-        return seeds
-    }
-
     // ── Enrichment ───────────────────────────────────────────────────────
 
     private async materialize (
@@ -423,10 +503,11 @@ export class BuildScannerService {
             version: await this.readVersion(seed, versions),
             builtAt: stat ? stat.mtimeMs : null,
             arch: await this.readArch(seed),
-            git: seed.repoPath ? await this.readGit(seed.repoPath) : null,
+            git: await this.readBuildGit(seed),
             repoPath: seed.repoPath,
             configPath: null,
             uninstaller: seed.uninstaller ?? null,
+            upstreamBase: seed.buildInfo?.upstreamBase ?? null,
             detail: seed.detail,
             isCurrent: !!seed.executable && normalize(seed.executable) === current,
             // Resolved against config once the whole list is known.
@@ -438,7 +519,29 @@ export class BuildScannerService {
         }
     }
 
+    /**
+     * A slot knows what it was built from; the checkout only knows where it is
+     * now. Taking `builtFrom` from the slot and `head` from the repo is what
+     * makes "this slot is N commits behind the tree" visible at all.
+     */
+    private async readBuildGit (seed: Seed): Promise<BuildGitInfo | null> {
+        if (seed.buildInfo?.commit) {
+            const repo = seed.repoPath ? await this.readGit(seed.repoPath) : null
+            return {
+                branch: seed.buildInfo.branch ?? repo?.branch ?? null,
+                head: repo?.head ?? null,
+                builtFrom: seed.buildInfo.commit.slice(0, 8),
+            }
+        }
+        return seed.repoPath ? this.readGit(seed.repoPath) : null
+    }
+
     private async readVersion (seed: Seed, versions: Map<string, string>): Promise<string | null> {
+        // A slot's executable carries no meaningful version resource — it
+        // reports 1.0.0 — but the slot records the real one next to it.
+        if (seed.buildInfo?.version) {
+            return seed.buildInfo.version
+        }
         if (seed.kind === 'installer') {
             // Only a real prerelease tag counts as part of the version — a plain
             // `-` in an installer name is a word boundary ("-setup", "-portable"),

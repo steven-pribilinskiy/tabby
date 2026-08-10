@@ -11,7 +11,7 @@ export class BuildsConfigProvider extends ConfigProvider {
              * `~` is expanded. Kept explicit rather than magic so the page can
              * show you exactly why something was or was not found.
              */
-            searchRoots: ['~/projects', '~/Downloads'],
+            searchRoots: ['~/projects', '~/Downloads', '~/Tabby'],
             /** How deep under each root to look. Keeps a big Downloads tree cheap. */
             searchDepth: 3,
             /** Installer files (setup .exe, .dmg, .AppImage…) are builds too. */

@@ -14,6 +14,7 @@ const CLOCK_MS = 20000
 
 const KIND_LABELS: Record<BuildKind, string> = {
     installed: 'Installed',
+    portable: 'Portable',
     source: 'Source',
     packaged: 'Packaged',
     installer: 'Installer',
@@ -21,6 +22,7 @@ const KIND_LABELS: Record<BuildKind, string> = {
 
 const KIND_CLASSES: Record<BuildKind, string> = {
     installed: 'primary',
+    portable: 'dark',
     source: 'success',
     packaged: 'info',
     installer: 'secondary',
@@ -28,13 +30,14 @@ const KIND_CLASSES: Record<BuildKind, string> = {
 
 const KIND_ICONS: Record<BuildKind, string> = {
     installed: 'hard-drive',
+    portable: 'boxes-stacked',
     source: 'code-branch',
     packaged: 'box',
     installer: 'download',
 }
 
-/** Tab order, which is also the order builds are grouped in. */
-const KINDS: BuildKind[] = ['installed', 'source', 'packaged', 'installer']
+/** Filter order, which is also the order builds are grouped in. */
+const KINDS: BuildKind[] = ['installed', 'portable', 'source', 'packaged', 'installer']
 
 /** One tab's worth of builds. */
 export interface BuildGroup {

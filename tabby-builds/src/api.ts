@@ -2,11 +2,13 @@
  * What a build is, as far as this machine is concerned.
  *
  * `installed` — an app installed by an installer, in a well-known location.
+ * `portable`  — a self-contained app directory that keeps its own `data`
+ *               folder: a frozen build slot, or an unpacked portable release.
  * `source`    — the compiled output of a source checkout, run via Electron.
- * `packaged`  — an unpacked electron-builder output inside a checkout.
+ * `packaged`  — an unpacked application directory with no data folder.
  * `installer` — an installer file sitting on disk; not runnable in place.
  */
-export type BuildKind = 'installed' | 'source' | 'packaged' | 'installer'
+export type BuildKind = 'installed' | 'portable' | 'source' | 'packaged' | 'installer'
 
 /** One OS process attributed to a build. */
 export interface BuildProcess {
@@ -69,6 +71,8 @@ export interface TabbyBuild {
     configPath: string | null
     /** Uninstaller shipped alongside an installed build, when there is one. */
     uninstaller: string | null
+    /** Upstream commit this build's fork was based on, when it records one. */
+    upstreamBase: string | null
     /** One-line explanation of what the entry actually is. */
     detail: string
     /** True for the build this window is running from. */
