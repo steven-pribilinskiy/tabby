@@ -3,6 +3,15 @@ import { logMainError } from './errors'
 
 import { app, ipcMain, Menu, dialog } from 'electron'
 
+// Dev mode has only ever been expressible as an environment variable, and a
+// Windows shortcut cannot carry one — so a build run from source could not be
+// pinned to the taskbar or launched from anywhere but a prepared shell. Read
+// before anything else imports, since './portable' and the plugin loader both
+// branch on it.
+if (process.argv.includes('--dev')) {
+    process.env.TABBY_DEV = '1'
+}
+
 // set userData Path on portable version
 import './portable'
 
