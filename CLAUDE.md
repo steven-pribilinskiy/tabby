@@ -68,6 +68,12 @@ TABBY_PLUGINS= TABBY_DEV=1 TABBY_CONFIG_DIRECTORY="$PROFILE" \
   ./node_modules/electron/dist/electron.exe --user-data-dir="$PROFILE" app --enable-logging=stderr
 ```
 
+`--dev` is equivalent to `TABBY_DEV=1` and can be used instead — it exists so a
+source build can be started from a Windows shortcut, which cannot carry
+environment variables. `TABBY_CONFIG_DIRECTORY` follows `--user-data-dir` when
+unset, so `electron.exe --dev --user-data-dir=<profile> app` is a complete
+launch on its own.
+
 1. **`--user-data-dir` must come BEFORE the app path.** After it, Electron hands the
    switch to the app instead of Chromium and it is silently ignored — the dev build
    then shares `%APPDATA%\tabby` with the installed Tabby.
@@ -264,6 +270,34 @@ The bits that cost real time:
   32-bit executable whatever it installs, so there the file name wins.
 - Sizes are walked one build at a time off the render path and cached; symlinks
   are never followed, or `builtin-plugins` would count the same bytes twice.
+
+### The active build and the taskbar pin
+
+Exactly one build is **active** — "the Tabby you use". It is the build the
+Windows taskbar pin launches, it carries an `active` badge, and it is never
+deletable, so there is always a working Tabby left on the machine. Together
+with "the build this window runs from is never deletable", that is the
+guarantee: you must hand the crown to another build before you may delete this
+one.
+
+- **Nothing here can create a taskbar pin.** Windows removed the "pin to
+  taskbar" shell verb in 1809 and blocks it for automation; `Tabby.exe` only
+  offers *Pin to Start*. What a pin *is*, though, is a shortcut in
+  `%APPDATA%\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar`, and
+  rewriting its target is allowed. So: pin Tabby by hand once, and the page
+  keeps that single pin aimed at the active build.
+- **On first run the page adopts whatever the pin already points at**, rather
+  than nominating a build and overruling the desktop.
+- **A source build can be pinned because of `--dev`.** A `.lnk` cannot carry
+  environment variables, and dev mode was previously only expressible as
+  `TABBY_DEV=1`, so the shortcut would have started an Electron with no
+  plugins. `app/lib/index.ts` now sets `TABBY_DEV` when `--dev` is on the
+  command line. `--user-data-dir` covers the rest: `TABBY_CONFIG_DIRECTORY`
+  defaults to `app.getPath('userData')`, which follows it. Verified by
+  launching with the env explicitly scrubbed.
+- The icon is rewritten with the target, and for a source build it comes from
+  `build/windows/icon.ico` in the checkout — the target there is `electron.exe`,
+  whose icon is Electron's.
 
 ## Changed upstream defaults
 

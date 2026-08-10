@@ -4,9 +4,10 @@ import { BaseComponent, ConfigService, PlatformService } from 'tabby-core'
 import { BuildKind, BuildsView, TabbyBuild } from '../api'
 import { absoluteTime, humanAgo, humanBytes, humanDuration, shortPath } from '../format'
 import { BuildActionsService } from '../services/buildActions.service'
-import { BuildProcessesService } from '../services/buildProcesses.service'
+import { BuildProcessesService, normalize } from '../services/buildProcesses.service'
 import { BuildScannerService } from '../services/buildScanner.service'
 import { BuildSizeService } from '../services/buildSize.service'
+import { TaskbarService } from '../services/taskbar.service'
 
 /** How often relative timestamps re-render when nothing else changes. */
 const CLOCK_MS = 20000
@@ -76,6 +77,8 @@ export class BuildsSettingsTabComponent extends BaseComponent {
     error: string | null = null
     lastScan: number | null = null
     lastPoll: number | null = null
+    /** What the Windows taskbar pin currently launches; null when not pinned. */
+    pinTarget: string | null = null
 
     /**
      * Reference instant for every relative timestamp on screen, held as a field
@@ -102,6 +105,7 @@ export class BuildsSettingsTabComponent extends BaseComponent {
         private processes: BuildProcessesService,
         private scanner: BuildScannerService,
         private sizes: BuildSizeService,
+        private taskbar: TaskbarService,
     ) {
         super()
     }
@@ -150,6 +154,7 @@ export class BuildsSettingsTabComponent extends BaseComponent {
                     build.configPath = configPath
                 }
             }
+            await this.resolveActive(builds)
             this.builds = builds
             this.regroup()
             this.error = null
@@ -186,6 +191,49 @@ export class BuildsSettingsTabComponent extends BaseComponent {
     /** Polling stops while the window is in the background: it costs a subprocess. */
     private get paused (): boolean {
         return this.config.store.builds.pauseWhenUnfocused && !document.hasFocus()
+    }
+
+    /**
+     * Work out which build is the active one — the build the taskbar pin
+     * launches, and the one that may not be deleted.
+     *
+     * There is always exactly one. If the configured build has been deleted or
+     * moved, another is adopted rather than leaving the machine with no
+     * nominated Tabby: an installed app first, then the build this window came
+     * from, then anything that can be launched at all.
+     */
+    private async resolveActive (builds: TabbyBuild[]): Promise<void> {
+        let wanted: string = this.config.store.builds.activeExecutable ?? ''
+        if (!wanted) {
+            // First run: adopt whatever the taskbar pin already points at, so
+            // the page starts out agreeing with the desktop instead of
+            // overruling it.
+            wanted = (await this.taskbar.read())?.target ?? ''
+        }
+        const launchable = builds.filter(x => !!x.executable)
+        let active: TabbyBuild | null = null
+        if (wanted) {
+            active = launchable.find(x => normalize(x.executable!) === normalize(wanted)) ?? null
+        }
+        if (!active) {
+            active = launchable.find(x => x.kind === 'installed')
+                ?? launchable.find(x => x.isCurrent)
+                ?? null
+        }
+        if (!active && launchable.length) {
+            active = launchable[0]
+        }
+
+        for (const build of builds) {
+            build.isActive = build === active
+        }
+        this.pinTarget = (await this.taskbar.read())?.target ?? null
+
+        const resolved = active ? active.executable ?? '' : ''
+        if (resolved !== this.config.store.builds.activeExecutable) {
+            this.config.store.builds.activeExecutable = resolved
+            this.config.save()
+        }
     }
 
     /**
@@ -285,6 +333,18 @@ export class BuildsSettingsTabComponent extends BaseComponent {
 
     launch (build: TabbyBuild): void {
         void this.actions.launch(build)
+    }
+
+    makeActive (build: TabbyBuild): void {
+        void this.actions.setActive(build, () => void this.rescan(true))
+    }
+
+    get taskbarSupported (): boolean {
+        return this.taskbar.isSupported()
+    }
+
+    get taskbarShortcutPath (): string {
+        return this.taskbar.shortcutPath()
     }
 
     reveal (build: TabbyBuild): void {

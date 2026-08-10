@@ -10,9 +10,18 @@ import { TabbyBuild } from '../api'
 import { humanBytes } from '../format'
 import { BuildProcessesService } from './buildProcesses.service'
 import { BuildSizeService } from './buildSize.service'
+import { TaskbarService } from './taskbar.service'
 
 /** How long a build gets to shut down cleanly before it is killed outright. */
 const QUIT_GRACE_MS = 12000
+
+/** Everything needed to start a build, wherever it is being started from. */
+export interface LaunchSpec {
+    target: string
+    args: string[]
+    cwd: string
+    env: Record<string, string>
+}
 
 function sleep (ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
@@ -45,6 +54,7 @@ export class BuildActionsService {
         private platform: PlatformService,
         private processes: BuildProcessesService,
         private sizes: BuildSizeService,
+        private taskbar: TaskbarService,
         private translate: TranslateService,
     ) { }
 
@@ -54,6 +64,13 @@ export class BuildActionsService {
                 label: this.translate.instant('Launch'),
                 enabled: !!build.executable,
                 click: () => void this.launch(build),
+            },
+            {
+                label: this.taskbar.isSupported()
+                    ? this.translate.instant('Make active and pin to the taskbar')
+                    : this.translate.instant('Make active'),
+                enabled: !!build.executable && !build.isActive,
+                click: () => void this.setActive(build, onChanged),
             },
             {
                 label: this.translate.instant('Reveal in file manager'),
@@ -119,52 +136,125 @@ export class BuildActionsService {
         if (build.isCurrent) {
             return this.translate.instant('This is the build this window is running from')
         }
+        if (build.isActive) {
+            return this.translate.instant('This is the active build — make another one active first')
+        }
         return null
     }
 
     // ── Launching ────────────────────────────────────────────────────────
 
-    async launch (build: TabbyBuild): Promise<void> {
+    /**
+     * How to start a build: the same answer for the Launch button and for the
+     * taskbar shortcut, so a pinned build starts exactly the way this page
+     * starts it.
+     *
+     * A source build needs an isolated profile — Electron's single-instance
+     * lock is keyed on the user data directory, so sharing one with the
+     * installed app means the second launch silently exits. `--dev` stands in
+     * for TABBY_DEV, which a shortcut cannot carry. NODE_PATH is scrubbed only
+     * for the in-process launch: a shell started *inside* Tabby exports one
+     * pointing at the installed app's plugins, and inheriting it loads those
+     * against this checkout's tabby-core.
+     */
+    launchSpec (build: TabbyBuild): LaunchSpec | null {
         if (!build.executable) {
+            return null
+        }
+        if (build.kind !== 'source' || !build.repoPath) {
+            return {
+                target: build.executable,
+                args: [],
+                cwd: path.dirname(build.executable),
+                env: {},
+            }
+        }
+        const profile = this.devProfileDirectory(build.repoPath)
+        return {
+            target: build.executable,
+            args: ['--dev', `--user-data-dir=${profile}`, 'app'],
+            cwd: build.repoPath,
+            env: {
+                NODE_PATH: path.join(build.repoPath, 'app', 'node_modules'),
+                TABBY_PLUGINS: '',
+                TABBY_DEV: '1',
+                TABBY_CONFIG_DIRECTORY: profile,
+            },
+        }
+    }
+
+    async launch (build: TabbyBuild): Promise<void> {
+        const spec = this.launchSpec(build)
+        if (!spec) {
             return
         }
         try {
-            if (build.kind === 'source' && build.repoPath) {
-                this.launchSource(build.repoPath, build.executable)
-            } else {
-                spawn(build.executable, [], {
-                    detached: true,
-                    stdio: 'ignore',
-                    windowsHide: false,
-                }).unref()
-            }
+            spawn(spec.target, spec.args, {
+                cwd: spec.cwd,
+                detached: true,
+                stdio: 'ignore',
+                env: { ...process.env, ...spec.env },
+            }).unref()
             this.notifications.info(this.translate.instant('Launching {name}', { name: build.name }))
         } catch (err) {
             this.notifications.error(String(err))
         }
     }
 
+    // ── The active build ─────────────────────────────────────────────────
+
     /**
-     * A source build has to be started with an isolated profile and a scrubbed
-     * environment, or it will not start at all: Electron's single-instance lock
-     * is keyed on the user data directory, so it would collide with the
-     * installed app, and an inherited NODE_PATH makes it load the *installed*
-     * app's plugins against this checkout's tabby-core.
+     * Make a build the one you use: the taskbar pin starts launching it, and it
+     * becomes undeletable, so switching away from a build is the only way to be
+     * allowed to remove it.
      */
-    private launchSource (repo: string, electron: string): void {
-        const profile = this.devProfileDirectory(repo)
-        spawn(electron, [`--user-data-dir=${profile}`, 'app'], {
-            cwd: repo,
-            detached: true,
-            stdio: 'ignore',
-            env: {
-                ...process.env,
-                NODE_PATH: path.join(repo, 'app', 'node_modules'),
-                TABBY_PLUGINS: '',
-                TABBY_DEV: '1',
-                TABBY_CONFIG_DIRECTORY: profile,
-            },
-        }).unref()
+    async setActive (build: TabbyBuild, onChanged: () => void): Promise<void> {
+        const spec = this.launchSpec(build)
+        if (!spec) {
+            this.notifications.error(this.translate.instant('{name} cannot be launched, so it cannot be the active build', { name: build.name }))
+            return
+        }
+        this.config.store.builds.activeExecutable = build.executable
+        this.config.save()
+
+        if (this.config.store.builds.pinToTaskbar && this.taskbar.isSupported()) {
+            try {
+                await this.taskbar.repoint({
+                    target: spec.target,
+                    args: spec.args,
+                    cwd: spec.cwd,
+                    icon: await this.pinIcon(build, spec.target),
+                    description: build.name === 'Tabby' ? 'Tabby' : `Tabby — ${build.name}`,
+                })
+                this.notifications.info(this.translate.instant('{name} is now the active build, and the taskbar pin points at it', { name: build.name }))
+            } catch (err) {
+                // The config change stands: the pin is a convenience, and
+                // failing to move it must not leave the page disagreeing with
+                // itself about which build is active.
+                this.notifications.error(String(err))
+            }
+        } else {
+            this.notifications.info(this.translate.instant('{name} is now the active build', { name: build.name }))
+        }
+        onChanged()
+    }
+
+    /**
+     * Where the pinned shortcut takes its icon from. A source build runs
+     * through `electron.exe`, whose icon is Electron's — the checkout ships the
+     * real one, so use that and keep the taskbar recognisable.
+     */
+    private async pinIcon (build: TabbyBuild, target: string): Promise<string> {
+        if (build.kind === 'source' && build.repoPath) {
+            const icon = path.join(build.repoPath, 'build', 'windows', 'icon.ico')
+            try {
+                await fs.access(icon)
+                return icon
+            } catch {
+                // Not in this checkout; fall through to the binary.
+            }
+        }
+        return target
     }
 
     /** Per-checkout so two source builds never share a profile — or a lock. */

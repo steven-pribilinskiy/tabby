@@ -73,6 +73,12 @@ export interface TabbyBuild {
     detail: string
     /** True for the build this window is running from. */
     isCurrent: boolean
+    /**
+     * The build the taskbar pin launches — "the Tabby you use". Exactly one
+     * build is active at a time, and the active one can never be deleted, so
+     * there is always a working Tabby left on the machine.
+     */
+    isActive: boolean
     /** Still on disk as of the last scan. */
     exists: boolean
     processes: BuildProcess[]

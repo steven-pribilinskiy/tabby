@@ -429,6 +429,8 @@ export class BuildScannerService {
             uninstaller: seed.uninstaller ?? null,
             detail: seed.detail,
             isCurrent: !!seed.executable && normalize(seed.executable) === current,
+            // Resolved against config once the whole list is known.
+            isActive: false,
             exists: !!stat,
             processes: [],
             size: null,

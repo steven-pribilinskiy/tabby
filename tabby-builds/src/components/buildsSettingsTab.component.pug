@@ -97,6 +97,12 @@ ng-template(#buildList)
                 .badge(class='text-bg-{{kindClass(build)}}') {{kindLabel(build)|translate}}
                 .build-name {{build.name}}
                 .build-version(*ngIf='build.version') {{build.version}}
+                .badge.text-bg-primary(
+                    *ngIf='build.isActive',
+                    [title]='(taskbarSupported ? "The taskbar pin launches this build" : "The build you use")|translate'
+                )
+                    i.fas.fa-thumbtack.me-1
+                    span(translate) active
                 .badge.text-bg-success(*ngIf='build.isCurrent', translate) this window
                 .badge.text-bg-warning(
                     *ngIf='isStale(build)',
@@ -162,6 +168,13 @@ ng-template(#buildList)
                 | {{'Config'|translate}}: {{shortPath(build.configPath, 80)}}
 
             .build-actions
+                button.btn.btn-sm.btn-outline-primary(
+                    *ngIf='build.executable && !build.isActive',
+                    (click)='makeActive(build)',
+                    [title]='(taskbarSupported ? "Point the taskbar pin at this build" : "Use this build")|translate'
+                )
+                    i.fas.fa-fw.fa-thumbtack.me-1
+                    span(translate) Make active
                 button.btn.btn-sm.btn-outline-secondary(
                     *ngIf='build.processes.length && !build.isCurrent',
                     (click)='quit(build)'
@@ -203,6 +216,9 @@ ng-template(#buildList)
                         .d-flex.align-items-center.no-wrap
                             span.live-dot.me-2(*ngIf='build.processes.length')
                             span {{build.name}}
+                            .badge.text-bg-primary.ms-2(*ngIf='build.isActive')
+                                i.fas.fa-thumbtack.me-1
+                                span(translate) active
                             .badge.text-bg-success.ms-2(*ngIf='build.isCurrent', translate) this window
                             .badge.text-bg-warning.ms-2(*ngIf='isStale(build)', translate) stale
                     td.mono {{build.version || '—'}}
@@ -224,6 +240,12 @@ ng-template(#buildList)
                             [title]='"Launch"|translate'
                         )
                             i.fas.fa-fw.fa-play
+                        button.btn.btn-sm.btn-link(
+                            *ngIf='build.executable && !build.isActive',
+                            (click)='makeActive(build)',
+                            [title]='"Make active"|translate'
+                        )
+                            i.fas.fa-fw.fa-thumbtack
                         button.btn.btn-sm.btn-link(
                             (click)='reveal(build)',
                             [title]='"Reveal in file manager"|translate'
@@ -287,6 +309,24 @@ ng-template(#options)
             [(ngModel)]='config.store.builds.autoSize',
             (ngModelChange)='saveConfiguration()',
         )
+
+    h4.mt-4.mb-2(translate) Active build
+
+    .form-line(*ngIf='taskbarSupported')
+        .header
+            .title(translate) Retarget the taskbar pin
+            .description(translate) Making a build active repoints the pinned Tabby shortcut at it. Windows has no way to create a pin, so pin Tabby once by hand and this keeps it aimed at the right build
+        toggle(
+            [(ngModel)]='config.store.builds.pinToTaskbar',
+            (ngModelChange)='saveConfiguration()',
+        )
+
+    .form-line(*ngIf='taskbarSupported')
+        .header
+            .title(translate) The pin currently launches
+            .description.mono {{pinTarget || ('Tabby is not pinned to the taskbar'|translate)}}
+        button.btn.btn-secondary((click)='rescan()')
+            span(translate) Recheck
 
     h4.mt-4.mb-2(translate) Live updates
 

@@ -30,6 +30,16 @@ export class BuildsConfigProvider extends ConfigProvider {
             autoSize: true,
 
             /**
+             * The build "you use" — the one the taskbar pin launches, marked
+             * active in the list, and never deletable. Stored as the
+             * executable path so it survives a rescan. Empty means "work it
+             * out from what the taskbar pin currently points at".
+             */
+            activeExecutable: '',
+            /** Retarget the Windows taskbar pin when the active build changes. */
+            pinToTaskbar: true,
+
+            /**
              * Extra environment for launching a source build. The dev build
              * must not share a config directory with the installed app —
              * Electron's single-instance lock is keyed on it, and the installed
