@@ -81,10 +81,14 @@ title-bar(
                         [fastHtmlBind]='button.icon'
                     )
 
+                // Rendered into <body> and allowed to flip: with tabs on the
+                // left this sits at the very top of the window, where a
+                // top-only tooltip is clipped by the window edge.
                 .build-hint(
                     [ngbTooltip]='buildTooltip',
                     tooltipClass='build-hint-tooltip',
-                    placement='top',
+                    container='body',
+                    placement='top bottom-start top-start bottom auto',
                     (mouseenter)='refreshBuiltAgo()',
                     (click)='copyBuildHint()'
                 ) {{buildHint}}
