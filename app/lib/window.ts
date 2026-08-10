@@ -62,9 +62,14 @@ export class Window {
         this.windowBounds = this.windowConfig.get('windowBoundaries')
 
         const maximized = this.windowConfig.get('maximized')
+        // Full HD for a first run, clamped to the work area: 1080 does not fit
+        // a 1080-tall display once the taskbar is out of it, and a smaller
+        // screen would otherwise get a window hanging off the bottom. Only the
+        // first run uses this at all — saved bounds overwrite it below.
+        const workArea = screen.getPrimaryDisplay().workAreaSize
         const bwOptions: BrowserWindowConstructorOptions = {
-            width: 800,
-            height: 600,
+            width: Math.min(1920, workArea.width),
+            height: Math.min(1080, workArea.height),
             title: 'Tabby',
             minWidth: 400,
             minHeight: 300,
