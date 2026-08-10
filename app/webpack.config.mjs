@@ -25,6 +25,26 @@ const BUILD_DATE = `${buildTime.getFullYear()}-${pad(buildTime.getMonth() + 1)}-
 // Epoch millis too, so "N ago" is computed from an unambiguous instant rather
 // than by re-parsing a formatted local-time string.
 const BUILD_TIMESTAMP = buildTime.getTime()
+const BUILD_DESCRIBE = gitDescribe('git describe --tags', '')
+
+// The same provenance, written next to the bundle. The DefinePlugin constants
+// below can only be read from inside a running instance; the Builds settings
+// page has to answer "what was this compiled from?" for builds that are sitting
+// on disk not running, and grepping 5 MB of JavaScript for string literals is
+// not an answer.
+try {
+    const distDir = path.resolve(__dirname, 'dist')
+    fs.mkdirSync(distDir, { recursive: true })
+    fs.writeFileSync(path.join(distDir, 'build-info.json'), JSON.stringify({
+        sha: BUILD_SHA,
+        branch: BUILD_BRANCH,
+        describe: BUILD_DESCRIBE,
+        date: BUILD_DATE,
+        timestamp: BUILD_TIMESTAMP,
+    }, null, 2))
+} catch {
+    // Provenance is a nicety; never fail a build over it.
+}
 const linkerPlugin = createEs2015LinkerPlugin({
     linkerJitMode: true,
     fileSystem: {
