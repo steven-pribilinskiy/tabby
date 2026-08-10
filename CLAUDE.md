@@ -289,6 +289,25 @@ The bits that cost real time:
 - Sizes are walked one build at a time off the render path and cached; symlinks
   are never followed, or `builtin-plugins` would count the same bytes twice.
 
+### Cutting a slot
+
+`node scripts/make-slot.mjs [--activate] [--dry-run] [--skip-build]` builds a
+frozen, self-contained copy into `~\Tabby\builds\` and, with `--activate`,
+points `Tabby-fork.lnk` and the taskbar pin at it.
+
+- Named **`<version>-<MMDD>-<HHmm>-<sha>`**. The timestamp comes before the hash
+  deliberately: a Start-menu search result truncates the *tail*, so a trailing
+  date was the part you could never read, and the hash alone told you nothing
+  about which slot was newer.
+- `--dir` only — a slot is an unpacked directory, never an installer.
+- The seeded profile drops `hotkeys.toggle-window` and blacklists `mcp-server`,
+  because a slot is meant to run *beside* your Tabby: otherwise whichever
+  instance starts first takes the global hotkey and the MCP port, and the other
+  silently half-works.
+- `data\plugins` is a junction to `%APPDATA%\tabby\plugins` so plugins stay
+  shared and live. The Builds page knows not to follow it.
+- App files are marked read-only, so a slot cannot drift after it is cut.
+
 ### The doctor
 
 Each build is health-checked on every scan, and a build that will not start
