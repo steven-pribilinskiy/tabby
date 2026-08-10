@@ -178,15 +178,11 @@
 
 // ── Table ───────────────────────────────────────────────────────────────
 
-// The table is the one thing on this page that must not be squeezed into the
-// settings column: it carries eleven columns including full paths. The negative
-// margin cancels the settings pane's 30px padding so the table gets the whole
-// width of the pane, and scrolls sideways inside itself if it still needs more.
-// The page itself never scrolls horizontally.
+// The page opts out of the settings column's 600px cap (`wide` on the provider),
+// so the table already has the full pane to work with. It still scrolls inside
+// itself when even that is not enough — the page never scrolls horizontally.
 .table-wrap {
     overflow-x: auto;
-    margin: 0 -30px;
-    padding: 0 30px;
 }
 
 .builds-table {

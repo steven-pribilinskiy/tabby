@@ -8,6 +8,8 @@ export class BuildsSettingsTabProvider extends SettingsTabProvider {
     id = 'builds'
     icon = 'cubes'
     title = 'Builds'
+    /** A table of eleven columns including full paths; 600px would gut it. */
+    wide = true
 
     getComponentType (): any {
         return BuildsSettingsTabComponent

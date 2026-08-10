@@ -1,4 +1,4 @@
-import { Component, Input, ViewContainerRef, ViewChild, ComponentFactoryResolver, ComponentRef } from '@angular/core'
+import { Component, HostBinding, Input, ViewContainerRef, ViewChild, ComponentFactoryResolver, ComponentRef } from '@angular/core'
 import { SettingsTabProvider } from '../api'
 
 /** @hidden */
@@ -11,12 +11,21 @@ import { SettingsTabProvider } from '../api'
             padding-bottom: 20px;
             max-width: 600px;
         }
+
+        :host(.wide) {
+            max-width: none;
+        }
     `],
 })
 export class SettingsTabBodyComponent {
     @Input() provider: SettingsTabProvider
     @ViewChild('placeholder', { read: ViewContainerRef }) placeholder: ViewContainerRef
     component: ComponentRef<unknown>
+
+    /** Tabs that show data rather than a form opt out of the reading-width cap. */
+    @HostBinding('class.wide') get wide (): boolean {
+        return this.provider.wide
+    }
 
     constructor (private componentFactoryResolver: ComponentFactoryResolver) { }
 
