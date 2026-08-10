@@ -1,0 +1,249 @@
+// Colours come from the active Tabby theme, never from a hardcoded palette, so
+// the page follows light and dark themes like the rest of Settings.
+
+.summary-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.summary-stats {
+    display: flex;
+    gap: 22px;
+}
+
+.stat {
+    line-height: 1.15;
+}
+
+.stat-value {
+    font-size: 18px;
+    font-weight: 600;
+
+    &.measuring {
+        opacity: 0.5;
+    }
+}
+
+.stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.5;
+}
+
+.live-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    opacity: 0.6;
+    white-space: nowrap;
+}
+
+// Steady dot rather than a blinking one: this sits on a settings page that can
+// stay open for a long time, and a pulse in the corner of the eye is noise.
+.live-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--bs-success);
+    flex: none;
+}
+
+// ── Tabs ────────────────────────────────────────────────────────────────
+
+.nav-tabs {
+    margin-bottom: 14px;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+}
+
+.tab-count {
+    font-size: 11px;
+    opacity: 0.5;
+}
+
+// Kind filter on the left, view switch on the right — both act on the list
+// below them, so they belong on the same line as each other, not up in the
+// summary bar with the totals.
+.list-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+// ── Cards ───────────────────────────────────────────────────────────────
+
+.builds {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.build-card {
+    border: 1px solid rgba(128, 128, 128, 0.25);
+    border-left: 3px solid rgba(128, 128, 128, 0.35);
+    border-radius: 6px;
+    padding: 10px 12px;
+
+    &.running {
+        border-left-color: var(--bs-success);
+    }
+
+    &.current {
+        background: rgba(128, 128, 128, 0.08);
+    }
+}
+
+.build-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+
+    .btn {
+        padding: 0 4px;
+    }
+}
+
+.build-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.build-version {
+    font-family: monospace;
+    font-size: 11px;
+    opacity: 0.7;
+}
+
+.build-detail {
+    font-size: 11px;
+    opacity: 0.55;
+    margin-top: 1px;
+}
+
+.facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 26px;
+    margin: 9px 0 7px;
+}
+
+.fact-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.45;
+}
+
+.fact-value {
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+
+    &.measuring {
+        opacity: 0.5;
+    }
+
+    &.mono {
+        font-family: monospace;
+    }
+}
+
+.build-path {
+    font-family: monospace;
+    font-size: 11px;
+    opacity: 0.6;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &:hover {
+        opacity: 0.95;
+    }
+}
+
+.build-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 9px;
+}
+
+// ── Table ───────────────────────────────────────────────────────────────
+
+// The table is the one thing on this page that must not be squeezed into the
+// settings column: it carries eleven columns including full paths. The negative
+// margin cancels the settings pane's 30px padding so the table gets the whole
+// width of the pane, and scrolls sideways inside itself if it still needs more.
+// The page itself never scrolls horizontally.
+.table-wrap {
+    overflow-x: auto;
+    margin: 0 -30px;
+    padding: 0 30px;
+}
+
+.builds-table {
+    font-size: 12px;
+    width: max-content;
+    min-width: 100%;
+
+    th {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        opacity: 0.5;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    td {
+        vertical-align: middle;
+    }
+
+    tr.current td {
+        background: rgba(128, 128, 128, 0.08);
+    }
+
+    .num {
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    .mono {
+        font-family: monospace;
+    }
+
+    .path-cell {
+        font-family: monospace;
+        opacity: 0.6;
+        cursor: pointer;
+        white-space: nowrap;
+
+        &:hover {
+            opacity: 0.95;
+        }
+    }
+
+    .btn {
+        padding: 0 4px;
+    }
+}
+
+.muted {
+    opacity: 0.5;
+}
+
+.measuring {
+    opacity: 0.5;
+}
+
+.no-wrap {
+    white-space: nowrap;
+}

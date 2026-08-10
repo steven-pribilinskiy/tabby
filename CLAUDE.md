@@ -229,6 +229,42 @@ only a real renderer proves the mkcert cert is trusted:
 # BrowserWindow({ show: false }) + webContents.executeJavaScript(fetch(...))
 ```
 
+## Builds page (`tabby-builds`)
+
+Settings → **Builds** lists every Tabby build on this machine: the installed
+app, the webpack output this fork runs from, electron-builder output inside a
+checkout, and installer files. Live process counts, memory and uptime; size on
+disk, build time, arch, branch and provenance. Two tabs — the list (kind filter
++ cards/table switch) and Options.
+
+The bits that cost real time:
+
+- **Processes are attributed by executable path**, from one PowerShell call per
+  poll (`Get-Process -Name Tabby,electron` → `.Path`). `tasklist` cannot report a
+  path, and two builds both called `Tabby.exe` are otherwise indistinguishable.
+  Linux reads `/proc` directly rather than spawning `ps`; the poll pauses while
+  the window is unfocused, because it costs a subprocess.
+- **Versions come from the executable's own version resource**, not from
+  `resources/builtin-plugins/tabby-core/package.json` — that stamp goes stale
+  (the installed 1.0.230 here still carries a 1.0.197 plugin stamp).
+- **A source build's version and provenance come from `app/dist/build-info.json`**,
+  a sidecar `app/webpack.config.mjs` writes next to the bundle. The DefinePlugin
+  constants that feed the tab-bar build hint can only be read from *inside* a
+  running instance; this page has to describe builds sitting on disk. A card
+  reads `stale` when the checkout's HEAD has moved past what the bundle was
+  compiled from.
+- **`root` for a source build is `app/dist`, never the checkout.** Delete means
+  "delete the build", so it must not be able to mean "delete the repo". It also
+  removes the plugin `dist` dirs and `builtin-plugins` (`extraPaths`), which is
+  the rest of what `yarn build` produced.
+- **Delete on a running build quits it first** — `taskkill /PID /T` (a WM_CLOSE,
+  so the app can save state), force only after a grace period, then the
+  directory goes. The build the window is running from is never deletable.
+- Arch is read out of the PE header, except for installers: an NSIS stub is a
+  32-bit executable whatever it installs, so there the file name wins.
+- Sizes are walked one build at a time off the render path and cached; symlinks
+  are never followed, or `builtin-plugins` would count the same bytes twice.
+
 ## Known issues to fix in this fork
 
 - **Emoji width**: `❇️ ` (and other VS16 emoji) render one column too wide, leaving a

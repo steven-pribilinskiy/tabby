@@ -1,0 +1,336 @@
+h3.mb-3(translate) Builds
+
+.summary-bar.mb-3
+    .summary-stats
+        .stat
+            .stat-value {{builds.length}}
+            .stat-label(translate) builds
+        .stat
+            .stat-value([class.text-success]='processCount') {{processCount}}
+            .stat-label(translate) processes
+        .stat
+            .stat-value {{humanBytes(memoryTotal)}}
+            .stat-label(translate) memory
+        .stat
+            .stat-value(*ngIf='sizeTotal !== null') {{humanBytes(sizeTotal)}}
+            .stat-value.measuring(*ngIf='sizeTotal === null') …
+            .stat-label(translate) on disk
+
+    .flex-fill
+
+    .live-note(*ngIf='lastPoll')
+        .live-dot(*ngIf='!scanning')
+        span {{'Updated'|translate}} {{humanAgo(lastPoll)}}
+
+    button.btn.btn-sm.btn-secondary.ms-3(
+        (click)='rescan()',
+        [disabled]='scanning',
+        [title]='"Rescan"|translate'
+    )
+        i.fas.fa-fw.fa-arrows-rotate([class.fa-spin]='scanning')
+
+.alert.alert-danger(*ngIf='error') {{error}}
+
+ul.nav-tabs(ngbNav, #nav='ngbNav', [(activeId)]='activeTab')
+    li(ngbNavItem='builds')
+        a(ngbNavLink, draggable='false')
+            i.fas.fa-fw.fa-cubes.me-2
+            span(translate) Builds
+            span.tab-count.ms-2 {{builds.length}}
+        ng-template(ngbNavContent)
+            ng-container(*ngTemplateOutlet='buildList')
+
+    li(ngbNavItem='options')
+        a(ngbNavLink, draggable='false')
+            i.fas.fa-fw.fa-sliders.me-2
+            span(translate) Options
+        ng-template(ngbNavContent)
+            ng-container(*ngTemplateOutlet='options')
+
+div([ngbNavOutlet]='nav')
+
+// ── The build list, filtered by kind and shown in the selected view ─────
+
+ng-template(#buildList)
+    .list-controls
+        .btn-group.btn-group-sm
+            button.btn.btn-secondary(
+                [class.active]='filter === "all"',
+                (click)='setFilter("all")'
+            )
+                span(translate) All
+                span.tab-count.ms-2 {{builds.length}}
+            button.btn.btn-secondary(
+                *ngFor='let group of groups; trackBy: trackGroup',
+                [class.active]='filter === group.id',
+                (click)='setFilter(group.id)'
+            )
+                i.fas.fa-fw.me-1(class='fa-{{group.icon}}')
+                span {{group.label|translate}}
+                span.tab-count.ms-2 {{group.builds.length}}
+
+        .flex-fill
+
+        .btn-group.btn-group-sm
+            button.btn.btn-secondary(
+                [class.active]='view === "cards"',
+                (click)='setView("cards")',
+                [title]='"Cards"|translate'
+            )
+                i.fas.fa-fw.fa-layer-group
+            button.btn.btn-secondary(
+                [class.active]='view === "table"',
+                (click)='setView("table")',
+                [title]='"Table"|translate'
+            )
+                i.fas.fa-fw.fa-table-list
+
+    .text-muted.py-4(*ngIf='!visible.length && !scanning', translate) Nothing here.
+
+    .builds(*ngIf='view === "cards"')
+        .build-card(
+            *ngFor='let build of visible; trackBy: trackBuild',
+            [class.current]='build.isCurrent',
+            [class.running]='build.processes.length'
+        )
+            .build-head
+                .badge(class='text-bg-{{kindClass(build)}}') {{kindLabel(build)|translate}}
+                .build-name {{build.name}}
+                .build-version(*ngIf='build.version') {{build.version}}
+                .badge.text-bg-success(*ngIf='build.isCurrent', translate) this window
+                .badge.text-bg-warning(
+                    *ngIf='isStale(build)',
+                    [title]='"The checkout has moved on since this was compiled"|translate',
+                    translate
+                ) stale
+                .flex-fill
+                button.btn.btn-sm.btn-link(
+                    *ngIf='build.executable',
+                    (click)='launch(build)',
+                    [title]='"Launch"|translate'
+                )
+                    i.fas.fa-fw.fa-play
+                button.btn.btn-sm.btn-link(
+                    (click)='reveal(build)',
+                    [title]='"Reveal in file manager"|translate'
+                )
+                    i.fas.fa-fw.fa-folder-open
+                button.btn.btn-sm.btn-link(
+                    (click)='menu(build, $event)',
+                    [title]='"More"|translate'
+                )
+                    i.fas.fa-fw.fa-ellipsis-vertical
+
+            .build-detail {{build.detail|translate}}
+
+            .facts
+                .fact
+                    .fact-label(translate) Processes
+                    .fact-value(*ngIf='build.processes.length', [title]='pidList(build)')
+                        span.live-dot.me-1
+                        | {{build.processes.length}}
+                    .fact-value.muted(*ngIf='!build.processes.length', translate) not running
+                .fact(*ngIf='build.processes.length')
+                    .fact-label(translate) Memory
+                    .fact-value {{humanBytes(memoryOf(build))}}
+                .fact(*ngIf='uptimeOf(build) !== null')
+                    .fact-label(translate) Up for
+                    .fact-value {{humanDuration(uptimeOf(build))}}
+                .fact
+                    .fact-label(translate) Built
+                    .fact-value([title]='absoluteTime(build.builtAt)') {{humanAgo(build.builtAt)}}
+                .fact
+                    .fact-label(translate) Size
+                    .fact-value(*ngIf='build.size') {{humanBytes(build.size.bytes)}}
+                        span.muted.ms-1 ({{build.size.files}} {{(build.size.files === 1 ? 'file' : 'files')|translate}})
+                    .fact-value.measuring(*ngIf='!build.size && build.sizeState === "computing"', translate) measuring…
+                    .fact-value.muted(*ngIf='!build.size && build.sizeState === "idle"', translate) not measured
+                    .fact-value.text-danger(*ngIf='build.sizeState === "error"', translate) failed
+                .fact(*ngIf='build.arch')
+                    .fact-label(translate) Arch
+                    .fact-value {{build.arch}}
+                .fact(*ngIf='build.git?.branch')
+                    .fact-label(translate) Branch
+                    .fact-value {{build.git.branch}}
+                .fact(*ngIf='build.git?.builtFrom')
+                    .fact-label(translate) Built from
+                    .fact-value.mono {{build.git.builtFrom}}
+                        span.muted.ms-1(*ngIf='isStale(build)') → {{build.git.head}}
+
+            .build-path([title]='build.root', (click)='copyPath(build)') {{shortPath(build.root, 90)}}
+            .build-path.muted(*ngIf='build.configPath', [title]='build.configPath')
+                | {{'Config'|translate}}: {{shortPath(build.configPath, 80)}}
+
+            .build-actions
+                button.btn.btn-sm.btn-outline-secondary(
+                    *ngIf='build.processes.length && !build.isCurrent',
+                    (click)='quit(build)'
+                )
+                    i.fas.fa-fw.fa-power-off.me-1
+                    span(translate) Quit
+                button.btn.btn-sm.btn-outline-danger(
+                    (click)='delete(build)',
+                    [disabled]='!!deleteBlockedReason(build)',
+                    [title]='deleteBlockedReason(build) || ""'
+                )
+                    i.fas.fa-fw.fa-trash-can.me-1
+                    span {{deleteLabel(build)}}
+
+    .table-wrap(*ngIf='view === "table"')
+        table.table.table-sm.builds-table
+            thead
+                tr
+                    th(translate) Kind
+                    th(translate) Build
+                    th(translate) Version
+                    th.num(translate) Proc
+                    th.num(translate) Memory
+                    th.num(translate) Size
+                    th.num(translate) Files
+                    th(translate) Built
+                    th(translate) Arch
+                    th(translate) Branch
+                    th(translate) Path
+                    th
+            tbody
+                tr(
+                    *ngFor='let build of visible; trackBy: trackBuild',
+                    [class.current]='build.isCurrent'
+                )
+                    td
+                        .badge(class='text-bg-{{kindClass(build)}}') {{kindLabel(build)|translate}}
+                    td
+                        .d-flex.align-items-center.no-wrap
+                            span.live-dot.me-2(*ngIf='build.processes.length')
+                            span {{build.name}}
+                            .badge.text-bg-success.ms-2(*ngIf='build.isCurrent', translate) this window
+                            .badge.text-bg-warning.ms-2(*ngIf='isStale(build)', translate) stale
+                    td.mono {{build.version || '—'}}
+                    td.num([title]='pidList(build)') {{build.processes.length || '—'}}
+                    td.num {{build.processes.length ? humanBytes(memoryOf(build)) : '—'}}
+                    td.num
+                        span(*ngIf='build.size') {{humanBytes(build.size.bytes)}}
+                        span.measuring(*ngIf='!build.size && build.sizeState === "computing"') …
+                        span.muted(*ngIf='!build.size && build.sizeState !== "computing"') —
+                    td.num {{build.size ? build.size.files : '—'}}
+                    td.no-wrap([title]='absoluteTime(build.builtAt)') {{humanAgo(build.builtAt)}}
+                    td {{build.arch || '—'}}
+                    td.mono {{build.git?.branch || '—'}}
+                    td.path-cell([title]='build.root', (click)='copyPath(build)') {{build.root}}
+                    td.text-end.no-wrap
+                        button.btn.btn-sm.btn-link(
+                            *ngIf='build.executable',
+                            (click)='launch(build)',
+                            [title]='"Launch"|translate'
+                        )
+                            i.fas.fa-fw.fa-play
+                        button.btn.btn-sm.btn-link(
+                            (click)='reveal(build)',
+                            [title]='"Reveal in file manager"|translate'
+                        )
+                            i.fas.fa-fw.fa-folder-open
+                        button.btn.btn-sm.btn-link.text-danger(
+                            (click)='delete(build)',
+                            [disabled]='!!deleteBlockedReason(build)',
+                            [title]='deleteBlockedReason(build) || deleteLabel(build)'
+                        )
+                            i.fas.fa-fw.fa-trash-can
+                        button.btn.btn-sm.btn-link(
+                            (click)='menu(build, $event)',
+                            [title]='"More"|translate'
+                        )
+                            i.fas.fa-fw.fa-ellipsis-vertical
+
+// ── Options ────────────────────────────────────────────────────────────
+
+ng-template(#options)
+    h4.mb-2(translate) Scanning
+
+    .form-line
+        .header
+            .title(translate) Search roots
+            .description(translate) One per line. Searched for source checkouts and installer files; ~ is your home directory
+        textarea.form-control(
+            rows='3',
+            [(ngModel)]='searchRootsText',
+            (ngModelChange)='saveConfiguration()',
+            (blur)='rescan()',
+        )
+
+    .form-line
+        .header
+            .title(translate) Search depth
+            .description(translate) How many directory levels below each root to look
+        input.form-control(
+            type='number',
+            min='0',
+            max='8',
+            step='1',
+            [(ngModel)]='config.store.builds.searchDepth',
+            (ngModelChange)='saveConfiguration()',
+        )
+
+    .form-line
+        .header
+            .title(translate) List installer files
+            .description(translate) Setup executables, .dmg and .AppImage files found under the search roots
+        toggle(
+            [(ngModel)]='config.store.builds.includeInstallers',
+            (ngModelChange)='saveAndRescan()',
+        )
+
+    .form-line
+        .header
+            .title(translate) Measure size on disk
+            .description(translate) Walks each build when it is discovered. Turn off if a build lives on slow storage
+        toggle(
+            [(ngModel)]='config.store.builds.autoSize',
+            (ngModelChange)='saveConfiguration()',
+        )
+
+    h4.mt-4.mb-2(translate) Live updates
+
+    .form-line
+        .header
+            .title(translate) Process refresh interval
+            .description(translate) Milliseconds between process checks. Takes effect next time this page opens
+        input.form-control(
+            type='number',
+            min='500',
+            step='500',
+            [(ngModel)]='config.store.builds.processPollMs',
+            (ngModelChange)='saveConfiguration()',
+        )
+
+    .form-line
+        .header
+            .title(translate) Rescan interval
+            .description(translate) Milliseconds between filesystem rescans
+        input.form-control(
+            type='number',
+            min='5000',
+            step='5000',
+            [(ngModel)]='config.store.builds.rescanMs',
+            (ngModelChange)='saveConfiguration()',
+        )
+
+    .form-line
+        .header
+            .title(translate) Pause when unfocused
+            .description(translate) Stop polling while this window is in the background
+        toggle(
+            [(ngModel)]='config.store.builds.pauseWhenUnfocused',
+            (ngModelChange)='saveConfiguration()',
+        )
+
+    h4.mt-4.mb-2(translate) Launching a source build
+
+    .form-line
+        .header
+            .title(translate) Profile directory
+            .description(translate) Source builds launch with an isolated profile so they never collide with the installed app. Leave empty for a scratch directory per checkout
+        input.form-control(
+            type='text',
+            [(ngModel)]='config.store.builds.devProfileDirectory',
+            (ngModelChange)='saveConfiguration()',
+        )
