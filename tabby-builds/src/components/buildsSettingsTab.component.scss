@@ -155,9 +155,42 @@
     font-size: 13px;
 }
 
+// The names the finding is about, as chips: they are the part you scan for,
+// and buried mid-sentence they are the part you cannot find.
+.finding-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 5px 0 4px;
+}
+
+.finding-chip {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: rgba(128, 128, 128, 0.2);
+    color: inherit;
+}
+
+.finding-path {
+    font-family: monospace;
+    font-size: 11px;
+    opacity: 0.6;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-bottom: 4px;
+}
+
 .finding-detail {
     font-size: 12px;
-    opacity: 0.75;
+    opacity: 0.85;
+}
+
+.finding-hint {
+    font-size: 11px;
+    opacity: 0.55;
+    margin-top: 2px;
 }
 
 .facts {
@@ -231,6 +264,19 @@
         white-space: nowrap;
     }
 
+    th.sortable {
+        cursor: pointer;
+        user-select: none;
+
+        &:hover {
+            opacity: 0.85;
+        }
+
+        &.sorted {
+            opacity: 1;
+        }
+    }
+
     td {
         vertical-align: middle;
     }
@@ -261,6 +307,26 @@
 
     .btn {
         padding: 0 4px;
+    }
+
+    // The actions stay put while the rest scrolls sideways: they are the point
+    // of the row, and a table eleven columns wide pushes them off the edge.
+    // They need an opaque background of their own so the path scrolls *under*
+    // them rather than through them.
+    th:last-child,
+    td:last-child {
+        position: sticky;
+        right: 0;
+        background: var(--theme-bg);
+        box-shadow: -6px 0 6px -6px rgba(0, 0, 0, 0.35);
+    }
+
+    // The current row's tint is layered over the same base, or the pinned cell
+    // would sit a shade lighter than the row it belongs to.
+    tr.current td:last-child {
+        background:
+            linear-gradient(rgba(128, 128, 128, 0.08), rgba(128, 128, 128, 0.08)),
+            var(--theme-bg);
     }
 }
 

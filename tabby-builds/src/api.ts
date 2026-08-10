@@ -110,11 +110,25 @@ export type BuildsView = 'cards' | 'table'
 /** What can be done about a finding, beyond reading it. */
 export type HealthFix = 'none' | 'restart' | 'reinstall' | 'revealUserPlugins'
 
+/**
+ * A finding is structured rather than a paragraph: the names it is about, the
+ * place it is about, what goes wrong and what to do are four different kinds of
+ * thing, and running them together as prose makes the one you need hardest to
+ * find.
+ */
 export interface HealthFinding {
     id: string
     severity: 'warning' | 'error'
+    /** One line, the whole point of the finding. */
     title: string
+    /** The names the finding is about — plugins, files. Rendered as chips. */
+    items?: string[]
+    /** Where, in one path. Rendered monospace on its own line. */
+    location?: string
+    /** What actually goes wrong. One sentence. */
     detail: string
+    /** Why it happened, or what to do about it. One sentence. */
+    hint?: string
     fix?: HealthFix
 }
 

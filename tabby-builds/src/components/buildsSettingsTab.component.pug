@@ -143,9 +143,13 @@ ng-template(#buildList)
                     [class.fa-triangle-exclamation]='finding.severity === "warning"'
                 )
                 .finding-body
-                    .finding-title {{finding.title|translate}}
+                    .finding-title {{finding.title}}
+                    .finding-items(*ngIf='finding.items?.length')
+                        code.finding-chip(*ngFor='let item of finding.items') {{item}}
+                    .finding-path(*ngIf='finding.location', [title]='finding.location') {{shortPath(finding.location, 70)}}
                     .finding-detail {{finding.detail}}
-                button.btn.btn-sm.btn-outline-light.flex-shrink-0(
+                    .finding-hint(*ngIf='finding.hint') {{finding.hint}}
+                button.btn.btn-sm.btn-outline-secondary.flex-shrink-0(
                     *ngIf='finding.fix && finding.fix !== "none"',
                     (click)='applyFix(build, finding)'
                 ) {{fixLabel(finding)|translate}}
@@ -230,17 +234,39 @@ ng-template(#buildList)
         table.table.table-sm.builds-table
             thead
                 tr
-                    th(translate) Kind
-                    th(translate) Build
-                    th(translate) Version
-                    th.num(translate) Proc
-                    th.num(translate) Memory
-                    th.num(translate) Size
-                    th.num(translate) Files
-                    th(translate) Built
-                    th(translate) Arch
-                    th(translate) Branch
-                    th(translate) Path
+                    th.sortable([class.sorted]='sortKey === "kind"', (click)='setSort("kind")')
+                        span(translate) Kind
+                        i.fas.ms-1([class]='sortIcon("kind")')
+                    th.sortable([class.sorted]='sortKey === "name"', (click)='setSort("name")')
+                        span(translate) Build
+                        i.fas.ms-1([class]='sortIcon("name")')
+                    th.sortable([class.sorted]='sortKey === "version"', (click)='setSort("version")')
+                        span(translate) Version
+                        i.fas.ms-1([class]='sortIcon("version")')
+                    th.num.sortable([class.sorted]='sortKey === "procs"', (click)='setSort("procs")')
+                        span(translate) Proc
+                        i.fas.ms-1([class]='sortIcon("procs")')
+                    th.num.sortable([class.sorted]='sortKey === "memory"', (click)='setSort("memory")')
+                        span(translate) Memory
+                        i.fas.ms-1([class]='sortIcon("memory")')
+                    th.num.sortable([class.sorted]='sortKey === "size"', (click)='setSort("size")')
+                        span(translate) Size
+                        i.fas.ms-1([class]='sortIcon("size")')
+                    th.num.sortable([class.sorted]='sortKey === "files"', (click)='setSort("files")')
+                        span(translate) Files
+                        i.fas.ms-1([class]='sortIcon("files")')
+                    th.sortable([class.sorted]='sortKey === "built"', (click)='setSort("built")')
+                        span(translate) Built
+                        i.fas.ms-1([class]='sortIcon("built")')
+                    th.sortable([class.sorted]='sortKey === "arch"', (click)='setSort("arch")')
+                        span(translate) Arch
+                        i.fas.ms-1([class]='sortIcon("arch")')
+                    th.sortable([class.sorted]='sortKey === "branch"', (click)='setSort("branch")')
+                        span(translate) Branch
+                        i.fas.ms-1([class]='sortIcon("branch")')
+                    th.sortable([class.sorted]='sortKey === "path"', (click)='setSort("path")')
+                        span(translate) Path
+                        i.fas.ms-1([class]='sortIcon("path")')
                     th
             tbody
                 tr(

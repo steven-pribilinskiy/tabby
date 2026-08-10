@@ -72,6 +72,9 @@ export class BuildsSettingsTabComponent extends BaseComponent {
     groups: BuildGroup[] = []
     /** What the filter buttons currently select: 'all' or a BuildKind. */
     filter = 'all'
+    /** Column the table sorts by; null keeps the scanner's natural order. */
+    sortKey: string | null = null
+    sortDescending = false
     /** `builds` narrowed by `filter` — a field, so *ngFor sees a stable array. */
     visible: TabbyBuild[] = []
     /** 'builds' or 'options'. */
@@ -274,10 +277,68 @@ export class BuildsSettingsTabComponent extends BaseComponent {
         this.applyFilter()
     }
 
+    /**
+     * Click a column to sort by it, click again to reverse, a third time to go
+     * back to the natural order — current build first, then by kind, then
+     * newest. That default carries real meaning, so it has to be reachable.
+     */
+    setSort (key: string): void {
+        if (this.sortKey !== key) {
+            this.sortKey = key
+            this.sortDescending = key === 'built' || key === 'size' || key === 'files'
+                || key === 'procs' || key === 'memory'
+        } else if (!this.sortDescending) {
+            this.sortKey = null
+        } else {
+            this.sortDescending = false
+        }
+        this.applyFilter()
+    }
+
+    sortIcon (key: string): string {
+        if (this.sortKey !== key) {
+            return ''
+        }
+        return this.sortDescending ? 'fa-arrow-down-wide-short' : 'fa-arrow-up-short-wide'
+    }
+
+    /**
+     * Sorting happens here rather than on every poll: process counts change
+     * every few seconds, and re-ordering rows under someone reading them is
+     * worse than a stale position.
+     */
     private applyFilter (): void {
-        this.visible = this.filter === 'all'
-            ? this.builds
+        const rows = this.filter === 'all'
+            ? [...this.builds]
             : this.builds.filter(x => x.kind === this.filter)
+        if (this.sortKey) {
+            const key = this.sortKey
+            rows.sort((a, b) => {
+                const left = this.sortValue(a, key)
+                const right = this.sortValue(b, key)
+                const order = left < right ? -1 : left > right ? 1 : 0
+                return this.sortDescending ? -order : order
+            })
+        }
+        this.visible = rows
+    }
+
+    private sortValue (build: TabbyBuild, key: string): string | number {
+        switch (key) {
+            case 'kind': return KINDS.indexOf(build.kind)
+            case 'name': return build.name.toLowerCase()
+            case 'version': return (build.version ?? '').toLowerCase()
+            case 'procs': return build.processes.length
+            case 'memory': return this.memoryOf(build)
+            // Unmeasured sorts below anything measured rather than as zero.
+            case 'size': return build.size ? build.size.bytes : -1
+            case 'files': return build.size ? build.size.files : -1
+            case 'built': return build.builtAt ?? 0
+            case 'arch': return (build.arch ?? '').toLowerCase()
+            case 'branch': return (build.git?.branch ?? '').toLowerCase()
+            case 'path': return build.root.toLowerCase()
+            default: return 0
+        }
     }
 
     trackGroup (_index: number, group: BuildGroup): string {

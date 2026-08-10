@@ -158,7 +158,10 @@ export class BuildDoctorService {
                 id: 'builtins-missing',
                 severity: 'error',
                 title: `${missing.length} required builtin plugin${missing.length > 1 ? 's are' : ' is'} missing`,
-                detail: `${missing.join(', ')} — the renderer throws "Cannot find module '${missing[0]}'" during startup and never leaves the splash screen. This is what a half-applied update leaves behind. Reinstalling the same version restores them.`,
+                items: missing,
+                location: builtins,
+                detail: `The renderer throws "Cannot find module '${missing[0]}'" at startup and never leaves the splash screen.`,
+                hint: 'This is what a half-applied update leaves behind. Reinstalling the same version restores them.',
                 fix: 'reinstall',
             })
         }
@@ -167,7 +170,10 @@ export class BuildDoctorService {
                 id: 'builtins-incomplete',
                 severity: 'error',
                 title: `${broken.length} builtin plugin director${broken.length > 1 ? 'ies are' : 'y is'} incomplete`,
-                detail: `${broken.join(', ')} — present but with no package.json or no dist. Reinstall to restore.`,
+                items: broken,
+                location: builtins,
+                detail: 'Present, but with no package.json or no dist.',
+                hint: 'Reinstall the same version to restore them.',
                 fix: 'reinstall',
             })
         }
@@ -175,8 +181,9 @@ export class BuildDoctorService {
             findings.push({
                 id: 'builtins-thin',
                 severity: 'warning',
-                title: 'Fewer builtin plugins than expected',
-                detail: `${present.size} plugin directories. The build starts, but features may be missing.`,
+                title: `Only ${present.size} builtin plugins`,
+                location: builtins,
+                detail: 'Fewer than a complete install carries. The build starts, but features may be missing.',
                 fix: 'reinstall',
             })
         }
@@ -201,7 +208,10 @@ export class BuildDoctorService {
             id: 'shadowed-builtins',
             severity: 'warning',
             title: `${shadowing.length} builtin plugin${shadowing.length > 1 ? 's are' : ' is'} shadowed by a user copy`,
-            detail: `${shadowing.join(', ')} in ${modules}. These are builtins; a second copy on the module path loads a second Angular and breaks dependency injection. They usually arrive as dependencies of a third-party plugin. Removing them is safe.`,
+            items: shadowing,
+            location: modules,
+            detail: 'A second copy on the module path loads a second Angular and breaks dependency injection.',
+            hint: 'They usually arrive as dependencies of a third-party plugin. Removing them is safe.',
             fix: 'revealUserPlugins',
         }] : []
     }
@@ -234,8 +244,9 @@ export class BuildDoctorService {
             findings.push({
                 id: 'stuck-at-boot',
                 severity: 'error',
-                title: 'Started but never finished loading',
-                detail: `The window has been showing the splash screen for ${Math.round(age / 60000)} min — its title is still "${window.title}" rather than a tab. Windows still reports the process as responding, so nothing else will flag this. Check the payload findings above for the cause.`,
+                title: `Stuck on the splash screen for ${Math.round(age / 60000)} min`,
+                detail: `Its window is still titled "${window.title}" rather than a tab, so the renderer never finished starting.`,
+                hint: 'Windows still reports the process as responding, so nothing else flags this. The cause is usually a payload finding above.',
                 fix: 'restart',
             })
         }
