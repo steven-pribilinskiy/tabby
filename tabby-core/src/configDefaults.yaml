@@ -8,7 +8,9 @@ appearance:
   dockHideOnBlur: false
   dockAlwaysOnTop: true
   flexTabs: false
-  tabsLocation: top
+  # Vertical tabs by default in this fork: tab titles are paths and session
+  # names here, and a horizontal strip truncates them to nothing.
+  tabsLocation: left
   tabsInFullscreen: false
   cycleTabs: true
   theme: Follow the color scheme

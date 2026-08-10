@@ -265,6 +265,14 @@ The bits that cost real time:
 - Sizes are walked one build at a time off the render path and cached; symlinks
   are never followed, or `builtin-plugins` would count the same bytes twice.
 
+## Changed upstream defaults
+
+Kept to a minimum — every one is a line that conflicts on rebase.
+
+- `appearance.tabsLocation: left` (`tabby-core/src/configDefaults.yaml`) —
+  vertical tabs. Titles here are paths and session names, which a horizontal
+  strip truncates to nothing. Only affects profiles with no value saved.
+
 ## Known issues to fix in this fork
 
 - **Emoji width**: `❇️ ` (and other VS16 emoji) render one column too wide, leaving a
