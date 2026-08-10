@@ -289,6 +289,36 @@ The bits that cost real time:
 - Sizes are walked one build at a time off the render path and cached; symlinks
   are never followed, or `builtin-plugins` would count the same bytes twice.
 
+### The doctor
+
+Each build is health-checked on every scan, and a build that will not start
+says why on its own card. Written after an auto-update applied while the old
+version was running, deleted nine of the twelve directories under
+`resources/builtin-plugins`, and left the app starting to a splash screen
+forever — with Windows reporting the process as responding the whole time.
+
+- **`Responding` / `IsHungAppWindow` do not catch a boot that stalled.** The
+  window pumps messages perfectly; it just never rendered. Measured on the real
+  failure: responding `True`, 6.5 s of CPU across 37 minutes.
+- **The main window title is the signal that does.** A booted Tabby titles its
+  window after the active tab; one still on the splash is called `Tabby`. No
+  cooperation from the app required, so it works for stock builds too. Past a
+  30 s grace period, that is *stuck at boot*.
+- **The cause is found on disk, not in the process.** `tabby-core`,
+  `tabby-settings`, `tabby-terminal`, `tabby-local` and `tabby-electron` are
+  the builtins whose absence is fatal — each throws `Cannot find module` out of
+  the plugin loader as an unhandled rejection that nothing catches.
+- **`fs.access` lies about `app.asar`.** Electron mounts the archive as a
+  directory, so `access()` on it answers ENOENT for a file that is plainly
+  there while `stat()` calls it a directory. Ask the parent's directory
+  listing instead — this produced a false "bundle is missing" on every
+  packaged build until it was caught in testing.
+- A builtin copied into the *user* plugin directory is reported too: a second
+  `tabby-core` on the module path loads a second Angular and breaks DI.
+- Verified by reproducing the fault — a copy of a slot with `tabby-local`
+  deleted, launched, and confirmed to be reported as `will not start` with both
+  the cause and the symptom, while every healthy build stayed clean.
+
 ### The active build and the taskbar pin
 
 Exactly one build is **active** — "the Tabby you use". It is the build the

@@ -1,9 +1,10 @@
 import { Component } from '@angular/core'
 import { BaseComponent, ConfigService, PlatformService } from 'tabby-core'
 
-import { BuildKind, BuildsView, TabbyBuild } from '../api'
+import { BuildKind, BuildsView, HealthFinding, TabbyBuild } from '../api'
 import { absoluteTime, humanAgo, humanBytes, humanDuration, shortPath } from '../format'
 import { BuildActionsService } from '../services/buildActions.service'
+import { BuildDoctorService } from '../services/buildDoctor.service'
 import { BuildProcessesService, normalize } from '../services/buildProcesses.service'
 import { BuildScannerService } from '../services/buildScanner.service'
 import { BuildSizeService } from '../services/buildSize.service'
@@ -104,6 +105,7 @@ export class BuildsSettingsTabComponent extends BaseComponent {
     constructor (
         public config: ConfigService,
         private actions: BuildActionsService,
+        private doctor: BuildDoctorService,
         private platform: PlatformService,
         private processes: BuildProcessesService,
         private scanner: BuildScannerService,
@@ -170,6 +172,10 @@ export class BuildsSettingsTabComponent extends BaseComponent {
                 }
             }
             await this.poll(true)
+            // After the poll, so the live checks see the processes.
+            if (this.config.store.builds.autoDiagnose) {
+                await this.diagnoseAll()
+            }
         } catch (err) {
             this.error = String(err)
         } finally {
@@ -272,6 +278,56 @@ export class BuildsSettingsTabComponent extends BaseComponent {
 
     trackGroup (_index: number, group: BuildGroup): string {
         return group.id
+    }
+
+    // ── Health ───────────────────────────────────────────────────────────
+
+    /** Cheap enough to run for every build on every scan — all `access` calls. */
+    async diagnoseAll (): Promise<void> {
+        for (const build of this.builds) {
+            build.health = await this.doctor.examine(build)
+        }
+        this.now = Date.now()
+    }
+
+    async diagnose (build: TabbyBuild): Promise<void> {
+        build.health = await this.doctor.examine(build)
+        this.now = Date.now()
+    }
+
+    get brokenCount (): number {
+        return this.builds.filter(x => x.health?.verdict === 'broken').length
+    }
+
+    /** Act on a finding. Each fix is the one correct action for that cause. */
+    applyFix (build: TabbyBuild, finding: HealthFinding): void {
+        switch (finding.fix) {
+            case 'restart':
+                void this.actions.restart(build, () => void this.rescan(true))
+                break
+            case 'reinstall':
+                void this.doctor.findRepairInstaller(build, this.builds)
+                    .then(installer => this.actions.repair(build, installer))
+                break
+            case 'revealUserPlugins':
+                this.actions.revealUserPlugins(build)
+                break
+            default:
+                break
+        }
+    }
+
+    fixLabel (finding: HealthFinding): string {
+        switch (finding.fix) {
+            case 'restart': return 'Restart'
+            case 'reinstall': return 'Reinstall'
+            case 'revealUserPlugins': return 'Open the folder'
+            default: return ''
+        }
+    }
+
+    restart (build: TabbyBuild): void {
+        void this.actions.restart(build, () => void this.rescan(true))
     }
 
     // ── Summary ──────────────────────────────────────────────────────────

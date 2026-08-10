@@ -28,6 +28,12 @@ export class BuildsConfigProvider extends ConfigProvider {
 
             /** Walk each build for its size as soon as it is discovered. */
             autoSize: true,
+            /**
+             * Health-check every build on each scan. Cheap — a handful of
+             * `access` calls — and it is what turns "it just shows a splash
+             * screen" into a named cause.
+             */
+            autoDiagnose: true,
 
             /**
              * The build "you use" — the one the taskbar pin launches, marked

@@ -8,6 +8,7 @@ import { ConfigService, MenuItemOptions, NotificationsService, PlatformService, 
 
 import { TabbyBuild } from '../api'
 import { humanBytes } from '../format'
+import { BuildDoctorService } from './buildDoctor.service'
 import { BuildProcessesService } from './buildProcesses.service'
 import { BuildSizeService } from './buildSize.service'
 import { TaskbarService } from './taskbar.service'
@@ -50,6 +51,7 @@ function run (command: string, args: string[]): Promise<string> {
 export class BuildActionsService {
     constructor (
         private config: ConfigService,
+        private doctor: BuildDoctorService,
         private notifications: NotificationsService,
         private platform: PlatformService,
         private processes: BuildProcessesService,
@@ -97,6 +99,10 @@ export class BuildActionsService {
         }
         items.push({ type: 'separator' })
         if (build.processes.length && !build.isCurrent) {
+            items.push({
+                label: this.translate.instant('Restart'),
+                click: () => void this.restart(build, onChanged),
+            })
             items.push({
                 label: this.translate.instant('Quit'),
                 click: () => void this.quit(build, onChanged),
@@ -198,6 +204,66 @@ export class BuildActionsService {
             this.notifications.info(this.translate.instant('Launching {name}', { name: build.name }))
         } catch (err) {
             this.notifications.error(String(err))
+        }
+    }
+
+    /**
+     * Stop a build and start it again. Escalates the same way a wedged build
+     * forces you to by hand: WM_CLOSE first, force after the grace period,
+     * then relaunch — a build stuck on its splash screen ignores a polite
+     * close, so a restart that only tries the polite one does nothing.
+     */
+    async restart (build: TabbyBuild, onChanged: () => void): Promise<void> {
+        if (build.isCurrent) {
+            this.notifications.error(this.translate.instant('This window is running that build; restart it from the window itself'))
+            return
+        }
+        if (build.processes.length && !await this.quit(build, onChanged, true)) {
+            this.notifications.error(this.translate.instant('{name} would not stop', { name: build.name }))
+            return
+        }
+        await this.launch(build)
+        onChanged()
+    }
+
+    /**
+     * Repair a build by reinstalling it. Prefers an installer already on this
+     * machine for the same version — reinstalling in place is a restore, while
+     * fetching "latest" would quietly turn a repair into an upgrade.
+     */
+    async repair (build: TabbyBuild, installer: string | null): Promise<void> {
+        const detail = installer
+            ? this.translate.instant('This runs {installer}. Close the build first if it is running.', { installer })
+            : this.translate.instant('No installer for this version was found on this machine. The release page will open so you can download it.')
+        const result = await this.platform.showMessageBox({
+            type: 'warning',
+            message: this.translate.instant('Reinstall {name}?', { name: build.name }),
+            detail,
+            buttons: [this.translate.instant('Cancel'), installer ? this.translate.instant('Reinstall') : this.translate.instant('Open release page')],
+            defaultId: 0,
+            cancelId: 0,
+        })
+        if (result.response !== 1) {
+            return
+        }
+        if (!installer) {
+            void this.platform.openExternal(this.doctor.releaseURL(build))
+            return
+        }
+        try {
+            spawn(installer, [], { detached: true, stdio: 'ignore' }).unref()
+        } catch (err) {
+            this.notifications.error(String(err))
+        }
+    }
+
+    /** Open the user plugin directory whose contents are shadowing a builtin. */
+    revealUserPlugins (build: TabbyBuild): void {
+        const configDir = build.configPath
+            ? path.dirname(build.configPath)
+            : build.kind === 'portable' ? path.join(build.root, 'data') : null
+        if (configDir) {
+            this.platform.openPath(path.join(configDir, 'plugins', 'node_modules'))
         }
     }
 

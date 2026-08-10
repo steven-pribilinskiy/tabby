@@ -30,7 +30,24 @@ $rows = foreach ($p in Get-Process -Name Tabby,tabby,electron) {
     if (-not $exe) { continue }
     $started = $null
     try { $started = [int64]($p.StartTime.ToUniversalTime() - $epoch).TotalMilliseconds } catch { }
-    [pscustomobject]@{ pid = $p.Id; exe = $exe; mem = $p.WorkingSet64; started = $started }
+    $title = ''
+    $responding = $null
+    $hasWindow = $false
+    try {
+        if ($p.MainWindowHandle -ne 0) {
+            $hasWindow = $true
+            $title = $p.MainWindowTitle
+            # Wraps IsHungAppWindow: false means the window has stopped
+            # answering messages. True proves nothing about whether the app
+            # ever finished starting.
+            $responding = $p.Responding
+        }
+    } catch { }
+    [pscustomobject]@{
+        pid = $p.Id; exe = $exe; mem = $p.WorkingSet64; started = $started
+        cpu = [int64]$p.TotalProcessorTime.TotalMilliseconds
+        window = $hasWindow; title = $title; responding = $responding
+    }
 }
 $json = @($rows) | ConvertTo-Json -Depth 3 -Compress
 if (-not $json) { $json = '[]' }
@@ -113,7 +130,7 @@ export class BuildProcessesService {
         const key = normalize(executable)
         return this.last
             .filter(x => x.executable === key)
-            .map(({ pid, memoryBytes, startedAt }) => ({ pid, memoryBytes, startedAt }))
+            .map(({ executable: _, ...rest }) => rest)
             .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0))
     }
 
@@ -140,6 +157,10 @@ export class BuildProcessesService {
             executable: normalize(row.exe),
             memoryBytes: row.mem ?? 0,
             startedAt: row.started ?? null,
+            cpuMs: row.cpu ?? 0,
+            hasWindow: !!row.window,
+            title: row.title ?? '',
+            responding: row.window ? !!row.responding : null,
         }))
     }
 
@@ -167,6 +188,8 @@ export class BuildProcessesService {
                 // may contain spaces, so count from the closing parenthesis.
                 const after = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
                 const startTicks = parseInt(after[19], 10)
+                // utime + stime, fields 14 and 15, counted from the state field.
+                const cpuTicks = (parseInt(after[11], 10) || 0) + (parseInt(after[12], 10) || 0)
                 out.push({
                     pid: parseInt(entry, 10),
                     executable: normalize(exe),
@@ -174,6 +197,12 @@ export class BuildProcessesService {
                     // Tabby runs.
                     memoryBytes: parseInt(statm.split(' ')[1], 10) * 4096,
                     startedAt: isNaN(startTicks) ? null : bootTime + startTicks / ticks * 1000,
+                    cpuMs: cpuTicks / ticks * 1000,
+                    // X11/Wayland window state is not readable this cheaply;
+                    // reporting nothing beats reporting a guess.
+                    hasWindow: false,
+                    title: '',
+                    responding: null,
                 })
             } catch {
                 // Not ours to read, or it exited between readdir and readlink.
@@ -214,6 +243,10 @@ export class BuildProcessesService {
                 executable: normalize(exe),
                 memoryBytes: parseInt(match[2], 10) * 1024,
                 startedAt: elapsed === null ? null : Date.now() - elapsed * 1000,
+                cpuMs: 0,
+                hasWindow: false,
+                title: '',
+                responding: null,
             })
         }
         return out

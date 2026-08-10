@@ -104,6 +104,9 @@ ng-template(#buildList)
                     i.fas.fa-thumbtack.me-1
                     span(translate) active
                 .badge.text-bg-success(*ngIf='build.isCurrent', translate) this window
+                .badge.text-bg-danger(*ngIf='build.health?.verdict === "broken"')
+                    i.fas.fa-circle-exclamation.me-1
+                    span(translate) will not start
                 .badge.text-bg-warning(
                     *ngIf='isStale(build)',
                     [title]='"The checkout has moved on since this was compiled"|translate',
@@ -128,6 +131,24 @@ ng-template(#buildList)
                     i.fas.fa-fw.fa-ellipsis-vertical
 
             .build-detail {{build.detail|translate}}
+
+            // Findings sit directly under the name: when a build will not
+            // start, the cause is the only thing on this card worth reading.
+            .finding(
+                *ngFor='let finding of build.health?.findings',
+                [class.error]='finding.severity === "error"'
+            )
+                i.fas.fa-fw.mt-1(
+                    [class.fa-circle-exclamation]='finding.severity === "error"',
+                    [class.fa-triangle-exclamation]='finding.severity === "warning"'
+                )
+                .finding-body
+                    .finding-title {{finding.title|translate}}
+                    .finding-detail {{finding.detail}}
+                button.btn.btn-sm.btn-outline-light.flex-shrink-0(
+                    *ngIf='finding.fix && finding.fix !== "none"',
+                    (click)='applyFix(build, finding)'
+                ) {{fixLabel(finding)|translate}}
 
             .facts
                 .fact
@@ -171,6 +192,18 @@ ng-template(#buildList)
                 | {{'Config'|translate}}: {{shortPath(build.configPath, 80)}}
 
             .build-actions
+                button.btn.btn-sm.btn-outline-secondary(
+                    *ngIf='build.processes.length && !build.isCurrent',
+                    (click)='restart(build)'
+                )
+                    i.fas.fa-fw.fa-arrows-rotate.me-1
+                    span(translate) Restart
+                button.btn.btn-sm.btn-outline-secondary(
+                    (click)='diagnose(build)',
+                    [title]='"Re-run the health check"|translate'
+                )
+                    i.fas.fa-fw.fa-stethoscope.me-1
+                    span(translate) Diagnose
                 button.btn.btn-sm.btn-outline-primary(
                     *ngIf='build.executable && !build.isActive',
                     (click)='makeActive(build)',

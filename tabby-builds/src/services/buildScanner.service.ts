@@ -516,6 +516,7 @@ export class BuildScannerService {
             processes: [],
             size: null,
             sizeState: 'idle',
+            health: null,
         }
     }
 

@@ -16,6 +16,19 @@ export interface BuildProcess {
     memoryBytes: number
     /** Epoch millis, or null when the OS would not tell us. */
     startedAt: number | null
+    /** Total CPU time consumed since start, in ms. */
+    cpuMs: number
+    /** True for the process owning the app's main window. */
+    hasWindow: boolean
+    /**
+     * The main window's title. A booted Tabby titles its window after the
+     * active tab; one that never got past the splash is still called "Tabby".
+     * That difference is the only external signal that catches a boot that
+     * stalled — `responding` stays true throughout one.
+     */
+    title: string
+    /** False once the window stops answering messages. Null without a window. */
+    responding: boolean | null
 }
 
 /**
@@ -88,6 +101,25 @@ export interface TabbyBuild {
     processes: BuildProcess[]
     size: BuildSize | null
     sizeState: 'idle' | 'computing' | 'error'
+    /** Result of the last health check; null until one has run. */
+    health: BuildHealth | null
 }
 
 export type BuildsView = 'cards' | 'table'
+
+/** What can be done about a finding, beyond reading it. */
+export type HealthFix = 'none' | 'restart' | 'reinstall' | 'revealUserPlugins'
+
+export interface HealthFinding {
+    id: string
+    severity: 'warning' | 'error'
+    title: string
+    detail: string
+    fix?: HealthFix
+}
+
+export interface BuildHealth {
+    checkedAt: number
+    findings: HealthFinding[]
+    verdict: 'healthy' | 'degraded' | 'broken'
+}
