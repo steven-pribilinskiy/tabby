@@ -60,20 +60,34 @@ export class BuildActionsService {
         private translate: TranslateService,
     ) { }
 
+    /**
+     * The menu for a build.
+     *
+     * An item that could never apply to this kind of build is left out rather
+     * than greyed out: an installer has no Launch, and a greyed Launch on one
+     * only invites you to wonder what would make it work. Greying is reserved
+     * for a command that normally applies but is blocked right now — and then
+     * the label has to say what is blocking it, because a native menu item
+     * cannot carry a tooltip anywhere but macOS.
+     */
     buildMenu (build: TabbyBuild, onChanged: () => void): MenuItemOptions[] {
-        const items: MenuItemOptions[] = [
-            {
+        const items: MenuItemOptions[] = []
+
+        if (build.executable) {
+            items.push({
                 label: this.translate.instant('Launch'),
-                enabled: !!build.executable,
                 click: () => void this.launch(build),
-            },
-            {
+            })
+        }
+        if (build.executable && !build.isActive) {
+            items.push({
                 label: this.taskbar.isSupported()
                     ? this.translate.instant('Make active and pin to the taskbar')
                     : this.translate.instant('Make active'),
-                enabled: !!build.executable && !build.isActive,
                 click: () => void this.setActive(build, onChanged),
-            },
+            })
+        }
+        items.push(
             {
                 label: this.translate.instant('Reveal in file manager'),
                 click: () => this.reveal(build),
@@ -83,14 +97,17 @@ export class BuildActionsService {
                 label: this.translate.instant('Copy path'),
                 click: () => this.platform.setClipboard({ text: build.root }),
             },
-            {
+        )
+        // Nothing to recalculate for a single file whose size is its size.
+        if (build.kind !== 'installer') {
+            items.push({
                 label: this.translate.instant('Recalculate size'),
                 click: () => {
                     this.sizes.invalidate(build)
                     onChanged()
                 },
-            },
-        ]
+            })
+        }
         if (build.repoPath) {
             items.push({
                 label: this.translate.instant('Reveal the checkout'),
@@ -114,12 +131,15 @@ export class BuildActionsService {
                 click: () => void this.runUninstaller(build),
             })
         }
+        // Delete always applies in principle, so when it is blocked it stays
+        // visible and greyed — with the reason in the label, since that is the
+        // only place a native menu item can put one.
+        const blocked = this.deleteBlockedReason(build)
         items.push({
-            // Both guards, not just the current-window one: the active build
-            // is equally undeletable, and offering the item only to refuse it
-            // afterwards is a menu that lies.
-            label: this.deleteLabel(build),
-            enabled: !this.deleteBlockedReason(build),
+            label: blocked
+                ? `${this.deleteLabel(build)} — ${blocked.toLowerCase()}`
+                : this.deleteLabel(build),
+            enabled: !blocked,
             click: () => void this.delete(build, onChanged),
         })
         return items

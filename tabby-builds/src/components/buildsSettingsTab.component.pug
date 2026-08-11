@@ -278,6 +278,9 @@ ng-template(#buildList)
                     th.sortable([class.sorted]='sortKey === "branch"', (click)='setSort("branch")')
                         span(translate) Branch
                         i.fas.ms-1([class]='sortIcon("branch")')
+                    th.sortable([class.sorted]='sortKey === "builtFrom"', (click)='setSort("builtFrom")')
+                        span(translate) Built from
+                        i.fas.ms-1([class]='sortIcon("builtFrom")')
                     th.sortable([class.sorted]='sortKey === "path"', (click)='setSort("path")')
                         span(translate) Path
                         i.fas.ms-1([class]='sortIcon("path")')
@@ -309,6 +312,10 @@ ng-template(#buildList)
                     td.no-wrap([title]='absoluteTime(build.builtAt)') {{humanAgo(build.builtAt)}}
                     td {{build.arch || '—'}}
                     td.mono {{build.git?.branch || '—'}}
+                    td.mono.no-wrap
+                        span(*ngIf='build.git?.builtFrom') {{build.git.builtFrom}}
+                        span.muted.ms-1(*ngIf='isStale(build)') → {{build.git.head}}
+                        span.muted(*ngIf='!build.git?.builtFrom') —
                     td.path-cell([title]='build.root', (click)='copyPath(build)') {{build.root}}
                     td.text-end.no-wrap
                         button.btn.btn-sm.btn-link(

@@ -163,10 +163,16 @@ async function readBuildInfo (dir: string): Promise<SlotBuildInfo | null> {
     }
     const repoLine = field('Repo')
     const slot = field('Slot')
+    // A slot id is <version>-<MMDD>-<HHmm>-<sha>, and the version part ends in
+    // a `.0` that never changes. Trading that placeholder for the build stamp
+    // makes two slots of the same nightly tell themselves apart at a glance:
+    // 1.0.236-nightly.0810-1556 rather than two identical 1.0.236-nightly.0.
+    const stamped = slot ? /^(.*?)-(\d{4})-(\d{4})-[0-9a-f]{8}$/.exec(slot) : null
     return {
         slot,
-        // The slot id is <version>-<sha>-<date>; only the leading part is a version.
-        version: slot ? /^(\d+\.\d+\.\d+(?:-[a-z0-9.]+)?)/i.exec(slot)?.[1] ?? null : null,
+        version: stamped
+            ? `${stamped[1].replace(/\.\d+$/, '')}.${stamped[2]}-${stamped[3]}`
+            : slot ? /^(\d+\.\d+\.\d+(?:-[a-z0-9.]+)?)/i.exec(slot)?.[1] ?? null : null,
         commit: field('Commit'),
         branch: repoLine ? /\(branch:\s*([^)]+)\)/.exec(repoLine)?.[1]?.trim() ?? null : null,
         repo: repoLine ? repoLine.replace(/\s*\(branch:.*$/, '').trim() : null,

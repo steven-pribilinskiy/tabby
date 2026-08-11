@@ -368,6 +368,7 @@ export class BuildsSettingsTabComponent extends BaseComponent {
             case 'built': return build.builtAt ?? 0
             case 'arch': return (build.arch ?? '').toLowerCase()
             case 'branch': return (build.git?.branch ?? '').toLowerCase()
+            case 'builtFrom': return (build.git?.builtFrom ?? '').toLowerCase()
             case 'path': return build.root.toLowerCase()
             default: return 0
         }
