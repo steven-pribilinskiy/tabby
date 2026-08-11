@@ -391,6 +391,40 @@ ng-template(#options)
         button.btn.btn-secondary((click)='rescan()')
             span(translate) Recheck
 
+    h4.mt-4.mb-2(translate) New builds
+
+    .form-line
+        .header
+            .title(translate) Offer to switch when a newer build appears
+            .description(translate) Checks this machine for a build newer than the one running. A declined offer is never repeated for the same build
+        toggle(
+            [(ngModel)]='config.store.builds.watchForNewBuilds',
+            (ngModelChange)='saveConfiguration()',
+        )
+
+    .form-line
+        .header
+            .title(translate) Check interval
+            .description(translate) Milliseconds between checks. Cutting a build takes minutes, so checking often buys nothing
+        input.form-control(
+            type='number',
+            min='30000',
+            step='30000',
+            [(ngModel)]='config.store.builds.watchIntervalMs',
+            (ngModelChange)='saveConfiguration()',
+        )
+
+    .form-line
+        .header
+            .title(translate) Check now
+            .description(*ngIf='newBuildResult') {{newBuildResult}}
+            .description(*ngIf='!newBuildResult', translate) Look for a newer build without waiting for the timer
+        .d-flex.gap-2
+            button.btn.btn-secondary((click)='checkForNewBuild()')
+                span(translate) Check
+            button.btn.btn-primary(*ngIf='newBuildAvailable', (click)='offerNewBuild()')
+                span(translate) Switch…
+
     h4.mt-4.mb-2(translate) Live updates
 
     .form-line

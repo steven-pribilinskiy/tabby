@@ -8,6 +8,7 @@ import { BuildDoctorService } from '../services/buildDoctor.service'
 import { BuildProcessesService, normalize } from '../services/buildProcesses.service'
 import { BuildScannerService } from '../services/buildScanner.service'
 import { BuildSizeService } from '../services/buildSize.service'
+import { NewBuildWatcherService } from '../services/newBuildWatcher.service'
 import { TaskbarService } from '../services/taskbar.service'
 
 /** How often relative timestamps re-render when nothing else changes. */
@@ -114,8 +115,29 @@ export class BuildsSettingsTabComponent extends BaseComponent {
         private scanner: BuildScannerService,
         private sizes: BuildSizeService,
         private taskbar: TaskbarService,
+        private watcher: NewBuildWatcherService,
     ) {
         super()
+    }
+
+    /** Result of the last manual check, shown next to the button. */
+    newBuildResult: string | null = null
+
+    /** Look for a newer build now, without waiting for the slow timer. */
+    async checkForNewBuild (): Promise<void> {
+        const found = await this.watcher.check(false)
+        this.newBuildResult = found
+            ? `${found.name} — ${found.version ?? '?'}`
+            : 'nothing newer'
+        this.now = Date.now()
+    }
+
+    offerNewBuild (): void {
+        void this.watcher.offer()
+    }
+
+    get newBuildAvailable (): TabbyBuild | null {
+        return this.watcher.available
     }
 
     ngOnInit (): void {

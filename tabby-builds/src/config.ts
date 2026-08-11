@@ -46,6 +46,14 @@ export class BuildsConfigProvider extends ConfigProvider {
             pinToTaskbar: true,
 
             /**
+             * Offer to move to a newer build when one appears on this machine.
+             * Cutting a build takes minutes, so the check is deliberately slow;
+             * a declined offer is never repeated for the same build.
+             */
+            watchForNewBuilds: true,
+            watchIntervalMs: 300000,
+
+            /**
              * Extra environment for launching a source build. The dev build
              * must not share a config directory with the installed app —
              * Electron's single-instance lock is keyed on it, and the installed
