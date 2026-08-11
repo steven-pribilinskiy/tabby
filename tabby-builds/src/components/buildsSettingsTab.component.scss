@@ -98,6 +98,33 @@
     }
 }
 
+// ── Loading skeletons ───────────────────────────────────────────────────
+
+.build-card.skeleton {
+    border-left-color: rgba(128, 128, 128, 0.35);
+    pointer-events: none;
+}
+
+.skeleton-line {
+    height: 10px;
+    border-radius: 3px;
+    background: rgba(128, 128, 128, 0.18);
+    // A slow sweep rather than a blink: this can be on screen for a couple of
+    // seconds, and anything faster reads as an error state.
+    animation: skeleton-pulse 1.6s ease-in-out infinite;
+
+    &.w-badge { width: 56px; height: 16px; }
+    &.w-name { width: 180px; height: 14px; }
+    &.w-detail { width: 260px; margin-top: 8px; }
+    &.w-fact { width: 64px; height: 26px; }
+    &.w-path { width: 320px; margin-top: 8px; }
+}
+
+@keyframes skeleton-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+}
+
 .build-head {
     display: flex;
     align-items: center;

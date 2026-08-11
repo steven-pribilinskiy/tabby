@@ -188,11 +188,17 @@ export class BuildsSettingsTabComponent extends BaseComponent {
                     build.configPath = configPath
                 }
             }
-            await this.resolveActive(builds)
+            // Paint the list before the slow parts. Everything below this line
+            // costs a subprocess or a directory walk, and holding the whole
+            // page back for them is what made opening it look like a freeze.
             this.builds = builds
             this.regroup()
+            this.scanning = false
             this.error = null
             this.lastScan = Date.now()
+
+            await this.resolveActive(builds)
+            this.regroup()
             if (this.config.store.builds.autoSize) {
                 for (const build of builds) {
                     this.sizes.request(build, () => {
@@ -241,12 +247,16 @@ export class BuildsSettingsTabComponent extends BaseComponent {
      * from, then anything that can be launched at all.
      */
     private async resolveActive (builds: TabbyBuild[]): Promise<void> {
+        // One read, not two: this costs a PowerShell spawn, and it was being
+        // paid twice on every scan — once to find the pin's target and again
+        // to display it.
+        const pin = await this.taskbar.read()
         let wanted: string = this.config.store.builds.activeExecutable ?? ''
         if (!wanted) {
             // First run: adopt whatever the taskbar pin already points at, so
             // the page starts out agreeing with the desktop instead of
             // overruling it.
-            wanted = (await this.taskbar.read())?.target ?? ''
+            wanted = pin?.target ?? ''
         }
         const launchable = builds.filter(x => !!x.executable)
         let active: TabbyBuild | null = null

@@ -85,6 +85,20 @@ ng-template(#buildList)
             )
                 i.fas.fa-fw.fa-table-list
 
+    // Skeletons rather than an empty page: the first scan walks three
+    // directory trees and spawns a subprocess, and a page showing "0 builds"
+    // for two seconds reads as broken rather than busy.
+    .builds(*ngIf='scanning && !visible.length')
+        .build-card.skeleton(*ngFor='let n of [1, 2, 3]')
+            .build-head
+                .skeleton-line.w-badge
+                .skeleton-line.w-name
+                .flex-fill
+            .skeleton-line.w-detail
+            .facts
+                .skeleton-line.w-fact(*ngFor='let f of [1, 2, 3, 4]')
+            .skeleton-line.w-path
+
     .text-muted.py-4(*ngIf='!visible.length && !scanning', translate) Nothing here.
 
     .builds(*ngIf='view === "cards"')
