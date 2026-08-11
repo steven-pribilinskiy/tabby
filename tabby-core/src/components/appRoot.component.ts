@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/explicit-module-boundary-types */
-import { Component, Input, HostListener, HostBinding, ViewChildren, ViewChild } from '@angular/core'
+import { Component, Inject, Input, HostListener, HostBinding, Optional, ViewChildren, ViewChild } from '@angular/core'
 import { trigger, style, animate, transition, state } from '@angular/animations'
 import { NgbDropdown, NgbModal } from '@ng-bootstrap/ng-bootstrap'
 import { CdkDragDrop } from '@angular/cdk/drag-drop'
@@ -16,7 +16,7 @@ import { BaseTabComponent } from './baseTab.component'
 import { SafeModeModalComponent } from './safeModeModal.component'
 import { TabBodyComponent } from './tabBody.component'
 import { SplitTabComponent } from './splitTab.component'
-import { AppService, Command, CommandLocation, FileTransfer, HostWindowService, PlatformService } from '../api'
+import { AppService, Command, CommandLocation, FileTransfer, HostWindowService, PlatformService, ToolbarButtonProvider } from '../api'
 
 const MIN_SIDE_TAB_BAR_WIDTH = 100
 const MAX_SIDE_TAB_BAR_WIDTH = 800
@@ -133,6 +133,7 @@ export class AppRootComponent {
         log: LogService,
         ngbModal: NgbModal,
         _themes: ThemesService,
+        @Inject(ToolbarButtonProvider) @Optional() private toolbarButtonProviders: ToolbarButtonProvider[]|null,
     ) {
         // document.querySelector('app-root')?.remove()
         this.logger = log.create('main')
@@ -224,6 +225,16 @@ export class AppRootComponent {
         config.ready$.toPromise().then(async () => {
             this.leftToolbarButtons = await this.getToolbarButtons(false)
             this.rightToolbarButtons = await this.getToolbarButtons(true)
+
+            // A provider whose buttons depend on something discovered after
+            // startup has to be able to say so, or the toolbar it contributed
+            // to is frozen as it was when the config loaded.
+            for (const provider of this.toolbarButtonProviders ?? []) {
+                provider.changed$?.subscribe(async () => {
+                    this.leftToolbarButtons = await this.getToolbarButtons(false)
+                    this.rightToolbarButtons = await this.getToolbarButtons(true)
+                })
+            }
 
             setInterval(() => {
                 if (this.config.store.enableAutomaticUpdates) {

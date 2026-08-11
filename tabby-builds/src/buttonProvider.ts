@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core'
+import { Observable } from 'rxjs'
 import { ConfigService, ToolbarButton, ToolbarButtonProvider, TranslateService } from 'tabby-core'
 
 import { NewBuildWatcherService } from './services/newBuildWatcher.service'
@@ -13,12 +14,16 @@ import { NewBuildWatcherService } from './services/newBuildWatcher.service'
  */
 @Injectable()
 export class BuildsButtonProvider extends ToolbarButtonProvider {
+    /** Tells the toolbar to ask again once a newer build has been spotted. */
+    readonly changed$: Observable<void>
+
     constructor (
         config: ConfigService,
         private translate: TranslateService,
         private watcher: NewBuildWatcherService,
     ) {
         super()
+        this.changed$ = watcher.changed$
         // Not in the constructor body directly: providers are built before the
         // config has loaded, so reading a setting here throws and takes the
         // whole boot down with it — the app comes up to a splash screen and

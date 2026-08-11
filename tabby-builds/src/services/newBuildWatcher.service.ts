@@ -1,5 +1,6 @@
 import { spawn } from 'child_process'
 import { Injectable } from '@angular/core'
+import { Observable, Subject } from 'rxjs'
 import { ConfigService, HostWindowService, NotificationsService, PlatformService, TranslateService } from 'tabby-core'
 
 import { TabbyBuild } from '../api'
@@ -23,6 +24,9 @@ const SWITCHABLE = new Set(['portable', 'packaged', 'installed'])
 export class NewBuildWatcherService {
     /** The newer build, once one has been found. Drives the toolbar button. */
     available: TabbyBuild | null = null
+    /** Fires when `available` changes, so the toolbar can ask again. */
+    get changed$ (): Observable<void> { return this.changed }
+    private changed = new Subject<void>()
     /** The build this window runs from, so a switch knows what it replaces. */
     private current: TabbyBuild | null = null
     /** Ids already offered, so a declined switch is not re-offered every poll. */
@@ -90,7 +94,11 @@ export class NewBuildWatcherService {
             .sort((a, b) => (b.builtAt ?? 0) - (a.builtAt ?? 0))
         const newer: TabbyBuild | null = candidates.length ? candidates[0] : null
 
+        const was = this.available?.id ?? null
         this.available = newer
+        if ((newer?.id ?? null) !== was) {
+            this.changed.next()
+        }
         if (announce && newer && !this.offered.has(newer.id)) {
             this.offered.add(newer.id)
             await this.offer(newer)

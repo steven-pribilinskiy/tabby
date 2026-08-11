@@ -1,3 +1,5 @@
+import { Observable } from 'rxjs'
+
 /**
  * See [[ToolbarButtonProvider]]
  */
@@ -34,4 +36,14 @@ export interface ToolbarButton {
  */
 export abstract class ToolbarButtonProvider {
     abstract provide (): ToolbarButton[]
+
+    /**
+     * Emit to have the toolbar ask for the buttons again.
+     *
+     * Without this the toolbar is built once, on config load, and a provider
+     * whose buttons depend on something discovered later — an update that
+     * appears, a device that is plugged in — can only ever contribute what it
+     * knew at startup.
+     */
+    readonly changed$?: Observable<void>
 }
