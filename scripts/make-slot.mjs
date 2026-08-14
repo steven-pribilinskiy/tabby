@@ -143,13 +143,49 @@ function run (command, cmdArgs, cwd = repo) {
     execFileSync(command, cmdArgs, { cwd, stdio: 'inherit', shell: process.platform === 'win32' })
 }
 
-/** Mark the application files read-only so a slot cannot drift after it is cut. */
+/**
+ * Mark the application files read-only so a slot cannot drift after it is cut.
+ *
+ * `data\` is skipped by *name*, one attrib call per top-level entry. A single
+ * `attrib +R <slot>\* /S` over the whole slot also freezes `data\config.yaml`,
+ * and then every settings change in that slot fails: `app/lib/config.ts` writes
+ * through `atomically`, whose rename over a read-only file is EPERM on Windows,
+ * so `ConfigService.save()` throws before `emitChange()` — nothing persists and
+ * nothing that reacts to `config.changed$` (spaciness, theme) updates either.
+ *
+ * `/D` does not exempt anything; it *adds* folders to what attrib touches. Only
+ * files matter here — Windows ignores the read-only bit on a directory — so it
+ * is not used. `/L` acts on the `data\plugins` junction rather than following it
+ * into `%APPDATA%\tabby\plugins`.
+ */
 function freeze (dir) {
     if (process.platform !== 'win32') {
         return
     }
-    // /D exempts data\, which has to stay writable.
-    run('attrib', ['+R', path.join(dir, '*'), '/S', '/D', '/L'], dir)
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === 'data') {
+            continue
+        }
+        const target = path.join(dir, entry.name)
+        run('attrib', entry.isDirectory()
+            ? ['+R', `"${path.join(target, '*')}"`, '/S', '/L']
+            : ['+R', `"${target}"`, '/L'], dir)
+    }
+}
+
+/**
+ * The one thing a frozen slot must still be able to write. Checked rather than
+ * assumed, because the failure is silent at runtime: the app saves settings and
+ * they simply do not come back.
+ */
+function assertProfileWritable (dir) {
+    const config = path.join(dir, 'data', 'config.yaml')
+    try {
+        fs.accessSync(config, fs.constants.W_OK)
+    } catch {
+        console.error(`\n${config} is not writable — the slot would silently drop every settings change.`)
+        process.exit(1)
+    }
 }
 
 const now = new Date()
@@ -205,6 +241,7 @@ if (!dryRun) {
     }
     fs.writeFileSync(path.join(target, 'BUILD-INFO.txt'), buildInfo(slot, sha, head, branch, upstream, now))
     freeze(target)
+    assertProfileWritable(target)
 }
 
 if (activate) {

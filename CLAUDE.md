@@ -306,7 +306,18 @@ points `Tabby-fork.lnk` and the taskbar pin at it.
   silently half-works.
 - `data\plugins` is a junction to `%APPDATA%\tabby\plugins` so plugins stay
   shared and live. The Builds page knows not to follow it.
-- App files are marked read-only, so a slot cannot drift after it is cut.
+- App files are marked read-only, so a slot cannot drift after it is cut —
+  **but `data\` must stay writable, and the first version of `freeze()` did not
+  leave it that way.** `attrib +R <slot>\* /S /D` froze `data\config.yaml` too
+  (`/D` does not exempt anything — it *adds* folders to what attrib touches), and
+  a read-only config file makes a slot lose every settings change in silence:
+  `app/lib/config.ts` writes through `atomically`, whose rename over a read-only
+  file is `EPERM` on Windows, so `ConfigService.save()` throws before
+  `emitChange()`. Both halves of that hurt. Nothing persists — and nothing driven
+  by `config.changed$` re-applies either, so Spaciness, theme and docking appear
+  to do nothing at all while you are still in the window. `freeze()` now skips
+  `data` by name and `make-slot.mjs` asserts `data\config.yaml` is writable
+  before it reports success.
 
 ### The doctor
 
