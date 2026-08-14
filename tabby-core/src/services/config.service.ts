@@ -3,11 +3,12 @@ import deepEqual from 'deep-equal'
 import { v4 as uuidv4 } from 'uuid'
 import * as yaml from 'js-yaml'
 import { Observable, Subject, AsyncSubject, lastValueFrom } from 'rxjs'
-import { Injectable, Inject } from '@angular/core'
+import { Injectable, Inject, Injector } from '@angular/core'
 import { TranslateService } from '@ngx-translate/core'
 import { ConfigProvider } from '../api/configProvider'
 import { PlatformService } from '../api/platform'
 import { HostAppService } from '../api/hostApp'
+import { NotificationsService } from './notifications.service'
 import { Vault, VaultService } from './vault.service'
 import { serializeFunction } from '../utils'
 import { PartialProfileGroup, ProfileGroup } from '../api/profileProvider'
@@ -169,6 +170,9 @@ export class ConfigService {
         private platform: PlatformService,
         private vault: VaultService,
         private translate: TranslateService,
+        // Resolved lazily, only to report a failed write: ConfigService is
+        // constructed before the toast container exists.
+        private injector: Injector,
         @Inject(ConfigProvider) private configProviders: ConfigProvider[],
     ) {
         this.defaults = this.mergeDefaults()
@@ -235,7 +239,24 @@ export class ConfigService {
         // Scrub undefined values
         let cleanStore = JSON.parse(JSON.stringify(this._store))
         cleanStore = await this.maybeEncryptConfig(cleanStore)
-        await this.platform.saveConfig(yaml.dump(cleanStore))
+        try {
+            await this.platform.saveConfig(yaml.dump(cleanStore))
+        } catch (error) {
+            // Every caller is a bare `config.save()` — not awaited, not caught —
+            // so a failed write was invisible: the UI kept the new value, the
+            // file kept the old one, and `emitChange()` never ran, so anything
+            // driven by `changed$` (theme, spaciness, docking) silently did
+            // nothing until the next start reverted the setting too. Say it out
+            // loud. An unwritable config file is the usual cause: a read-only
+            // attribute, a full disk, a locked or synced profile directory.
+            const notifications = this.injector.get(NotificationsService, null)
+            notifications?.error(this.translate.instant(
+                'Could not save {path}: {error}',
+                { path: this.platform.getConfigPath() ?? 'the config file', error: error?.message ?? error },
+            ))
+            console.error('Could not save the config file', error)
+            throw error
+        }
         this.emitChange()
     }
 
