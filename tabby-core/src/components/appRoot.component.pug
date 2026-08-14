@@ -9,6 +9,12 @@ ng-template(#buildTooltip)
             span.k built
             span.v {{builtAgo}}
             span.abs ({{buildDateDisplay}})
+        .build-tooltip-row.build-tooltip-path(*ngIf='buildPath')
+            span.k path
+            code.v {{buildPath}}
+        .build-tooltip-row.build-tooltip-path(*ngIf='buildConfigPath')
+            span.k config
+            code.v {{buildConfigPath}}
         .build-tooltip-hint Click to copy
 
 title-bar(

@@ -118,6 +118,14 @@ export class AppRootComponent {
     buildBranch = ''
     buildDateDisplay = ''
     builtAgo = ''
+    /**
+     * Where this window actually runs from, and the profile it writes to. The
+     * commit says what the code is; with several build slots installed side by
+     * side these say *which copy on disk you are looking at* — the only way to
+     * open it, compare it, or quote it in a bug report.
+     */
+    buildPath = ''
+    buildConfigPath = ''
     private buildTimestamp: number|null = null
     private logger: Logger
 
@@ -290,6 +298,8 @@ export class AppRootComponent {
         this.buildBranch = process.env.TABBY_BUILD_BRANCH ?? 'unknown'
         this.buildDateDisplay = process.env.TABBY_BUILD_DATE ?? 'unknown'
         this.buildVersion = this.platform.getAppVersion()
+        this.buildPath = this.platform.getInstallPath() ?? ''
+        this.buildConfigPath = this.platform.getConfigPath() ?? ''
         this.buildHint = this.buildSha
         const ts = parseInt(process.env.TABBY_BUILD_TIMESTAMP ?? '', 10)
         this.buildTimestamp = isNaN(ts) ? null : ts
@@ -312,6 +322,8 @@ export class AppRootComponent {
                 `Tabby ${this.buildVersion}`,
                 `commit ${this.buildSha} (${this.buildBranch})`,
                 `built ${this.builtAgo} (${this.buildDateDisplay})`,
+                ...this.buildPath ? [`path ${this.buildPath}`] : [],
+                ...this.buildConfigPath ? [`config ${this.buildConfigPath}`] : [],
             ].join('\n'),
         })
     }

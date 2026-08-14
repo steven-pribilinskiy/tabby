@@ -212,6 +212,16 @@ export abstract class PlatformService {
         return null
     }
 
+    /**
+     * Absolute path of the directory this build runs from. With several frozen
+     * build slots side by side, the commit alone does not say *which copy on
+     * disk* this window is, and that is what you need to look at it or report
+     * it. Null where the question has no answer, e.g. in the browser.
+     */
+    getInstallPath (): string|null {
+        return null
+    }
+
     showItemInFolder (path: string): void {
         throw new Error('Not implemented')
     }

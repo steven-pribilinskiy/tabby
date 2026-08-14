@@ -511,6 +511,24 @@ window-controls {
         }
     }
 
+    // A path is the one field that can be arbitrarily long, so it is the one
+    // row allowed to wrap — otherwise `max-width: none` on the tooltip lets a
+    // deep checkout path stretch it across the whole window.
+    .build-tooltip-path {
+        display: flex;
+        align-items: baseline;
+        max-width: 460px;
+        white-space: normal;
+
+        .k {
+            flex: 0 0 auto;
+        }
+
+        .v {
+            word-break: break-all;
+        }
+    }
+
     .build-tooltip-hint {
         margin-top: 4px;
         padding-top: 4px;

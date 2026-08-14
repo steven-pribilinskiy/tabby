@@ -150,6 +150,14 @@ export class ElectronPlatformService extends PlatformService {
         return this.configPath
     }
 
+    getInstallPath (): string|null {
+        // The executable's directory, not `app.getAppPath()` — that points
+        // inside `app.asar`, which is not a place you can open or `cd` into.
+        // For a source build it resolves to the checkout's
+        // `node_modules\electron\dist`, which still names the checkout.
+        return path.dirname(process.execPath)
+    }
+
     showItemInFolder (p: string): void {
         this.electron.shell.showItemInFolder(p)
     }
