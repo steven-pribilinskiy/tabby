@@ -13,10 +13,14 @@ h3.mb-3(translate) Window
     .header
         .title(translate) Spaciness
         .description(translate) Controls the amount of space between elements
+    // `change`, not `mouseup`: a range input commits on release *and* on every
+    // arrow key, so `mouseup` left the keyboard path saving nothing — and since
+    // the value is only re-applied from `config.changed$`, "not saved" also
+    // means "no visible effect at all".
     input(
         type='range',
         [(ngModel)]='config.store.appearance.spaciness',
-        (mouseup)='saveConfiguration()',
+        (change)='saveConfiguration()',
         min='0.6',
         max='1.4',
         step='0.1'
@@ -242,7 +246,7 @@ h3.mt-4(translate) Docking
     input(
         type='range',
         [(ngModel)]='config.store.appearance.dockFill',
-        (mouseup)='saveConfiguration(); docking.dock()',
+        (change)='saveConfiguration(); docking.dock()',
         min='0.05',
         max='1',
         step='0.01'
@@ -255,7 +259,7 @@ h3.mt-4(translate) Docking
     input(
         type='range',
         [(ngModel)]='config.store.appearance.dockSpace',
-        (mouseup)='saveConfiguration(); docking.dock()',
+        (change)='saveConfiguration(); docking.dock()',
         min='0.2',
         max='1',
         step='0.01'
