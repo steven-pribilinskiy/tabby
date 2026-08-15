@@ -111,6 +111,10 @@
                     .form-line
                         .header
                             .title(translate) Minimum contrast ratio
+                        reset-to-default(
+                            [proxy]='config.store.terminal',
+                            key='minimumContrastRatio'
+                        )
                         input.form-control(
                             type='number',
                             min='1',

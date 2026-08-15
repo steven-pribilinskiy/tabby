@@ -16,6 +16,7 @@ import { TabBodyComponent } from './components/tabBody.component'
 import { SidePanelHostComponent } from './components/sidePanelHost.component'
 import { TabHoverHostComponent } from './components/tabHoverHost.component'
 import { PromptModalComponent } from './components/promptModal.component'
+import { ResetToDefaultComponent } from './components/resetToDefault.component'
 import { SafeModeModalComponent } from './components/safeModeModal.component'
 import { StartPageComponent } from './components/startPage.component'
 import { TabHeaderComponent } from './components/tabHeader.component'
@@ -113,6 +114,7 @@ const PROVIDERS = [
         AppRootComponent,
         CheckboxComponent,
         PromptModalComponent,
+        ResetToDefaultComponent,
         StartPageComponent,
         TabBodyComponent,
         SidePanelHostComponent,
@@ -145,6 +147,7 @@ const PROVIDERS = [
         CheckboxComponent,
         ToggleComponent,
         PromptModalComponent,
+        ResetToDefaultComponent,
         AutofocusDirective,
         DropZoneDirective,
         FastHtmlBindDirective,

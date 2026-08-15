@@ -139,6 +139,11 @@ h3.mb-3(translate) Appearance
     .form-line
         .header
             .title(translate) Minimum contrast ratio
+            .description(translate) Darkens or lightens text that falls below this ratio against its background. 1 draws the colours the application asked for, unchanged
+        reset-to-default(
+            [proxy]='config.store.terminal',
+            key='minimumContrastRatio'
+        )
         input.form-control(
             type='number',
             min='1',
