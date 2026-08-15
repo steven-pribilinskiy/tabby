@@ -6,6 +6,18 @@ import { TerminalColorScheme, Theme } from '../api/theme'
 import { PlatformService, PlatformTheme } from '../api/platform'
 import { NewTheme } from '../theme'
 
+/**
+ * Contrast floor for the app's own chrome, in the absence of a higher demand
+ * from `terminal.minimumContrastRatio`.
+ *
+ * The terminal grid defaults to no adjustment at all, so it cannot be the only
+ * thing keeping derived UI colours legible - several of them (`--theme-fg-less-2`
+ * and friends) are dimmed on purpose and would disappear into the background.
+ * 4 is what the terminal setting used to default to, so chrome looks the same as
+ * it always has, and raising that setting still raises this one with it.
+ */
+const UI_MINIMUM_CONTRAST_RATIO = 4
+
 @Injectable({ providedIn: 'root' })
 export class ThemesService {
     get themeChanged$ (): Observable<Theme> { return this.themeChanged }
@@ -196,7 +208,7 @@ export class ThemesService {
             const colorBg = Color(vars[bg]).hsl()
             const colorFg = Color(vars[fg]).hsl()
             const bgContrast = colorBg.contrast(colorFg)
-            if (bgContrast < this.getConfigStoreOrDefaults().terminal.minimumContrastRatio) {
+            if (bgContrast < this.uiMinimumContrastRatio()) {
                 vars[fg] = this.ensureContrast(colorFg, colorBg).string()
             }
         }
@@ -206,6 +218,13 @@ export class ThemesService {
         }
 
         document.body.classList.toggle('no-animations', !this.getConfigStoreOrDefaults().accessibility.animations)
+    }
+
+    private uiMinimumContrastRatio (): number {
+        return Math.max(
+            UI_MINIMUM_CONTRAST_RATIO,
+            this.getConfigStoreOrDefaults().terminal.minimumContrastRatio,
+        )
     }
 
     private ensureContrast (color: Color, against: Color): Color {
@@ -220,7 +239,7 @@ export class ThemesService {
         while (
             (step < 1 && color.color[2] > 1 ||
              step > 1 && color.color[2] < 99) &&
-             color.contrast(against) < this.getConfigStoreOrDefaults().terminal.minimumContrastRatio) {
+             color.contrast(against) < this.uiMinimumContrastRatio()) {
             color.color[2] *= step
         }
         return color

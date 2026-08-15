@@ -59,7 +59,12 @@ export class TerminalConfigProvider extends ConfigProvider {
             scrollbackLines: 25000,
             drawBoldTextInBrightColors: true,
             sixel: true,
-            minimumContrastRatio: 4,
+            // 1 disables contrast adjustment, so the terminal draws exactly the
+            // colours the application asked for - what Windows Terminal, iTerm2
+            // and xterm.js itself all do by default. Anything higher rewrites
+            // every foreground that misses the ratio, including 24-bit ones,
+            // which recolours whole palettes (Solarized Light sits at 3-5:1).
+            minimumContrastRatio: 1,
             paletteGenerate: false,
             paletteHarmonious: false,
             replaceNewlinesWithSpacesOnPaste: false,

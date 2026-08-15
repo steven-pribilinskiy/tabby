@@ -385,6 +385,26 @@ Kept to a minimum — every one is a line that conflicts on rebase.
   vertical tabs. Titles here are paths and session names, which a horizontal
   strip truncates to nothing. Only affects profiles with no value saved.
 
+- `terminal.minimumContrastRatio: 1` (`tabby-terminal/src/config.ts`), was `4`.
+  The value goes straight into `xterm.options.minimumContrastRatio`, and
+  xterm.js rewrites **every** foreground that misses the ratio — 24-bit ones
+  included (`TextureAtlas._getMinimumContrastColor` has no `CM_RGB` exemption).
+  At 4, and worse at 6, that recolours entire palettes: Solarized Light on a
+  light background sits at 3–5:1, so all 13 of its colours get pushed toward
+  mud and near-neighbours collapse onto each other. 1 is the "off" value and
+  what xterm.js itself defaults to; Windows Terminal's equivalent,
+  `adjustIndistinguishableColors`, resolves `Automatic` → `Never` unless
+  Windows high-contrast is on (`TerminalCore/Terminal.cpp`). So this is now
+  "draw what the app asked for", same as WT/iTerm2.
+
+  **The same key also drove the app chrome's contrast floor**
+  (`ThemesService.applyThemeVariables` contrast pairs), so dropping the default
+  would have dimmed derived UI colours like `--theme-fg-less-2` that are faint
+  by design. Chrome now floors at its own `UI_MINIMUM_CONTRAST_RATIO = 4`
+  (the old default) via `max(4, terminal.minimumContrastRatio)` — measured
+  identical output at 1 and at 4, while 6 still escalates it, so raising the
+  setting for accessibility keeps working.
+
 ## Known issues to fix in this fork
 
 - **Emoji width**: `❇️ ` (and other VS16 emoji) render one column too wide, leaving a
