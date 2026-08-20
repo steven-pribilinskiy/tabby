@@ -377,6 +377,68 @@ one.
   `build/windows/icon.ico` in the checkout — the target there is `electron.exe`,
   whose icon is Electron's.
 
+## Why it froze (`diagnostics.log`)
+
+`app/lib/diagnostics.ts` records what blocks an event loop, in both the main
+process and every renderer, to `<config dir>/diagnostics.log` as JSONL. A frozen
+window otherwise leaves no trace: Windows calls the process responding, nothing
+throws, and until now the app log had no timestamps to line anything up against.
+
+A stall record reads like this, and the summary alone is usually the answer:
+
+```
+renderer event loop blocked 71.3s during "ready" — 98% synchronous I/O:
+fs.readFileSync ×58214 (41.0s), fs.unlinkSync ×58214 (28.2s)
+```
+
+- **The tally is the point, not a slow-call threshold.** What freezes this app is
+  tens of thousands of individually-fast synchronous calls — draining a spool
+  directory, walking a build tree — where no single call would ever trip a "slow
+  call" limit but the sum blocks the UI for minutes. Every sync `fs` and
+  `child_process` method is wrapped and counted; stacks are sampled every 500
+  calls and deduplicated, so a burst is attributed without paying for a capture
+  on each one.
+- **`syncMs` versus `ms` decides where to look.** A stall that is mostly
+  synchronous I/O names its own fix; one with almost none is script or GC, and no
+  amount of I/O detail would have helped.
+- **It installs before zone.js and the plugin loader.** The detector runs on
+  timers captured before zone.js patches them — a zone-patched interval would
+  schedule a change-detection pass every tick, and would stop reporting at
+  exactly the moment the zone is what is wedged.
+- **The `fs` wrapper must go on the module `require` returns.** `import * as fs`
+  compiles to `__importStar(require('fs'))`, whose properties are forwarding
+  *getters*; assigning a wrapper onto that copy throws straight into our own
+  `catch` and instruments nobody, with reports still arriving and attribution
+  always empty. Verified by checking the bundle: `fs` is emitted as
+  `external "fs"` → `module.exports = require("fs")`, the one shared builtin, so
+  this covers plugin code too without their cooperation.
+- **Records are size-capped by dropping whole fields, never by cutting the
+  string** — a JSONL log whose long lines do not parse is worse than one that
+  admits it left something out. Lines stay ~1 KB, inside the size where an
+  O_APPEND write from several processes still lands atomically.
+- Writes are buffered and asynchronous: an instrumentation that blocks the loop
+  to report that the loop was blocked would be measuring itself.
+- `TABBY_DIAG=0` disables it; `TABBY_DIAG_STALL_MS` (default 250) and
+  `TABBY_DIAG_INSTRUMENT_IO=0` tune it without a rebuild. Overhead is two
+  `performance.now()` calls and a map lookup per synchronous call, ~200ns.
+
+Also recorded: `render-process-gone`, `child-process-gone`, per-window
+`unresponsive` with how long it lasted, renderer `unhandledrejection`, main
+`uncaughtException`, and boot phase marks (`app-ready`, `window-created`,
+`loading-plugins`, `bootstrapping-angular`, `ready`) so a stall says what was in
+progress when it hit.
+
+**Known offenders it has already named**, both worth fixing at the source:
+
+- `tabby-claude-status`'s `processSpoolDir()` drains `%TEMP%\tabby-claude-status.d`
+  with synchronous `readdirSync`/`readFileSync`/`unlinkSync`, uncapped and without
+  yielding, on the renderer thread. `hook.js` writes one file per Claude event and
+  never prunes, so the backlog is proportional to how long Tabby was *not* running —
+  measured 0.126 ms/file warm, and a 3.5-day gap is ~60,000 files.
+- A cold main process blocked **17.4s** during `main-start` on `fs.readFileSync
+  ×817`, i.e. module loading. Expected to be cheaper from an asar slot than a dev
+  build, but it has never been measured before.
+
 ## Changed upstream defaults
 
 Kept to a minimum — every one is a line that conflicts on rebase.
@@ -423,11 +485,12 @@ Kept to a minimum — every one is a line that conflicts on rebase.
   `@xterm/addon-unicode-graphemes` (grapheme clustering + VS16), which needs `@xterm/xterm`
   moved off the pinned 5.4.0 — a renderer-wide upgrade, so do it deliberately and
   regression-test the terminal.
-- **Crash and slowdown instrumentation.** Find the gaps: `render-process-gone`,
-  `child-process-gone`, `unresponsive`, main-process `uncaughtException`, renderer
-  `unhandledrejection`, and plugin-load failures (several are swallowed by bare
-  `catch {}` — see the `wnr` case above). Add timing around boot phases and frame/write
-  latency so slowdowns show up in logs rather than as a feeling.
+- **Frame and write latency.** The stall recorder (below) covers the event loop; it
+  says nothing about a terminal that renders slowly while the loop stays free. Time
+  the xterm write path and frame callbacks so that shows up too.
+- **Plugin-load failures** are still swallowed by bare `catch {}` in several places
+  (see the `wnr` case above). The renderer `error` handler catches what reaches the
+  top; the silent ones need the catches instrumented individually.
 
 - A **Settings page listing upstream commits this fork lacks** — compares
   `local` against `upstream/master` and shows what has not been pulled in.
