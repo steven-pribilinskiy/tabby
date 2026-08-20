@@ -1,6 +1,6 @@
 import { marker as _ } from '@biesbjerg/ngx-translate-extract-marker'
 import { Component, Input, Injector, Inject, Optional } from '@angular/core'
-import { BaseTabProcess, WIN_BUILD_CONPTY_SUPPORTED, isWindowsBuild, GetRecoveryTokenOptions } from 'tabby-core'
+import { BaseTabProcess, DiagnosticsService, WIN_BUILD_CONPTY_SUPPORTED, isWindowsBuild, GetRecoveryTokenOptions } from 'tabby-core'
 import { BaseTerminalTabComponent } from 'tabby-terminal'
 import { LocalProfile, SessionOptions, UACService } from '../api'
 import { Session } from '../session'
@@ -102,7 +102,13 @@ export class TerminalTabComponent extends BaseTerminalTabComponent<LocalProfile>
     }
 
     async canClose (): Promise<boolean> {
+        // Timed apart from the prompt below, because only this half is the
+        // app's own doing: it walks the whole process tree through a native
+        // module on every single tab close, and the answer is usually "no
+        // children" — a cost paid to learn nothing.
+        const walk = this.injector.get(DiagnosticsService).span('tab:close:getChildProcesses')
         const children = await this.session?.getChildProcesses()
+        walk.end({ children: children?.length ?? 0 })
         if (!children?.length) {
             return true
         }

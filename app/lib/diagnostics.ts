@@ -71,6 +71,9 @@ const TICK_MS = 100
 const DEFAULT_STALL_MS = 250
 /** A single call slower than this is worth naming on its own. */
 const DEFAULT_SLOW_IO_MS = 15
+/** Report a named operation that took longer than this. Set below the point
+ *  where a delay stops feeling instant. */
+const DEFAULT_SPAN_MS = 150
 /** Capture a stack every N synchronous calls, to attribute a burst of fast
  *  ones without paying for a stack capture on each. */
 const STACK_SAMPLE_EVERY = 500
@@ -105,6 +108,11 @@ const breadcrumbs: Breadcrumb[] = []
 let syncCallsSeen = 0
 let lastPhase = 'start'
 
+/** Never reset, unlike the windowed tally. A span outlives many ticks, so it
+ *  needs a counter that is still monotonic when it ends. */
+let cumulativeSyncMs = 0
+let cumulativeSyncCalls = 0
+
 let pending: string[] = []
 let flushScheduled = false
 
@@ -123,6 +131,7 @@ function envNumber (name: string, fallback: number): number {
 
 const stallThresholdMs = envNumber('TABBY_DIAG_STALL_MS', DEFAULT_STALL_MS)
 const slowIOThresholdMs = envNumber('TABBY_DIAG_SLOW_IO_MS', DEFAULT_SLOW_IO_MS)
+const spanThresholdMs = envNumber('TABBY_DIAG_SPAN_MS', DEFAULT_SPAN_MS)
 
 /** `performance` exists in both the main process and the renderer, but only as
  *  a global — not worth an import, and a missing one must not break boot. */
@@ -230,6 +239,62 @@ export function note (kind: string, detail?: unknown): void {
     }
 }
 
+// ── Spans ───────────────────────────────────────────────────────────────────
+
+export interface Span {
+    /** Close the span. Returns its duration in ms. */
+    end (extra?: unknown): number
+}
+
+const NULL_SPAN: Span = { end: () => 0 }
+
+/**
+ * Time one named operation, however long it takes and whatever it awaits.
+ *
+ * The stall detector only sees work that *blocks* the loop, which makes it
+ * blind to exactly the delays users complain about most: an operation that
+ * spends a second inside `await` leaves the loop free the whole time and is
+ * never reported, even though the window sat there doing nothing visible.
+ *
+ * A span records the wall-clock cost of an operation and how much of it was
+ * synchronous I/O, which is usually enough to say whether to look at the
+ * awaited call or at what ran around it. Only spans over the threshold are
+ * written, so instrumenting a hot path costs two timestamps.
+ */
+export function span (label: string, detail?: unknown): Span {
+    if (!installed) {
+        return NULL_SPAN
+    }
+    const started = now()
+    const syncMsAtStart = cumulativeSyncMs
+    const syncCallsAtStart = cumulativeSyncCalls
+    let ended = false
+    return {
+        end (extra?: unknown): number {
+            if (ended) {
+                return 0
+            }
+            ended = true
+            const ms = now() - started
+            if (ms >= spanThresholdMs) {
+                const syncMs = cumulativeSyncMs - syncMsAtStart
+                emit({
+                    kind: 'span',
+                    label,
+                    ms: Math.round(ms),
+                    syncMs: Math.round(syncMs),
+                    syncCalls: cumulativeSyncCalls - syncCallsAtStart,
+                    detail,
+                    extra,
+                    summary: `${label} took ${ms.toFixed(0)}ms (${Math.round(syncMs)}ms synchronous I/O)`,
+                })
+                note(`slow:${label}`, Math.round(ms))
+            }
+            return ms
+        },
+    }
+}
+
 // ── Synchronous I/O attribution ─────────────────────────────────────────────
 
 function describeTarget (args: unknown[]): string {
@@ -257,6 +322,9 @@ function callerStack (): string {
 }
 
 function recordSyncCall (call: string, ms: number, args: unknown[]): void {
+    cumulativeSyncMs += ms
+    cumulativeSyncCalls++
+
     const entry = tally.get(call)
     if (entry) {
         entry.n++
@@ -471,6 +539,14 @@ export function installDiagnostics (which: Role): void {
         window.addEventListener('error', event => recordFailure('renderer-error', event.error ?? event.message))
         window.addEventListener('unhandledrejection', event => recordFailure('unhandledrejection', event.reason))
     }
+
+    // Published on the global rather than imported: `tabby-core` and the
+    // plugins are separate bundles that cannot reach into the app bundle, and
+    // making them depend on it would be the wrong direction anyway. Anything
+    // that wants to time itself looks this up and degrades to a no-op when it
+    // is absent — which is the honest state under tabby-web, where none of
+    // this exists.
+    ;(globalThis as any).__tabbyDiagnostics = { span, mark, note, recordFailure }
 
     emit({
         kind: 'session-start',

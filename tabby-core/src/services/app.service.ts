@@ -12,6 +12,7 @@ import { HostWindowService } from '../api/hostWindow'
 import { HostAppService } from '../api/hostApp'
 
 import { ConfigService } from './config.service'
+import { DiagnosticsService } from './diagnostics.service'
 import { TabRecoveryService } from './tabRecovery.service'
 import { TabsService, NewTabParameters } from './tabs.service'
 import { SelectorService } from './selector.service'
@@ -83,6 +84,7 @@ export class AppService {
         private tabsService: TabsService,
         private selector: SelectorService,
         private ngbModal: NgbModal,
+        private diagnostics: DiagnosticsService,
         @Inject(BOOTSTRAP_DATA) private bootstrapData: BootstrapData,
     ) {
         this.tabsChanged$.subscribe(() => {
@@ -424,15 +426,38 @@ export class AppService {
         if (tab.effectivelyPinned && !ignorePinned) {
             return
         }
-        if (checkCanClose && !await tab.canClose()) {
-            return
+        // Closing a tab is the most-repeated interaction in the app and two of
+        // its three phases are `await`ed, so a slow one leaves the event loop
+        // free and the stall detector silent. Timed by phase because the
+        // answer is different for each: `canClose` walks the process tree,
+        // and the recovery token serialises up to a thousand lines of
+        // scrollback.
+        const closing = this.diagnostics.span('tab:close', { tab: tab.constructor.name })
+        try {
+            if (checkCanClose) {
+                // Includes the "still running, close?" prompt when there is
+                // one, so a span of human length here means a dialog was up,
+                // not that anything was slow.
+                const canClose = this.diagnostics.span('tab:close:canClose')
+                const allowed = await tab.canClose()
+                canClose.end()
+                if (!allowed) {
+                    return
+                }
+            }
+            const recovery = this.diagnostics.span('tab:close:recoveryToken')
+            const token = await this.tabRecovery.getFullRecoveryToken(tab, { includeState: true })
+            recovery.end({ bytes: token ? JSON.stringify(token).length : 0 })
+            if (token) {
+                this.closedTabsStack.push(token)
+                this.closedTabsStack = this.closedTabsStack.slice(-5)
+            }
+            const destroy = this.diagnostics.span('tab:close:destroy')
+            tab.destroy()
+            destroy.end()
+        } finally {
+            closing.end()
         }
-        const token = await this.tabRecovery.getFullRecoveryToken(tab, { includeState: true })
-        if (token) {
-            this.closedTabsStack.push(token)
-            this.closedTabsStack = this.closedTabsStack.slice(-5)
-        }
-        tab.destroy()
     }
 
     async duplicateTab (tab: BaseTabComponent): Promise<BaseTabComponent|null> {
