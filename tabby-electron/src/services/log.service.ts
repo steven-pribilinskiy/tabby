@@ -19,7 +19,25 @@ const initializeWinston = (electron: ElectronService) => {
             new winston.transports.File({
                 level: 'debug',
                 filename: path.join(logDirectory, 'log.txt'),
-                format: winston.format.simple(),
+                // Timestamped, because the whole value of this file after the
+                // fact is lining its entries up against something else — a
+                // freeze, a crash, a session that died. `format.simple()`
+                // records none, so a five-megabyte log cannot answer "what was
+                // happening at 09:58".
+                format: winston.format.combine(
+                    winston.format.timestamp(),
+                    winston.format.printf((info: any) => {
+                        // Winston stashes the extra arguments of `log(msg, a, b)`
+                        // under a symbol; `format.simple()` renders them and
+                        // dropping them here would quietly shorten every entry
+                        // that carries a payload.
+                        const extra: unknown[] | undefined = info[Symbol.for('splat')]
+                        const tail = extra?.length
+                            ? ` ${extra.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' ')}`
+                            : ''
+                        return `${info.timestamp} ${info.level}: ${info.message}${tail}`
+                    }),
+                ),
                 handleExceptions: false,
                 maxsize: 5242880,
                 maxFiles: 5,
