@@ -1,5 +1,6 @@
 // Registers main-process error logging - must be first so it catches import-time errors
 import { logMainError } from './errors'
+import { installDiagnostics, mark, recordFailure } from './diagnostics'
 
 import { app, ipcMain, Menu, dialog } from 'electron'
 
@@ -19,6 +20,18 @@ import './portable'
 import 'dotenv/config'
 process.env.TABBY_PLUGINS ??= ''
 process.env.TABBY_CONFIG_DIRECTORY ??= app.getPath('userData')
+
+// Once the config directory is settled there is somewhere to write, and every
+// renderer forked from here inherits it. A blocked main process freezes every
+// window through synchronous IPC, so it is watched on the same terms as one.
+installDiagnostics('main')
+
+app.on('render-process-gone', (_event, _contents, details) => {
+    recordFailure('render-process-gone', `${details.reason} (exit ${details.exitCode})`)
+})
+app.on('child-process-gone', (_event, details) => {
+    recordFailure('child-process-gone', `${details.type}/${details.name ?? '?'}: ${details.reason}`)
+})
 
 import 'source-map-support/register'
 import './sentry'
@@ -58,6 +71,7 @@ ipcMain.on('app:new-window', (_event, options?: { initialTab?: any }) => {
 })
 
 process.on('uncaughtException', err => {
+    recordFailure('uncaughtException', err)
     application.broadcast('uncaughtException', err)
 })
 
@@ -111,13 +125,17 @@ app.on('ready', async () => {
     }
 
     try {
+        mark('app-ready')
         application.init()
 
         const window = await application.newWindow({ hidden: argv.hidden })
+        mark('window-created')
         await window.ready
+        mark('window-ready')
         window.passCliArguments(process.argv, process.cwd(), false)
         window.focus()
     } catch (err) {
+        recordFailure('window-open-failed', err)
         logMainError('Failed to open window', err)
         dialog.showErrorBox('Tabby failed to start', String(err?.stack ?? err))
         app.exit(1)

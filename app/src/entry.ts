@@ -1,3 +1,7 @@
+// Before everything: captures native timers and wraps synchronous I/O while
+// there is still nothing else in the process to miss.
+import './diagnosticsBoot'
+
 import 'zone.js'
 import 'core-js/proposals/reflect-metadata'
 import 'rxjs'
@@ -14,6 +18,7 @@ import { platformBrowserDynamic } from '@angular/platform-browser-dynamic'
 import { ipcRenderer } from 'electron'
 
 import { getRootModule } from './app.module'
+import { mark, recordFailure } from '../lib/diagnostics'
 import { BootstrapData, BOOTSTRAP_DATA, PluginInfo } from '../../tabby-core/src/api/mainProcess'
 
 // Always land on the start view
@@ -36,12 +41,14 @@ async function bootstrap (bootstrapData: BootstrapData, plugins: PluginInfo[], s
         plugins = plugins.filter(x => x.isBuiltin)
     }
 
+    mark('loading-plugins', { count: plugins.length, safeMode })
     const pluginModules = await loadPlugins(plugins, (current, total) => {
         (document.querySelector('.progress .bar') as HTMLElement).style.width = `${100 * current / total}%` // eslint-disable-line
     })
 
     window['pluginModules'] = pluginModules
 
+    mark('bootstrapping-angular')
     const module = getRootModule(pluginModules)
     const moduleRef = await platformBrowserDynamic([
         { provide: BOOTSTRAP_DATA, useValue: bootstrapData },
@@ -69,7 +76,9 @@ ipcRenderer.once('start', async (_$event, bootstrapData: BootstrapData) => {
     console.log('Starting with plugins:', plugins)
     try {
         await bootstrap(bootstrapData, plugins)
+        mark('ready')
     } catch (error) {
+        recordFailure('bootstrap-failed', error)
         console.error('Angular bootstrapping error:', error)
         console.warn('Trying safe mode')
         window['safeModeReason'] = error

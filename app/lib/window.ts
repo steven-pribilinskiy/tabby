@@ -11,6 +11,7 @@ import { compare as compareVersions } from 'compare-versions'
 
 import type { Application } from './app'
 import { parseArgs } from './cli'
+import { note, recordFailure } from './diagnostics'
 import { parseTabbyURL, isTabbyURL } from './urlHandler'
 
 let DwmEnableBlurBehindWindow: any = null
@@ -149,6 +150,23 @@ export class Window {
                 this.window.moveTop()
                 application.focus()
             }
+        })
+
+        // Chromium's own verdict on the renderer, from outside it. It is a
+        // weaker signal than the renderer's stall detector — a window can be
+        // frozen for a minute without ever being called unresponsive — but it
+        // costs nothing and it still fires when the renderer is too wedged to
+        // report on itself.
+        let unresponsiveSince = 0
+        this.window.on('unresponsive', () => {
+            unresponsiveSince = Date.now()
+            note('window-unresponsive')
+        })
+        this.window.on('responsive', () => {
+            note('window-responsive', { afterMs: unresponsiveSince ? Date.now() - unresponsiveSince : null })
+        })
+        this.window.webContents.on('render-process-gone', (_event, details) => {
+            recordFailure('window-render-process-gone', `${details.reason} (exit ${details.exitCode})`)
         })
 
         this.window.on('blur', () => {
