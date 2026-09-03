@@ -279,6 +279,9 @@ export default class AppModule { // eslint-disable-line @typescript-eslint/no-ex
 export { AppRootComponent as bootstrap }
 export * from './api'
 export { AppHotkeyProvider }
+// A plugin can already contribute a CommandProvider; without this it cannot run
+// one, which is what a custom link-tooltip button needs.
+export { CommandService }
 
 // Deprecations
 export { ToolbarButton as IToolbarButton } from './api'

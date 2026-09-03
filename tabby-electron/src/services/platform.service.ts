@@ -164,7 +164,7 @@ export class ElectronPlatformService extends PlatformService {
 
     async openExternal (url: string): Promise<void> {
         const scheme = this.getExternalScheme(url)
-        if (scheme && this.safeExternalSchemes.has(scheme)) {
+        if (scheme && (this.safeExternalSchemes.has(scheme) || this.extraSafeSchemes.includes(scheme))) {
             await this.electron.shell.openExternal(url)
         } else {
             await this.confirmAndOpenExternal(url)

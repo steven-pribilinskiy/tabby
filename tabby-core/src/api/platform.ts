@@ -142,6 +142,15 @@ export type PlatformTheme = 'light'|'dark'
 export abstract class PlatformService {
     supportsWindowControls = false
 
+    /**
+     * URI schemes that open without a confirmation, beyond the ones always
+     * considered safe. Set by whoever owns the setting — `tabby-links` fills it
+     * from `linkTooltip.safeSchemes`. A plain array rather than a config read so
+     * that this service does not have to depend on ConfigService, which depends
+     * on it.
+     */
+    extraSafeSchemes: string[] = []
+
     get fileTransferStarted$ (): Observable<FileTransfer> { return this.fileTransferStarted }
     get displayMetricsChanged$ (): Observable<void> { return this.displayMetricsChanged }
     get themeChanged$ (): Observable<PlatformTheme> { return this.themeChanged }
