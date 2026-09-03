@@ -1,0 +1,52 @@
+{
+    "id": "stith",
+    "name": "Stith",
+    "icon": "",
+    "version": 1,
+    "cacheSeconds": 30,
+    "settings": [
+        {
+            "key": "baseUrl",
+            "label": "Server",
+            "placeholder": "https://stith.lvh.me",
+            "description": "Where the stith dashboard is served. The same URL works from Windows and WSL, wherever the CLI itself lives.",
+            "required": true
+        }
+    ],
+    "credentials": [],
+    "matchers": [
+        {
+            "kind": "link",
+            "pattern": "^stith://(?:session|focus)/(?<id>[A-Za-z0-9-]{4,64})"
+        },
+        {
+            "kind": "link",
+            "pattern": "^https?://[^/]+/(?:s|agent|sessions|embed/s)/(?<id>[A-Za-z0-9-]{4,64})",
+            "hostSetting": "baseUrl"
+        }
+    ],
+    "fetch": [
+        {
+            "id": "agent",
+            "type": "http",
+            "method": "GET",
+            "url": "{{settings.baseUrl}}/api/agents/{{id}}",
+            "headers": { "Accept": "application/json" },
+            "allowUntrustedCertificate": true,
+            "timeoutMs": 5000
+        }
+    ],
+    "fields": [
+        { "key": "name", "label": "Session", "path": "/name", "kind": "title", "default": true },
+        { "key": "status", "label": "Status", "path": "/status", "kind": "badge", "default": true },
+        { "key": "liveness", "label": "Liveness", "path": "/liveness", "kind": "badge", "default": false },
+        { "key": "project", "label": "Project", "path": "/projectName", "kind": "text", "default": true },
+        { "key": "cwd", "label": "Directory", "path": "/cwd", "kind": "text", "default": false },
+        { "key": "machine", "label": "Machine", "path": "/machine", "kind": "text", "default": true },
+        { "key": "branch", "label": "Branch", "path": "/gitBranch", "kind": "text", "default": false },
+        { "key": "jira", "label": "Jira", "path": "/jira", "kind": "text", "default": false },
+        { "key": "model", "label": "Model", "path": "/model", "kind": "text", "default": false },
+        { "key": "lastActivity", "label": "Last activity", "path": "/lastActivityAt", "kind": "text", "format": "relativeTime", "default": true },
+        { "key": "error", "label": "Stith", "path": "/error", "kind": "badge", "color": "#c0392b", "default": true }
+    ]
+}

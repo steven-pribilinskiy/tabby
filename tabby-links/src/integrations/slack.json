@@ -1,0 +1,58 @@
+{
+    "id": "slack",
+    "name": "Slack",
+    "icon": "",
+    "version": 1,
+    "cacheSeconds": 300,
+    "settings": [],
+    "credentials": [
+        {
+            "key": "token",
+            "label": "Bot token",
+            "description": "An xoxb- token from a Slack app installed in the workspace, with channels:history, groups:history and users:read. The bot must be a member of a channel to read it.",
+            "secret": true
+        }
+    ],
+    "matchers": [
+        {
+            "kind": "link",
+            "pattern": "^https://(?<workspace>[^/.]+)\\.slack\\.com/archives/(?<channel>[A-Z0-9]+)/p(?<ts_s>\\d{10})(?<ts_us>\\d{6})(?:\\?thread_ts=(?<thread>\\d+\\.\\d+))?"
+        }
+    ],
+    "fetch": [
+        {
+            "id": "message",
+            "type": "http",
+            "method": "GET",
+            "unless": "{{thread}}",
+            "url": "https://slack.com/api/conversations.history?channel={{channel}}&latest={{ts_s}}.{{ts_us}}&inclusive=true&limit=1",
+            "auth": { "type": "bearer", "value": "{{credentials.token}}" },
+            "timeoutMs": 8000
+        },
+        {
+            "id": "message",
+            "type": "http",
+            "method": "GET",
+            "when": "{{thread}}",
+            "url": "https://slack.com/api/conversations.replies?channel={{channel}}&ts={{thread}}&latest={{ts_s}}.{{ts_us}}&inclusive=true&limit=1",
+            "auth": { "type": "bearer", "value": "{{credentials.token}}" },
+            "timeoutMs": 8000
+        },
+        {
+            "id": "user",
+            "type": "http",
+            "method": "GET",
+            "when": "{{message:/messages/-1/user}}",
+            "url": "https://slack.com/api/users.info?user={{message:/messages/-1/user}}",
+            "auth": { "type": "bearer", "value": "{{credentials.token}}" },
+            "timeoutMs": 8000
+        }
+    ],
+    "fields": [
+        { "key": "author", "label": "From", "path": "user:/user/real_name", "kind": "title", "iconPath": "user:/user/profile/image_48", "default": true },
+        { "key": "text", "label": "Message", "path": "message:/messages/-1/text", "kind": "multiline", "default": true },
+        { "key": "time", "label": "Sent", "path": "message:/messages/-1/ts", "kind": "text", "format": "relativeTime", "default": true },
+        { "key": "replies", "label": "Replies", "path": "message:/messages/-1/reply_count", "kind": "text", "default": false },
+        { "key": "error", "label": "Slack", "path": "message:/error", "kind": "badge", "color": "#c0392b", "default": true }
+    ]
+}

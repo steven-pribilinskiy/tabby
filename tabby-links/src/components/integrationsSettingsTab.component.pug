@@ -1,0 +1,136 @@
+h3.mb-3(translate) Integrations
+
+// ── The list ────────────────────────────────────────────────────────────────
+
+div(*ngIf='!current')
+    .text-muted.mb-3(translate) Integrations teach the terminal what a link or a piece of output refers to, so hovering it can show a live preview. Enable the ones you use and fill in what they need.
+
+    .alert.alert-warning.py-2(*ngIf='!encryptionAvailable')
+        i.fas.fa-fw.fa-triangle-exclamation.me-2
+        span(translate) This system cannot encrypt secrets, so credentials cannot be saved. Integrations that need one will stay unconfigured.
+
+    .integration-list
+        .integration-row(*ngFor='let integration of integrations', (click)='select(integration)')
+            .integration-info
+                .integration-name
+                    span {{integration.name}}
+                    span.badge.bg-secondary.ms-2(*ngIf='!integration.configured', translate) Not configured
+                .integration-source {{integration.source}}
+            .integration-toggle((click)='$event.stopPropagation()')
+                toggle(
+                    [ngModel]='integration.enabled',
+                    (ngModelChange)='setEnabled(integration, $event)',
+                )
+            i.fas.fa-fw.fa-chevron-right.chevron
+
+    .text-muted(*ngIf='!integrations.length', translate) No integrations were found.
+
+    .user-dir.mt-4(*ngIf='userDirectory')
+        .header
+            .title(translate) To add your own, drop a folder containing an integration.json into
+            .description.code {{userDirectory}}
+        button.btn.btn-sm.btn-secondary((click)='copyUserDirectory()')
+            i.fas.fa-fw.fa-copy
+        button.btn.btn-sm.btn-secondary((click)='openUserDirectory()')
+            i.fas.fa-fw.fa-folder-open
+
+// ── The detail view ─────────────────────────────────────────────────────────
+
+div(*ngIf='current')
+    .detail-head
+        button.btn.btn-sm.btn-link.ps-0((click)='select(null)')
+            i.fas.fa-fw.fa-arrow-left.me-1
+            span(translate) All integrations
+        h4.mb-0.ms-2 {{current.name}}
+
+    .alert.alert-warning.py-2(*ngIf='!current.configured')
+        strong(translate) Not configured
+        div(translate) Fill in the required settings and credentials below. Until then, this integration is never contacted.
+
+    .form-line
+        .header
+            .title(translate) Enabled
+            .description(translate) A disabled integration is never contacted, whatever a rule says
+        toggle(
+            [ngModel]='current.enabled',
+            (ngModelChange)='setEnabled(current, $event)',
+        )
+
+    .form-line
+        .header
+            .title(translate) Source
+            .description(translate) Where this integration's definition came from
+        .source-value.code {{current.source}}
+
+    h5.mt-4.mb-2(*ngIf='current.manifest.settings?.length', translate) Settings
+
+    .form-line(*ngFor='let field of current.manifest.settings')
+        .header
+            .title {{field.label || field.key}}
+            .description(*ngIf='field.description') {{field.description}}
+        input.form-control(
+            type='text',
+            spellcheck='false',
+            [placeholder]='field.placeholder || ""',
+            [ngModel]='settingValue(current, field.key)',
+            (ngModelChange)='setSetting(current, field.key, $event)',
+            (blur)='normalizeSetting(current, field)',
+        )
+
+    h5.mt-4.mb-2(*ngIf='credentialRows.length', translate) Credentials
+
+    .text-muted.mb-2(*ngIf='credentialRows.length', translate) Credentials are encrypted with the operating system's keystore and stored beside your config, never inside it — so they are not uploaded by Config Sync. They are only ever sent to the host this integration is configured for.
+
+    .credential-card(*ngFor='let row of credentialRows')
+        .header
+            .title {{row.field.label || row.field.key}}
+            .description(*ngIf='row.field.description') {{row.field.description}}
+        .credential-row
+            input.form-control(
+                [type]='row.secret ? "password" : "text"',
+                autocomplete='off',
+                spellcheck='false',
+                [placeholder]='row.secret ? ("New value"|translate) : (row.field.placeholder || "")',
+                [(ngModel)]='row.pending',
+            )
+            button.btn.btn-primary(
+                (click)='saveCredential(row)',
+                [disabled]='!row.pending || !encryptionAvailable',
+            )
+                span(translate) Save
+            button.btn.btn-secondary((click)='clearCredential(row)', [disabled]='!row.stored')
+                span(translate) Clear
+        .credential-status
+            i.fas.fa-fw.fa-lock.me-1(*ngIf='row.stored && row.secret')
+            span.stored-hint(*ngIf='row.stored && row.hint') {{row.hint}}
+            span(*ngIf='row.stored && row.secret && !row.hint', translate) Stored
+            span(*ngIf='row.stored && !row.secret', translate) Saved
+            span(*ngIf='!row.stored', translate) Not set
+
+    h5.mt-4.mb-2(*ngIf='current.manifest.fields?.length', translate) Show in tooltip
+
+    .field-checks
+        .field-check(*ngFor='let field of current.manifest.fields')
+            checkbox(
+                [ngModel]='isFieldVisible(current, field.key || field.label || "")',
+                (ngModelChange)='setFieldVisible(current, field.key || field.label || "", $event)',
+                [text]='field.label || field.key',
+            )
+
+    h5.mt-4.mb-2(*ngIf='suggestedMatchers(current).length', translate) Detect in output
+
+    .text-muted.mb-2(*ngIf='suggestedMatchers(current).length', translate) Patterns this integration can recognize in plain terminal output. Adding one creates a rule on the Link Tooltip page, which you can edit or remove later.
+
+    .matcher-card(*ngFor='let matcher of suggestedMatchers(current)')
+        .header
+            .title {{matcher.description || matcher.pattern}}
+            .description.code {{matcher.pattern}}
+        button.btn.btn-secondary((click)='addAsRule(current, matcher)')
+            span(translate) Add as rule
+
+    .alert.alert-success.py-2.mt-2(*ngIf='addedRuleName')
+        strong(translate) Rule added
+        div {{addedRuleName}}
+        div(translate) The new rule is on the Link Tooltip page, where you can rename, reorder, or remove it.
+        button.btn.btn-sm.btn-secondary.mt-2((click)='goToLinkTooltip()')
+            span(translate) Go to Link Tooltip

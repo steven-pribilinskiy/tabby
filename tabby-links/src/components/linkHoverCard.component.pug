@@ -1,0 +1,58 @@
+.link-card(
+    #root,
+    [style.max-width.px]='model.maxWidth > 0 ? model.maxWidth : null',
+    (mouseenter)='handlers?.pointerEnter()',
+    (mouseleave)='handlers?.pointerLeave()',
+)
+    .link-line
+        .link-text {{model.text}}
+        .link-hint(*ngIf='model.hint') {{model.hint}}
+
+    .link-target(*ngIf='model.target')
+        span.arrow →
+        span.path {{model.target}}
+
+    .preview(*ngIf='showPreviewSection')
+        .preview-head
+            i.fas.fa-fw.fa-circle-notch.fa-spin.spinner(*ngIf='model.loading')
+            span.preview-name(*ngIf='model.integrationName') {{model.integrationName}}
+
+        .preview-error(*ngIf='model.preview?.error') {{model.preview?.error}}
+
+        .preview-fields(*ngIf='!model.preview?.error')
+            ng-container(*ngFor='let field of model.preview?.fields; trackBy: trackField')
+                .field-title(*ngIf='field.kind === "title"')
+                    img.field-icon(*ngIf='field.iconUri', [src]='field.iconUri')
+                    span {{field.value}}
+                .field-row(*ngIf='field.kind !== "title"')
+                    .field-label {{field.label}}
+                    .field-value
+                        img.field-icon(*ngIf='field.iconUri', [src]='field.iconUri')
+                        span.badge-pill(
+                            *ngIf='field.kind === "badge"',
+                            [style.background]='badgeBackground(field)',
+                        ) {{field.value}}
+                        span.field-text(
+                            *ngIf='field.kind !== "badge"',
+                            [class.multiline]='field.kind === "multiline"',
+                        ) {{field.value}}
+
+    .actions(*ngIf='hasActions')
+        button.btn.btn-sm.btn-secondary(*ngIf='model.showOpen', (click)='handlers?.open()')
+            i.fas.fa-fw.fa-arrow-up-right-from-square.me-1
+            span(translate) Open
+        button.btn.btn-sm.btn-secondary(*ngIf='model.showCopyLink', (click)='handlers?.copyLink()')
+            i.fas.fa-fw.fa-link.me-1
+            span(translate) Copy link
+        button.btn.btn-sm.btn-secondary(*ngIf='model.showCopyPath', (click)='handlers?.copyPath()')
+            i.fas.fa-fw.fa-copy.me-1
+            span(translate) Copy path
+        button.btn.btn-sm.btn-secondary(*ngIf='model.showReveal', (click)='handlers?.reveal()')
+            i.fas.fa-fw.fa-folder-open.me-1
+            span(translate) Show in folder
+        button.btn.btn-sm.btn-secondary(
+            *ngFor='let action of model.actions; trackBy: trackAction',
+            (click)='handlers?.custom(action)',
+        )
+            i.fas.fa-fw.me-1(*ngIf='action.icon', class='fa-{{action.icon}}')
+            span {{action.name}}

@@ -1,0 +1,98 @@
+.rule-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.rule-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: var(--theme-bg-more);
+
+    &.editing {
+        border-color: var(--bs-primary);
+    }
+}
+
+.rule-info {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.rule-name {
+    font-weight: 500;
+}
+
+.rule-summary {
+    font-size: 12px;
+    opacity: .55;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rule-buttons {
+    display: flex;
+    gap: 4px;
+    flex: none;
+}
+
+.rule-editor {
+    margin-top: 16px;
+    padding: 4px 14px 14px;
+    border: 1px solid rgba(127, 127, 127, .3);
+    border-radius: 8px;
+    background: var(--theme-bg-more);
+}
+
+.editor-head {
+    display: flex;
+    align-items: center;
+    padding: 10px 0 2px;
+}
+
+// The checkbox says whether the rule overrides the default at all; the number
+// is meaningless, and disabled, until it does.
+.override {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 33%;
+
+    .form-control {
+        flex: 1 1 auto;
+    }
+}
+
+.action-card {
+    border: 1px solid rgba(127, 127, 127, .3);
+    border-radius: 6px;
+    padding: 8px;
+    margin-bottom: 8px;
+}
+
+.action-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+
+    & + .action-row {
+        margin-top: 6px;
+    }
+
+    .form-control {
+        flex: 1 1 auto;
+    }
+
+    .icon-input {
+        flex: 0 0 110px;
+    }
+
+    .type-input {
+        flex: 0 0 220px;
+    }
+}

@@ -1,0 +1,138 @@
+.code {
+    font-family: var(--bs-font-monospace, 'Cascadia Mono', Consolas, monospace);
+    font-size: 12px;
+    word-break: break-all;
+}
+
+.integration-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.integration-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: var(--theme-bg-more);
+    cursor: pointer;
+
+    &:hover {
+        background: var(--theme-bg-more-2, var(--theme-bg-more));
+    }
+}
+
+.integration-info {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.integration-name {
+    font-weight: 500;
+}
+
+.integration-source {
+    font-size: 12px;
+    opacity: .5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.integration-toggle {
+    flex: none;
+}
+
+.chevron {
+    flex: none;
+    opacity: .4;
+}
+
+.user-dir {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: var(--theme-bg-more);
+
+    .header {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .description {
+        opacity: .7;
+    }
+}
+
+.detail-head {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.source-value {
+    width: 33%;
+    opacity: .7;
+    text-align: right;
+}
+
+.credential-card,
+.matcher-card {
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: var(--theme-bg-more);
+    margin-bottom: 8px;
+
+    .description {
+        font-size: 13px;
+        opacity: .5;
+    }
+}
+
+.matcher-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    .header {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+}
+
+.credential-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+
+    .form-control {
+        flex: 1 1 auto;
+    }
+}
+
+.credential-status {
+    margin-top: 5px;
+    font-size: 12px;
+    opacity: .55;
+}
+
+// Enough of the stored secret to tell which one it is, in a font where the
+// masked run lines up.
+.stored-hint {
+    font-family: var(--bs-font-monospace, 'Cascadia Mono', Consolas, monospace);
+    letter-spacing: .02em;
+}
+
+.field-checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 20px;
+}
+
+.field-check {
+    flex: 0 0 calc(50% - 20px);
+}

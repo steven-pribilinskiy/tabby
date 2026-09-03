@@ -1,0 +1,67 @@
+{
+    "id": "jira",
+    "name": "Jira",
+    "icon": "",
+    "version": 1,
+    "cacheSeconds": 300,
+    "settings": [
+        {
+            "key": "host",
+            "label": "Site host",
+            "placeholder": "acme.atlassian.net",
+            "description": "The Jira Cloud site (or Jira Server host) whose links to preview. Paste any URL from the site and it is reduced to the host; a bare name gets .atlassian.net added. Credentials are only ever sent to this host.",
+            "required": true,
+            "normalize": "host",
+            "suffix": ".atlassian.net"
+        }
+    ],
+    "credentials": [
+        {
+            "key": "email",
+            "label": "Account email",
+            "placeholder": "you@example.com",
+            "description": "The Atlassian account the API token belongs to. Not a secret, so it is shown back to you.",
+            "secret": false
+        },
+        {
+            "key": "token",
+            "label": "API token",
+            "description": "Create one at id.atlassian.com → Security → API tokens.",
+            "secret": true
+        }
+    ],
+    "matchers": [
+        {
+            "kind": "link",
+            "pattern": "^https?://[^/]+/browse/(?<key>[A-Z][A-Z0-9]+-\\d+)",
+            "hostSetting": "host"
+        },
+        {
+            "kind": "text",
+            "pattern": "\\b(?<key>[A-Z][A-Z0-9]{1,9}-\\d{1,7})\\b",
+            "suggested": true,
+            "description": "Issue keys in output, like CAB-8209",
+            "link": "https://{{settings.host}}/browse/{{key}}"
+        }
+    ],
+    "fetch": [
+        {
+            "id": "issue",
+            "type": "http",
+            "method": "GET",
+            "url": "https://{{settings.host}}/rest/api/3/issue/{{key}}?fields=summary,status,assignee,priority,issuetype,updated,reporter",
+            "auth": { "type": "basic", "user": "{{credentials.email}}", "password": "{{credentials.token}}" },
+            "headers": { "Accept": "application/json" },
+            "timeoutMs": 8000
+        }
+    ],
+    "fields": [
+        { "key": "summary", "label": "Summary", "path": "/fields/summary", "kind": "title", "default": true },
+        { "key": "status", "label": "Status", "path": "/fields/status/name", "kind": "badge", "colorPath": "/fields/status/statusCategory/colorName", "default": true },
+        { "key": "assignee", "label": "Assignee", "path": "/fields/assignee/displayName", "kind": "text", "iconPath": "/fields/assignee/avatarUrls/24x24", "default": true },
+        { "key": "priority", "label": "Priority", "path": "/fields/priority/name", "kind": "text", "iconPath": "/fields/priority/iconUrl", "default": false },
+        { "key": "type", "label": "Type", "path": "/fields/issuetype/name", "kind": "text", "iconPath": "/fields/issuetype/iconUrl", "default": false },
+        { "key": "reporter", "label": "Reporter", "path": "/fields/reporter/displayName", "kind": "text", "iconPath": "/fields/reporter/avatarUrls/24x24", "default": false },
+        { "key": "updated", "label": "Updated", "path": "/fields/updated", "kind": "text", "format": "relativeTime", "default": true }
+    ]
+}

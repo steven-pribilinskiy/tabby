@@ -1,0 +1,342 @@
+h3.mb-3(translate) Link Tooltip
+
+h4.mt-4.mb-2(translate) Defaults
+
+.form-line
+    .header
+        .title(translate) Automatically detect URLs and make them clickable
+    reset-to-default([proxy]='config.store.linkTooltip', key='detectLinks')
+    toggle(
+        [(ngModel)]='config.store.linkTooltip.detectLinks',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Show a card when hovering a link
+        .description(translate) Turn off to keep links clickable without the hover card
+    reset-to-default([proxy]='config.store.linkTooltip', key='enabled')
+    toggle(
+        [(ngModel)]='config.store.linkTooltip.enabled',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Open links with a single click, without holding Ctrl
+        .description(translate) The link opens when the mouse button is released. Dragging across a URL still selects it
+    toggle([(ngModel)]='openOnSingleClick')
+
+.form-line
+    .header
+        .title(translate) Maximum width of the link tooltip
+        .description(translate) How far a URI may run before it wraps, in pixels. Set to 0 for no maximum
+    reset-to-default([proxy]='config.store.linkTooltip', key='maxWidth')
+    input.form-control(
+        type='number',
+        min='0',
+        max='4000',
+        step='20',
+        [(ngModel)]='config.store.linkTooltip.maxWidth',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Delay before the link tooltip appears
+        .description(translate) In milliseconds. Set to 0 to show it immediately
+    reset-to-default([proxy]='config.store.linkTooltip', key='showDelay')
+    input.form-control(
+        type='number',
+        min='0',
+        max='5000',
+        step='50',
+        [(ngModel)]='config.store.linkTooltip.showDelay',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Delay before the link tooltip disappears
+        .description(translate) In milliseconds. This is the time you have to move the pointer onto the tooltip to use its buttons, so 0 puts them out of reach of the mouse
+    reset-to-default([proxy]='config.store.linkTooltip', key='hideDelay')
+    input.form-control(
+        type='number',
+        min='0',
+        max='5000',
+        step='50',
+        [(ngModel)]='config.store.linkTooltip.hideDelay',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Show buttons on the link tooltip
+        .description(translate) Open the link, copy it, and — for links to files — copy the path it resolves to or show it in the file manager
+    reset-to-default([proxy]='config.store.linkTooltip', key='showButtons')
+    toggle(
+        [(ngModel)]='config.store.linkTooltip.showButtons',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) URI schemes that open without a warning
+        .description(translate) Separate schemes with commas, for example: vscode, ms-settings. Links using any other scheme ask for confirmation first. http, https, ftp and mailto never ask
+    input.form-control(
+        type='text',
+        placeholder='vscode, stith',
+        [(ngModel)]='safeSchemes',
+    )
+
+h4.mt-4.mb-2(translate) Rules
+
+.text-muted.mb-2(translate) The first enabled rule that matches a link decides how its tooltip behaves. Criteria you leave empty are ignored rather than treated as "no match".
+
+button.btn.btn-secondary.mb-3((click)='addRule()')
+    i.fas.fa-fw.fa-plus.me-2
+    span(translate) Add rule
+
+.rule-list
+    .rule-row(*ngFor='let rule of rules; let i = index; trackBy: trackRule', [class.editing]='currentRule === rule')
+        toggle(
+            [(ngModel)]='rule.enabled',
+            (ngModelChange)='saveConfiguration()',
+        )
+        .rule-info
+            .rule-name {{rule.name || ('Unnamed rule'|translate)}}
+            .rule-summary(*ngIf='summary(rule)') {{summary(rule)}}
+        .rule-buttons
+            button.btn.btn-sm.btn-secondary((click)='editRule(rule)', [title]='"Edit rule"|translate')
+                i.fas.fa-fw.fa-pen
+            button.btn.btn-sm.btn-secondary((click)='moveRule(rule, -1)', [disabled]='i === 0', [title]='"Move up"|translate')
+                i.fas.fa-fw.fa-arrow-up
+            button.btn.btn-sm.btn-secondary((click)='moveRule(rule, 1)', [disabled]='i === rules.length - 1', [title]='"Move down"|translate')
+                i.fas.fa-fw.fa-arrow-down
+            button.btn.btn-sm.btn-secondary((click)='deleteRule(rule)', [title]='"Delete rule"|translate')
+                i.fas.fa-fw.fa-trash-alt
+
+.text-muted(*ngIf='!rules.length', translate) No rules yet. Every link uses the defaults above.
+
+// ── The inline editor for the selected rule ─────────────────────────────────
+
+.rule-editor(*ngIf='currentRule')
+    .editor-head
+        h5.mb-0(translate) Edit rule
+        button.btn.btn-sm.btn-link.ms-auto((click)='currentRule = null')
+            i.fas.fa-fw.fa-times
+
+    .form-line
+        .header
+            .title(translate) Name
+        input.form-control(
+            type='text',
+            [(ngModel)]='currentRule.name',
+            (ngModelChange)='saveConfiguration()',
+        )
+
+    .form-line
+        .header
+            .title(translate) Enabled
+        toggle(
+            [(ngModel)]='currentRule.enabled',
+            (ngModelChange)='saveConfiguration()',
+        )
+
+    h6.mt-3.mb-2(translate) Match criteria
+
+    .form-line
+        .header
+            .title(translate) Match kind
+            .description(translate) Links are matched against detected or embedded hyperlinks. Text is matched against the terminal's output, turning what it finds into a hoverable match
+        select.form-control(
+            [(ngModel)]='currentRule.match',
+            (ngModelChange)='saveConfiguration()',
+        )
+            option(value='link') {{'Link'|translate}}
+            option(value='text') {{'Text'|translate}}
+
+    .form-line(*ngIf='currentRule.match === "link"')
+        .header
+            .title(translate) URI schemes
+            .description(translate) Separate schemes with commas, for example: https, stith. Leave empty to match any scheme
+        input.form-control(
+            type='text',
+            [ngModel]='schemesOf(currentRule)',
+            (ngModelChange)='setSchemes(currentRule, $event)',
+        )
+
+    .form-line
+        .header
+            .title(translate) Pattern
+            .description(*ngIf='currentRule.match === "link"', translate) A regular expression matched against the full link text. Leave empty to match any text
+            .description(*ngIf='currentRule.match === "text"', translate) Matched against the terminal's output. The whole match becomes hoverable and clickable
+        input.form-control(
+            type='text',
+            [ngModel]='currentRule.pattern',
+            (ngModelChange)='setPattern(currentRule, $event)',
+        )
+
+    .alert.alert-warning.py-2(*ngIf='patternError')
+        i.fas.fa-fw.fa-triangle-exclamation.me-2
+        span {{patternError}}
+
+    .form-line(*ngIf='currentRule.match === "link"')
+        .header
+            .title(translate) File type
+            .description(translate) Only applies to links that resolve to a file path. "None" does not constrain by file type
+        select.form-control(
+            [(ngModel)]='currentRule.fileTypeGroup',
+            (ngModelChange)='saveConfiguration()',
+        )
+            option(*ngFor='let group of fileTypeGroups', [value]='group.value') {{group.label|translate}}
+
+    .form-line(*ngIf='currentRule.match === "link"')
+        .header
+            .title(translate) Custom file extensions
+            .description(translate) Separate extensions with commas, for example: log, ini. Merged with the file type group above
+        input.form-control(
+            type='text',
+            [ngModel]='extensionsOf(currentRule)',
+            (ngModelChange)='setExtensions(currentRule, $event)',
+        )
+
+    h6.mt-3.mb-2(translate) Preview
+
+    .form-line
+        .header
+            .title(translate) Integration
+            .description(translate) Which integration looks up what a match refers to. "Automatic" uses the first enabled integration that recognizes it
+        select.form-control(
+            [(ngModel)]='currentRule.integration',
+            (ngModelChange)='saveConfiguration()',
+        )
+            option(value='') {{'Automatic'|translate}}
+            option(value='none') {{'None'|translate}}
+            option(*ngFor='let integration of integrations', [value]='integration.id') {{integration.name}}
+
+    .form-line
+        .header
+            .title(translate) Show preview
+            .description(translate) Turn off to keep the tooltip's buttons without fetching anything
+        toggle(
+            [(ngModel)]='currentRule.preview',
+            (ngModelChange)='saveConfiguration()',
+        )
+
+    h6.mt-3.mb-2(translate) Overrides
+
+    .form-line
+        .header
+            .title(translate) Show delay
+            .description(translate) In milliseconds. Leave unchecked to use the default above
+        .override
+            checkbox(
+                [ngModel]='hasOverride(currentRule, "showDelay")',
+                (ngModelChange)='toggleOverride(currentRule, "showDelay")',
+            )
+            input.form-control(
+                type='number',
+                min='0',
+                max='5000',
+                step='50',
+                [disabled]='!hasOverride(currentRule, "showDelay")',
+                [(ngModel)]='currentRule.showDelay',
+                (ngModelChange)='saveConfiguration()',
+            )
+
+    .form-line
+        .header
+            .title(translate) Hide delay
+            .description(translate) In milliseconds. Leave unchecked to use the default above
+        .override
+            checkbox(
+                [ngModel]='hasOverride(currentRule, "hideDelay")',
+                (ngModelChange)='toggleOverride(currentRule, "hideDelay")',
+            )
+            input.form-control(
+                type='number',
+                min='0',
+                max='5000',
+                step='50',
+                [disabled]='!hasOverride(currentRule, "hideDelay")',
+                [(ngModel)]='currentRule.hideDelay',
+                (ngModelChange)='saveConfiguration()',
+            )
+
+    .form-line
+        .header
+            .title(translate) Maximum width
+            .description(translate) In pixels. Leave unchecked to use the default above
+        .override
+            checkbox(
+                [ngModel]='hasOverride(currentRule, "maxWidth")',
+                (ngModelChange)='toggleOverride(currentRule, "maxWidth")',
+            )
+            input.form-control(
+                type='number',
+                min='0',
+                max='4000',
+                step='20',
+                [disabled]='!hasOverride(currentRule, "maxWidth")',
+                [(ngModel)]='currentRule.maxWidth',
+                (ngModelChange)='saveConfiguration()',
+            )
+
+    h6.mt-3.mb-2(translate) Built-in buttons
+
+    .form-line
+        .header
+            .title(translate) Hide "Open"
+        toggle([(ngModel)]='currentRule.suppressOpen', (ngModelChange)='saveConfiguration()')
+    .form-line
+        .header
+            .title(translate) Hide "Copy link"
+        toggle([(ngModel)]='currentRule.suppressCopyLink', (ngModelChange)='saveConfiguration()')
+    .form-line
+        .header
+            .title(translate) Hide "Copy path"
+        toggle([(ngModel)]='currentRule.suppressCopyPath', (ngModelChange)='saveConfiguration()')
+    .form-line
+        .header
+            .title(translate) Hide "Show in folder"
+        toggle([(ngModel)]='currentRule.suppressReveal', (ngModelChange)='saveConfiguration()')
+
+    h6.mt-3.mb-2(translate) Custom actions
+
+    .text-muted.mb-2(translate) Extra buttons on the tooltip. %u in the value is replaced with the hovered link.
+
+    button.btn.btn-secondary.btn-sm.mb-2((click)='addAction(currentRule)')
+        i.fas.fa-fw.fa-plus.me-2
+        span(translate) Add custom action
+
+    .action-card(*ngFor='let action of currentRule.actions')
+        .action-row
+            input.form-control(
+                type='text',
+                [placeholder]='"Button label"|translate',
+                [(ngModel)]='action.name',
+                (ngModelChange)='saveConfiguration()',
+            )
+            input.form-control.icon-input(
+                type='text',
+                [placeholder]='"Icon"|translate',
+                [(ngModel)]='action.icon',
+                (ngModelChange)='saveConfiguration()',
+            )
+            button.btn.btn-secondary((click)='deleteAction(currentRule, action)')
+                i.fas.fa-fw.fa-trash-alt
+        .action-row
+            select.form-control.type-input(
+                [(ngModel)]='action.type',
+                (ngModelChange)='saveConfiguration()',
+            )
+                option(value='openUrl') {{'Open a URL'|translate}}
+                option(value='sendInput') {{'Send input to the terminal'|translate}}
+                option(value='command') {{'Run a Tabby command'|translate}}
+            input.form-control(
+                type='text',
+                placeholder='vscode://file/%u',
+                [(ngModel)]='action.value',
+                (ngModelChange)='saveConfiguration()',
+            )
