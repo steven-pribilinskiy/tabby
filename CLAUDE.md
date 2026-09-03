@@ -235,6 +235,76 @@ only a real renderer proves the mkcert cert is trusted:
 # BrowserWindow({ show: false }) + webContents.executeJavaScript(fetch(...))
 ```
 
+## Link tooltips and integrations (`tabby-links`)
+
+A hover card over terminal links, a **Link Tooltip** settings page of rules that
+customise it, and an **Integrations** page driven by declarative `integration.json`
+manifests that fetch a preview for what a link refers to. Ported from the Windows
+Terminal fork; `tabby-links/INTEGRATIONS.md` is the manifest spec, and the three
+built-in manifests (Jira, Slack, stith) are kept interchangeable with that fork's.
+
+The parts that cost real time:
+
+- **Tabby's linkifier was broken for file paths and bare IPs.**
+  `@xterm/addon-web-links@0.10.0` filters every match through an internal
+  `isUrl()` (`new URL(text)` must parse), so `UnixFileHandler`,
+  `WindowsFileHandler` and `IPHandler` never produced a clickable link. Our own
+  provider vendors that addon's `LinkComputer` — the wrapped-line window and the
+  early-wrapped-wide-char index correction are subtle and worth keeping verbatim —
+  minus the filter, which fixes all three.
+- **Two hover paths, not one.** xterm registers its own `OscLinkProvider` first
+  and earlier providers win, so an OSC 8 link never reaches ours; it reaches
+  `xterm.options.linkHandler`, which is *wrapped* rather than replaced (the
+  linkifier writes it too, and only one of us can be last).
+- **`provideLinks` must call its callback exactly once, on every path.**
+  `OscLinkProvider` answers `[]` — truthy — so our links only ever arrive through
+  the "every provider replied" pass. A provider that never calls back silently
+  kills every provider after it.
+- **We splice ourselves to index 1** in `_core._linkProviderService.linkProviders`
+  rather than editing `tabby-linkifier`. Decorator order is plugin load order
+  (alphabetical, so `linkifier` < `links`), and relying on that would have left
+  `WebLinksAddon` shadowing us. Returning `[]` when the feature is off falls
+  through to it cleanly, which is what makes the setting live with no re-attach.
+- **The card is `position: fixed` but a DOM child of `.xterm-screen`.** It has to
+  be a descendant or xterm's `xterm-hover` guard never applies and `mouseleave`
+  clears the link the instant the pointer reaches the card; it has to be fixed or
+  `.content { overflow: hidden }` clips it near a pane edge. The fixed containing
+  block is not always the window (`app-root` has `will-change: transform`, a
+  maximized split has `backdrop-filter`), so it is placed by measuring its own
+  origin at `translate(0,0)` and then translating.
+- **Everything runs outside `NgZone`** — xterm's listeners are raw DOM. The card
+  is created with `createComponent` + `ApplicationRef.attachView` (no
+  `ViewContainerRef` exists in a decorator) and updated inside `zone.run`.
+- **The card is keyed on `(text, range)` and never rebuilt while it is open.**
+  The Linkifier re-asks on every rendered-viewport change touching the hovered
+  row, so during output that fires many times a second; rebuilding would strobe
+  the card and restart its fetch every frame.
+- **A rule pattern is a remotely triggerable freeze.** It runs synchronously on
+  the mouse-move handler against text a remote host printed, and `(a+)+b` on
+  thirty `a`s takes ~12 s. Patterns are probed at increasing input lengths and
+  refused both on save and on compile, so a rule hand-written into `config.yaml`
+  is covered. **The probe must escalate**: the first version used fixed 64-char
+  inputs and took 127 seconds on `(a+)+b` — it reproduced the freeze it was
+  meant to prevent. Measuring is also why the built-in handler regexes survive:
+  they contain nested quantifiers and are fast, so a static syntax check would
+  refuse Tabby's own defaults.
+- **`safeStorage` cannot be driven over `@electron/remote`.** `encryptString`
+  returns a Buffer, which crosses the bridge as a `Uint8Array`, and
+  `decryptString` rejects a non-Buffer. `app/lib/secrets.ts` does the base64 in
+  the main process so only strings cross. Credentials live in
+  `<config dir>/integration-credentials.json`, never `config.yaml` — Config Sync
+  uploads that file verbatim.
+- **A `{}` config default silently discards writes.** `isStructuralMember` is
+  false for an empty object, so `ConfigProxy` hands back a fresh `deepClone` on
+  every read. The `integrations` map needs `__nonStructural: true`.
+- **Bind settings inputs to the config, not to an `Integration` snapshot.**
+  Snapshots are rebuilt on `config.changed$`, which arrives after
+  `config.save()` resolves, so an input bound to one reverts characters while
+  they are being typed.
+- Open and Show in folder use `platform.openPath()` / `showItemInFolder()`, not
+  `openExternal('file://' + p)` — that yields `file://C:\foo` on Windows and is
+  an existing upstream bug in `tabby-linkifier/src/handlers.ts`.
+
 ## Builds page (`tabby-builds`)
 
 Settings → **Builds** lists every Tabby build on this machine: the installed
