@@ -11,6 +11,7 @@ import { saveConfig } from './config'
 import { Window, WindowOptions } from './window'
 import { pluginManager } from './pluginManager'
 import { PTYManager } from './pty'
+import { initSecrets } from './secrets'
 
 /* eslint-disable block-scoped-var */
 
@@ -32,6 +33,7 @@ export class Application {
         remote.initialize()
         this.useBuiltinGraphics()
         this.ptyManager.init(this)
+        initSecrets()
 
         ipcMain.handle('app:save-config', async (event, config) => {
             await saveConfig(config)
