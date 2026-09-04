@@ -189,6 +189,12 @@ export interface IntegrationFetchStep {
     timeoutMs?: number
     when?: string
     unless?: string
+    /**
+     * A failing step is recorded and stepped over instead of ending the fetch.
+     * Anything reading its result resolves to nothing, and fields that depend on
+     * it are skipped — an empty value never renders a row.
+     */
+    optional?: boolean
 }
 
 export type IntegrationFieldKind =
@@ -206,6 +212,79 @@ export interface IntegrationDisplayField {
     default?: boolean
 }
 
+/**
+ * A named set of display fields, rendered together under one heading.
+ *
+ * Presentation only: a field still has to exist and its `key` appear here, and a
+ * field named by no group falls into an implicit "Details". A group whose fields
+ * all resolve to nothing does not render.
+ */
+export interface IntegrationFieldGroup {
+    key?: string
+    label?: string
+    fields?: string[]
+}
+
+/**
+ * Secondary content, too long for a field row — a description body, or a list of
+ * comments — shown behind a tab strip above the fields.
+ */
+export interface IntegrationTab {
+    key?: string
+    label?: string
+    /** One long value, or a repeating list of author/body/time rows. */
+    kind?: 'body' | 'list'
+    /** `body`: the value. `list`: the array to repeat over. */
+    path?: string
+    /**
+     * How to read the body text. `adf` is Atlassian Document Format, a JSON
+     * document flattened to text.
+     */
+    format?: 'markdown' | 'adf' | 'text'
+    /** `list` only, and relative to *each element* of the array. */
+    itemAuthorPath?: string
+    itemAvatarPath?: string
+    itemBodyPath?: string
+    itemTimePath?: string
+    default?: boolean
+}
+
+/**
+ * Something the card can *do* to the thing behind the link, rather than
+ * something it reads. A `button` fires one request; a `choice` offers options an
+ * earlier step produced and fires a request for whichever is picked, with that
+ * option's id available to the templates as `{{choice}}`.
+ */
+export interface IntegrationAction {
+    key?: string
+    label?: string
+    kind?: 'button' | 'choice'
+    /** Choice only: the array of options, in a fetch step's result. */
+    optionsPath?: string
+    /** The rest are relative to one option. */
+    optionIdPath?: string
+    optionLabelPath?: string
+    optionBadgePath?: string
+    optionColorPath?: string
+    /** The id of the state this option moves the thing *to*. */
+    optionTargetIdPath?: string
+    /**
+     * Where the thing's *current* state id lives. With `optionTargetIdPath`,
+     * this is what lets an undo find the option that leads back.
+     */
+    currentStatePath?: string
+    /** Fields the far end demands before it will accept the change. */
+    optionFieldsPath?: string
+    /** Defaults to POST — a fetch step defaults to GET. */
+    method?: string
+    url?: string
+    body?: string
+    headers?: Record<string, string>
+    auth?: IntegrationAuth
+    allowUntrustedCertificate?: boolean
+    timeoutMs?: number
+}
+
 export interface IntegrationManifest {
     id: string
     name?: string
@@ -217,6 +296,16 @@ export interface IntegrationManifest {
     matchers?: IntegrationMatcher[]
     fetch?: IntegrationFetchStep[]
     fields?: IntegrationDisplayField[]
+    fieldGroups?: IntegrationFieldGroup[]
+    tabs?: IntegrationTab[]
+    actions?: IntegrationAction[]
+    /**
+     * Patterns scanned in plain output while this plugin is enabled, so a scheme
+     * it unambiguously owns is hoverable without OSC 8 and without the user
+     * adding a rule. Distinct from a `text` matcher, which only *offers* itself
+     * on the settings page and needs opting into.
+     */
+    detectPatterns?: string[]
     /**
      * A complete HTML document, rendered in place of `fields`. Given inline —
      * there is no file-reference form. See INTEGRATIONS.md; the page is handed
@@ -247,6 +336,8 @@ export interface Integration {
      * different and equally valid answer.
      */
     fields: string[] | null
+    /** Tab keys the user chose, with the same null/empty distinction as fields. */
+    tabs: string[] | null
     configured: boolean
 }
 
@@ -260,11 +351,66 @@ export interface PreviewField {
     color: string
 }
 
+/** Fields that render together, under one heading. */
+export interface PreviewGroup {
+    key: string
+    label: string
+    fields: PreviewField[]
+}
+
+/** One row of a `list` tab. */
+export interface PreviewTabItem {
+    author: string
+    avatarUri: string
+    body: string
+    time: string
+}
+
+/** A rendered tab: either one block of text, or a list of rows. */
+export interface PreviewTab {
+    key: string
+    label: string
+    kind: 'body' | 'list'
+    /** For `body`. Already flattened from markdown or ADF to text. */
+    body: string
+    /** Whether `body` should be drawn with the small markdown renderer. */
+    markdown: boolean
+    items: PreviewTabItem[]
+}
+
+/** One option of a `choice` action. */
+export interface PreviewActionOption {
+    id: string
+    label: string
+    badge: string
+    color: string
+    /** The state this option moves the thing to, for finding a way back. */
+    targetId: string
+    /** Fields the far end demands before it will accept this option. */
+    fields: { key: string, label: string, required: boolean }[]
+}
+
+/** A rendered action, with whatever options an earlier step produced. */
+export interface PreviewAction {
+    key: string
+    label: string
+    kind: 'button' | 'choice'
+    options: PreviewActionOption[]
+    /** The thing's current state id, so an undo can look for the way back. */
+    currentState: string
+}
+
 export interface LinkPreview {
     integrationId: string
     integrationName: string
     icon: string
     fields: PreviewField[]
+    /** The same fields, arranged into the manifest's groups. */
+    groups: PreviewGroup[]
+    tabs: PreviewTab[]
+    actions: PreviewAction[]
+    /** Steps that failed but were marked `optional`, so the fetch carried on. */
+    skipped: string[]
     error: string
     /** For a text match, the URL the integration resolved it to. */
     link: string

@@ -3,7 +3,7 @@ import { ConfigService, HostAppService, Platform } from 'tabby-core'
 import { LinkHandler } from 'tabby-linkifier'
 import { BaseTerminalTabComponent, TerminalDecorator, XTermFrontend } from 'tabby-terminal'
 
-import { LinkMatchKind, LinkTooltipAction, LinkTooltipRule } from './api'
+import { LinkMatchKind, LinkPreview, LinkTooltipAction, LinkTooltipRule } from './api'
 import { CardModel, CardHandlers, LinkHoverCardComponent, emptyModel } from './components/linkHoverCard.component'
 import { BufferRange, getLineWindow, rangeFor } from './linkComputer'
 import { MAX_TEXT_INPUT } from './regexGuard'
@@ -582,7 +582,53 @@ export class LinkTooltipDecorator extends TerminalDecorator {
             // confirmation and the file:// resolution still apply — a plugin's
             // page does not get a way around them by asking nicely.
             htmlOpen: (url: string) => void this.actions.open(url, ''),
+            applyAction: async (actionKey: string, optionId: string, fields: Record<string, string>) => {
+                if (!link) {
+                    return 'Nothing is hovered'
+                }
+                const outcome = await this.runtime.applyAction(
+                    link.kind, link.text, integration, actionKey, optionId, fields)
+                if (outcome.error) {
+                    return outcome.error
+                }
+                // The action dropped the cached preview, so this re-fetches and
+                // the card shows the state that was just created rather than
+                // the one it replaced.
+                await this.refreshPreview(state, link, integration)
+                return ''
+            },
         }
+    }
+
+    /**
+     * Re-run the preview for the card on screen, in place.
+     *
+     * Deliberately not a full `show()`: the card is already up, the pointer is
+     * inside it, and rebuilding would restart the show/hide timers underneath
+     * someone who is mid-interaction.
+     */
+    private async refreshPreview (
+        state: TabState,
+        link: HoveredLink,
+        integration: string,
+    ): Promise<void> {
+        const generation = state.generation
+        let preview: LinkPreview | null = null
+        try {
+            preview = await this.runtime.preview(link.kind, link.text, integration)
+        } catch (err) {
+            console.warn('[tabby-links] refresh after action failed', err)
+            return
+        }
+        if (generation !== state.generation) {
+            return
+        }
+        this.zone.run(() => {
+            const instance = state.componentRef.instance
+            instance.model.preview = preview
+            instance.refresh()
+            this.position(state, link.range)
+        })
     }
 
     private activate (state: TabState, link: HoveredLink, event: MouseEvent): void {

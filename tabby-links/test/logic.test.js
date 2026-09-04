@@ -242,7 +242,7 @@ function referenceManifest (id) {
     }
 }
 
-for (const id of ['jira', 'slack', 'stith']) {
+for (const id of ['github', 'jira', 'slack', 'stith']) {
     const ours = require(path.join(REPO, `tabby-links/src/integrations/${id}.json`))
     const theirs = referenceManifest(id)
     if (!theirs) {
@@ -255,6 +255,12 @@ for (const id of ['jira', 'slack', 'stith']) {
     check(`${id}: fetch pipeline identical`, ours.fetch, theirs.fetch)
     check(`${id}: display fields identical`, ours.fields, theirs.fields)
     check(`${id}: cache lifetime identical`, ours.cacheSeconds, theirs.cacheSeconds)
+    // The keys the reference grew in `3f221ee31`. A manifest written there has
+    // to mean the same thing here, which is the whole promise of the format.
+    check(`${id}: field groups identical`, ours.fieldGroups, theirs.fieldGroups)
+    check(`${id}: tabs identical`, ours.tabs, theirs.tabs)
+    check(`${id}: actions identical`, ours.actions, theirs.actions)
+    check(`${id}: detect patterns identical`, ours.detectPatterns, theirs.detectPatterns)
     check(`${id}: setting keys identical`,
         (ours.settings ?? []).map(f => f.key), (theirs.settings ?? []).map(f => f.key))
     check(`${id}: credential keys and secrecy identical`,
@@ -328,6 +334,198 @@ check('userinfo does not defeat it either',
     target.punycodeHost('https://u:p@\u0430pple.com/x'), 'xn--pple-43d.com')
 check('not a url', target.punycodeHost('just some text'), '')
 check('a file path', target.punycodeHost('C:\\Windows\\notepad.exe'), '')
+
+console.log('\n── rich integrations ──')
+const rt2 = rt
+const rich = loadSource('tabby-links/src/richText.ts')
+
+// ADF: only `text` nodes carry characters; everything else is structure.
+const adf = {
+    type: 'doc',
+    content: [
+        { type: 'paragraph', content: [
+            { type: 'text', text: 'Hello ' },
+            { type: 'text', text: 'world', marks: [{ type: 'strong' }] },
+        ] },
+        { type: 'bulletList', content: [
+            { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'one' }] }] },
+            { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'two' }] }] },
+        ] },
+        { type: 'paragraph', content: [
+            { type: 'mention', attrs: { text: '@steve' } },
+            { type: 'text', text: ' see ' },
+            { type: 'inlineCard', attrs: { url: 'https://x.test/1' } },
+        ] },
+    ],
+}
+const flat = rich.adfToText(adf)
+check('adf keeps the text', flat.includes('Hello world'), true)
+check('adf bullets its list items', flat.includes('• one'), true)
+check('adf reads a mention from attrs', flat.includes('@steve'), true)
+check('adf reads an inline card url', flat.includes('https://x.test/1'), true)
+check('adf collapses runs of blank lines', /\n{3}/.test(flat), false)
+check('adf survives nonsense', rich.adfToText({ type: 'doc' }), '')
+check('adf survives null', rich.adfToText(null), '')
+// A document that nests into itself must terminate rather than spin.
+const deep = { type: 'doc', content: [] }
+let cursor = deep
+for (let i = 0; i < 200; i++) {
+    const next = { type: 'paragraph', content: [] }
+    cursor.content.push(next)
+    cursor = next
+}
+cursor.content.push({ type: 'text', text: 'bottom' })
+check('a pathologically deep document is capped, not hung',
+    typeof rich.adfToText(deep), 'string')
+
+// Markdown, parsed to data. Nothing here ever becomes HTML.
+const blocks = rich.parseMarkdown('# Title\n\nSome **bold** and `code`.\n\n- one\n- two\n\n> quoted\n\n```\nraw\n```')
+check('markdown finds the heading', blocks[0].kind + blocks[0].level, 'h1')
+check('markdown finds bold', blocks[1].spans.some(s => s.bold && s.text === 'bold'), true)
+check('markdown finds inline code', blocks[1].spans.some(s => s.code && s.text === 'code'), true)
+check('markdown finds list items', blocks.filter(b => b.kind === 'li').length, 2)
+check('markdown finds the quote', blocks.some(b => b.kind === 'quote'), true)
+check('markdown finds the fence', blocks.some(b => b.kind === 'code'), true)
+check('a link becomes a span with an href',
+    rich.parseInline('see [docs](https://x.test/d)').find(s => s.href)?.href, 'https://x.test/d')
+check('a bare url becomes a link',
+    rich.parseInline('go https://x.test/y now').find(s => s.href)?.href, 'https://x.test/y')
+check('code is not re-scanned for emphasis',
+    rich.parseInline('`a_b_c`')[0], { text: 'a_b_c', code: true })
+check('plain text passes through', rich.parseInline('nothing special'), [{ text: 'nothing special' }])
+// A remote body is not allowed to be unbounded.
+check('a huge body is truncated',
+    rich.plainText('x'.repeat(rich.MAX_BODY_CHARS + 500)).length <= rich.MAX_BODY_CHARS + 1, true)
+
+// Pointers relative to one array element, used by tab items and action options.
+check('lookupIn resolves within an element',
+    rt2.lookupIn({ author: { displayName: 'Ada' } }, '/author/displayName'), 'Ada')
+check('lookupIn with no pointer is nothing', rt2.lookupIn({ a: 1 }, undefined), null)
+
+// Required fields: only what the far end insists on.
+check('required fields are read from the metadata map',
+    rt2.readRequiredFields({
+        resolution: { required: true, name: 'Resolution' },
+        assignee: { required: false, name: 'Assignee' },
+    }),
+    [{ key: 'resolution', label: 'Resolution', required: true }])
+check('an empty field map is no form', rt2.readRequiredFields({}), [])
+check('a non-object field map is no form', rt2.readRequiredFields(null), [])
+
+// The action body merge.
+check('a form is merged as a top-level fields object',
+    rt2.mergeActionFields('{"transition":{"id":"31"}}', { resolution: 'Done' }),
+    '{"transition":{"id":"31"},"fields":{"resolution":"Done"}}')
+check('an empty form leaves the body alone',
+    rt2.mergeActionFields('{"transition":{"id":"31"}}', {}), '{"transition":{"id":"31"}}')
+check('blank answers are not sent',
+    rt2.mergeActionFields('{"a":1}', { x: '' }), '{"a":1}')
+check('a non-json body is left exactly as written',
+    rt2.mergeActionFields('key=value', { x: 'y' }), 'key=value')
+
+// What a refused action tells the user.
+check('jira errorMessages surface',
+    rt2.describeApiError('{"errorMessages":["Transition is not valid"]}'),
+    ' — Transition is not valid')
+check('jira per-field errors surface',
+    rt2.describeApiError('{"errors":{"resolution":"Resolution is required"}}'),
+    ' — Resolution is required')
+check('a plain message surfaces', rt2.describeApiError('{"message":"Not found"}'), ' — Not found')
+check('an unparseable body says nothing', rt2.describeApiError('<html>502</html>'), '')
+check('an empty body says nothing', rt2.describeApiError(''), '')
+
+// The builders themselves, against a stub registry — deterministic, and far
+// better than driving a live Jira to find out whether grouping works.
+const { Subject } = require(path.join(REPO, 'node_modules/rxjs'))
+function runtimeFor (integration) {
+    const registry = {
+        integrations$: new Subject(),
+        current: () => [integration],
+        byId: id => (integration.id === id ? integration : null),
+        visibleFieldKeys: i => (i.fields ?? (i.manifest.fields || []).filter(f => f.default).map(f => f.key)),
+        visibleTabKeys: i => (i.tabs ?? (i.manifest.tabs || []).filter(t => t.default).map(t => t.key)),
+    }
+    return new rt2.IntegrationRuntimeService(registry)
+}
+
+const groupedManifest = {
+    id: 'g', name: 'G',
+    fields: [
+        { key: 'title', label: 'Title', path: '/title', kind: 'title', default: true },
+        { key: 'a', label: 'A', path: '/a', default: true },
+        { key: 'b', label: 'B', path: '/b', default: true },
+        { key: 'missing', label: 'Missing', path: '/nope', default: true },
+    ],
+    fieldGroups: [{ key: 'pair', label: 'Pair', fields: ['a', 'b'] }],
+    tabs: [
+        { key: 'body', label: 'Body', kind: 'body', path: '/body', format: 'text', default: true },
+        { key: 'notes', label: 'Notes', kind: 'list', path: '/notes', format: 'text', default: true,
+            itemAuthorPath: '/who', itemBodyPath: '/what', itemTimePath: '/when' },
+        { key: 'off', label: 'Off', kind: 'body', path: '/body', default: false },
+    ],
+    actions: [
+        { key: 'move', label: 'Move to', kind: 'choice',
+            optionsPath: '/transitions', optionIdPath: '/id', optionLabelPath: '/name',
+            optionBadgePath: '/to/name', optionTargetIdPath: '/to/id',
+            currentStatePath: '/statusId', url: 'https://x.test/t' },
+        { key: 'empty', label: 'Empty', kind: 'choice', optionsPath: '/nothing', url: 'https://x.test/e' },
+    ],
+}
+const integration = {
+    id: 'g', name: 'G', manifest: groupedManifest, source: 'built-in',
+    enabled: true, settings: {}, credentials: {}, fields: null, tabs: null, configured: true,
+}
+const svc = runtimeFor(integration)
+const data = {
+    title: 'The title', a: 'A value', b: 'B value',
+    body: 'a body',
+    notes: [{ who: 'Ada', what: 'first', when: new Date().toISOString() }],
+    transitions: [
+        { id: '11', name: 'Start', to: { id: '2', name: 'In Progress' } },
+        { id: '21', name: 'Done', to: { id: '3', name: 'Done' } },
+    ],
+    statusId: '1',
+}
+const fields = svc.buildFields(integration, {}, data)
+const groups = svc.buildGroups(integration, fields)
+check('an empty-valued field never renders', fields.some(f => f.key === 'missing'), false)
+check('grouped fields land in their group', groups.find(g => g.label === 'Pair')?.fields.map(f => f.key), ['a', 'b'])
+check('ungrouped fields lead, unlabelled', groups[0].label, '')
+check('and carry what no group claimed', groups[0].fields.map(f => f.key), ['title'])
+
+const tabs = svc.buildTabs(integration, {}, data)
+check('only default tabs are built', tabs.map(t => t.key), ['body', 'notes'])
+check('a body tab carries its text', tabs[0].body, 'a body')
+check('a list tab repeats over the array', tabs[1].items.length, 1)
+check('list item paths are relative to the element', tabs[1].items[0].author, 'Ada')
+check('a list item time is humanised', tabs[1].items[0].time, 'just now')
+
+const actions = svc.buildActions(integration, {}, data)
+check('a choice action resolves its options', actions.length, 1)
+check('an action with no options is dropped', actions.some(a => a.key === 'empty'), false)
+check('options carry id, label and badge',
+    actions[0].options.map(o => [o.id, o.label, o.badge]),
+    [['11', 'Start', 'In Progress'], ['21', 'Done', 'Done']])
+check('the current state is resolved for undo', actions[0].currentState, '1')
+check('an option knows the state it leads to', actions[0].options[0].targetId, '2')
+
+// A manifest with no groups at all is still one implicit group.
+const plain = { ...integration, manifest: { id: 'p', fields: groupedManifest.fields } }
+const plainFields = svc.buildFields(plain, {}, data)
+check('no fieldGroups means one unlabelled group',
+    svc.buildGroups(plain, plainFields).map(g => g.label), [''])
+
+// The manifests really do exercise the new keys now.
+const jira = require(path.join(REPO, 'tabby-links/src/integrations/jira.json'))
+const github = require(path.join(REPO, 'tabby-links/src/integrations/github.json'))
+const stith2 = require(path.join(REPO, 'tabby-links/src/integrations/stith.json'))
+check('jira declares field groups', (jira.fieldGroups || []).length > 0, true)
+check('jira declares tabs', (jira.tabs || []).length > 0, true)
+check('jira declares a choice action',
+    (jira.actions || []).some(a => a.kind === 'choice'), true)
+check('jira has an optional step', (jira.fetch || []).some(s => s.optional), true)
+check('github is a built-in now', github.id, 'github')
+check('stith declares a detect pattern', (stith2.detectPatterns || []).length, 1)
 
 console.log('\n── the html representation ──')
 const hh = loadSource('tabby-links/src/htmlHost.ts')

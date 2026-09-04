@@ -92,6 +92,218 @@
     margin-top: 3px;
 }
 
+.group-label {
+    margin: 6px 0 2px;
+    font-size: 10px;
+    opacity: .55;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+
+    &:first-child {
+        margin-top: 2px;
+    }
+}
+
+// ── tabs ────────────────────────────────────────────────────────────────────
+
+.tabs {
+    margin-top: 6px;
+}
+
+.tab-strip {
+    display: flex;
+    gap: 2px;
+    border-bottom: 1px solid rgba(127, 127, 127, .25);
+    margin-bottom: 4px;
+}
+
+.tab {
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    color: inherit;
+    opacity: .6;
+    padding: 2px 6px;
+    font-size: 11px;
+    cursor: pointer;
+
+    &.active {
+        opacity: 1;
+        border-bottom-color: currentColor;
+    }
+}
+
+// A description or a comment thread can be long; the card must not grow with it.
+.tab-body,
+.tab-list {
+    max-height: 190px;
+    overflow-y: auto;
+}
+
+.tab-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    opacity: .9;
+}
+
+.md {
+    margin: 0 0 4px;
+    overflow-wrap: anywhere;
+
+    &.md-h {
+        font-weight: 600;
+    }
+
+    &.md-li {
+        padding-left: 2px;
+    }
+
+    &.md-quote {
+        border-left: 2px solid rgba(127, 127, 127, .4);
+        padding-left: 6px;
+        opacity: .8;
+    }
+
+    &.md-code {
+        white-space: pre-wrap;
+    }
+}
+
+.md-code,
+code.md-code {
+    font-family: monospace;
+    background: rgba(127, 127, 127, .16);
+    border-radius: 3px;
+    padding: 0 3px;
+}
+
+.md-link {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+
+.tab-item {
+    padding: 4px 0;
+
+    & + .tab-item {
+        border-top: 1px solid rgba(127, 127, 127, .18);
+    }
+}
+
+.tab-item-head {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    opacity: .7;
+}
+
+.tab-avatar {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex: none;
+}
+
+.tab-author {
+    font-weight: 600;
+}
+
+.tab-time {
+    margin-left: auto;
+}
+
+.tab-item-body {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    margin-top: 2px;
+}
+
+// ── actions ─────────────────────────────────────────────────────────────────
+
+.integration-actions {
+    margin-top: 7px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(127, 127, 127, .25);
+}
+
+.action-label {
+    font-size: 10px;
+    opacity: .55;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 3px;
+}
+
+.action-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    // A workflow can offer a lot of transitions; the row scrolls rather than
+    // making the card taller than the pane.
+    max-height: 96px;
+    overflow-y: auto;
+}
+
+.option {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(127, 127, 127, .12);
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: inherit;
+    padding: 2px 7px;
+    cursor: pointer;
+
+    &:hover {
+        background: rgba(127, 127, 127, .22);
+    }
+
+    &.selected {
+        border-color: currentColor;
+        background: rgba(127, 127, 127, .28);
+    }
+}
+
+.option-badge {
+    border-radius: 8px;
+    padding: 0 6px;
+    font-size: 10px;
+}
+
+.action-fields {
+    margin-top: 5px;
+}
+
+.action-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+
+    .action-field-label {
+        min-width: 74px;
+        opacity: .6;
+    }
+
+    input {
+        flex: 1;
+    }
+}
+
+.action-buttons {
+    margin-top: 6px;
+}
+
+.action-error {
+    margin-top: 5px;
+    color: #d03c3c;
+    overflow-wrap: anywhere;
+}
+
 .preview-html {
     display: block;
     margin-top: 3px;

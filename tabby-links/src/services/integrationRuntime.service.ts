@@ -6,9 +6,11 @@ import { Injectable } from '@angular/core'
 
 import {
     Integration, IntegrationFetchStep, IntegrationMatcher,
-    LinkMatchKind, LinkPreview, PreviewField,
+    LinkMatchKind, LinkPreview, PreviewAction, PreviewField, PreviewGroup,
+    PreviewTab, PreviewTabItem,
 } from '../api'
 import { GuardedRegex } from '../regexGuard'
+import { adfToText, plainText } from '../richText'
 import { httpRequest, runCommand } from './httpFetch'
 import { IntegrationRegistryService } from './integrationRegistry.service'
 
@@ -217,6 +219,113 @@ export function badgeColor (name: string): string {
 }
 
 /**
+ * Merge a required-field form into an action's body.
+ *
+ * The spec puts the user's answers in a top-level `fields` object *alongside*
+ * whatever `body` already declares — which is Jira's shape for a transition
+ * screen. A body that is not JSON is left exactly as the manifest wrote it; the
+ * form is then only reachable through `{{field.<key>}}`.
+ */
+export function mergeActionFields (body: string, fieldValues: Record<string, string>): string {
+    const entries = Object.entries(fieldValues).filter(([, v]) => v !== '')
+    if (!entries.length) {
+        return body
+    }
+    let parsed: any = null
+    try {
+        parsed = body ? JSON.parse(body) : {}
+    } catch {
+        return body
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return body
+    }
+    parsed.fields = { ...parsed.fields }
+    for (const [key, value] of entries) {
+        parsed.fields[key] = value
+    }
+    return JSON.stringify(parsed)
+}
+
+/**
+ * The one line of an API error body worth showing.
+ *
+ * Jira answers a refused transition with `errorMessages` / `errors`, and without
+ * it the card can only say "400", which tells nobody anything. Capped hard, and
+ * only ever read from the response — never from the request.
+ */
+export function describeApiError (body: string): string {
+    const json = parseJson(body)
+    if (!json || typeof json !== 'object') {
+        return ''
+    }
+    const messages: string[] = []
+    const list = json.errorMessages
+    if (Array.isArray(list)) {
+        messages.push(...list.map(String))
+    }
+    const map = json.errors
+    if (map && typeof map === 'object' && !Array.isArray(map)) {
+        messages.push(...Object.values(map).map(String))
+    }
+    const single = json.message ?? json.error
+    if (!messages.length && typeof single === 'string') {
+        messages.push(single)
+    }
+    const text = messages.filter(x => x).join('; ').trim()
+    return text ? ` — ${text.slice(0, 200)}` : ''
+}
+
+/** A comment thread can be thousands long; a card shows the recent end of it. */
+const MAX_TAB_ITEMS = 25
+/** A status picker with more options than this is a menu, not a card control. */
+const MAX_ACTION_OPTIONS = 40
+
+/**
+ * Resolve a pointer *within* one value rather than against the step results.
+ *
+ * A tab's `item*Path` and an action's `option*Path` are relative to each element
+ * of an array, so they never carry a `stepId:` prefix and must not be parsed as
+ * though they might.
+ */
+export function lookupIn (value: any, pointer: string | undefined): any {
+    if (!pointer) {
+        return null
+    }
+    return resolvePointer(value, pointer)
+}
+
+/** A tab body, read according to the format the manifest declared. */
+export function readTabBody (value: any, format: string | undefined): string {
+    if (format === 'adf') {
+        return adfToText(value)
+    }
+    // `markdown` is not parsed here: the card does that, so the parsed form
+    // never has to survive the cache or a structured clone.
+    return plainText(value)
+}
+
+/**
+ * The fields the far end demands before it will accept an option.
+ *
+ * Jira hands back a map of field id → metadata, where `required` is what
+ * actually matters. Anything not required is dropped: a card is not the place to
+ * offer every optional field on a transition screen.
+ */
+export function readRequiredFields (value: any): { key: string, label: string, required: boolean }[] {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return []
+    }
+    const out: { key: string, label: string, required: boolean }[] = []
+    for (const [key, meta] of Object.entries(value as Record<string, any>)) {
+        if (meta?.required) {
+            out.push({ key, label: String(meta.name ?? key), required: true })
+        }
+    }
+    return out
+}
+
+/**
  * Replace any credential value that appears verbatim in `text`.
  *
  * Short values are left alone: a two-character secret would match half the
@@ -399,6 +508,10 @@ export class IntegrationRuntimeService {
             integrationName: integration.name,
             icon: integration.manifest.icon ?? '',
             fields: [],
+            groups: [],
+            tabs: [],
+            actions: [],
+            skipped: [],
             error: '',
             link: match.matcher.link ? this.expand(match.matcher.link, match, {}, null, false) : '',
             html: integration.manifest.html ?? '',
@@ -435,12 +548,25 @@ export class IntegrationRuntimeService {
                 last = outcome.json
             }
             if (outcome.error) {
+                // An optional step is allowed to fail: it is recorded and
+                // stepped over, and anything reading its result resolves to
+                // nothing, so the fields depending on it simply do not render.
+                // Jira's Development panel and GitHub's richer endpoints are
+                // permissions-dependent, and losing the whole card because one
+                // of them said 403 would be the wrong trade.
+                if (step.optional) {
+                    preview.skipped.push(step.id ?? step.url ?? 'step')
+                    continue
+                }
                 preview.error = outcome.error
                 break
             }
         }
 
         preview.fields = this.buildFields(integration, results, last)
+        preview.groups = this.buildGroups(integration, preview.fields)
+        preview.tabs = this.buildTabs(integration, results, last)
+        preview.actions = this.buildActions(integration, results, last)
         // Only a manifest with an `html` document gets the raw step JSON kept —
         // it is what that page reads as `window.__data`. The field list has
         // already reduced everything it needs to strings, and these responses
@@ -449,6 +575,92 @@ export class IntegrationRuntimeService {
             preview.data = results
         }
         return preview
+    }
+
+    /**
+     * Apply an action — the one place this whole subsystem *writes*.
+     *
+     * Deliberately not built on `runHttpStep`: an action defaults to POST rather
+     * than GET, carries the chosen option as `{{choice}}`, and merges the form
+     * the far end demanded into the body. It also drops the cached preview
+     * afterwards, so the next hover shows the state that was just created rather
+     * than the one that was replaced.
+     */
+    async applyAction (
+        kind: LinkMatchKind,
+        text: string,
+        hint: string,
+        actionKey: string,
+        choiceId: string,
+        fieldValues: Record<string, string>,
+    ): Promise<{ error: string }> {
+        const match = this.findMatch(kind, text, hint)
+        if (!match) {
+            return { error: 'No integration claims this link any more' }
+        }
+        const action = (match.integration.manifest.actions ?? [])
+            .find(a => (a.key ?? a.label ?? '') === actionKey)
+        if (!action) {
+            return { error: `Unknown action: ${actionKey}` }
+        }
+
+        // `{{choice}}` and `{{field.<key>}}` ride in as ordinary template
+        // variables, so nothing about expansion has to know they exist.
+        const vars: Record<string, string> = { ...match.vars, choice: choiceId }
+        for (const [key, value] of Object.entries(fieldValues)) {
+            vars[`field.${key}`] = value
+        }
+        const actionMatch: Match = { ...match, vars }
+        const name = match.integration.name
+
+        const url = this.expand(action.url ?? '', actionMatch, {}, null, true)
+        if (!url) {
+            return { error: `${name}: the action has no URL` }
+        }
+        const headers: Record<string, string> = { accept: 'application/json' }
+        for (const [key, value] of Object.entries(action.headers ?? {})) {
+            headers[key.toLowerCase()] = this.expand(value, actionMatch, {}, null, false)
+        }
+        const auth = action.auth
+        if (auth?.type === 'basic') {
+            const user = this.expand(auth.user ?? '', actionMatch, {}, null, false)
+            const password = this.expand(auth.password ?? '', actionMatch, {}, null, false)
+            headers.authorization = `Basic ${Buffer.from(`${user}:${password}`, 'utf8').toString('base64')}`
+        } else if (auth?.type === 'bearer') {
+            headers.authorization = `Bearer ${this.expand(auth.value ?? '', actionMatch, {}, null, false)}`
+        } else if (auth?.type === 'header' && auth.header) {
+            headers[auth.header.toLowerCase()] = this.expand(auth.value ?? '', actionMatch, {}, null, false)
+        }
+
+        const body = mergeActionFields(
+            action.body ? this.expand(action.body, actionMatch, {}, null, false) : '',
+            fieldValues,
+        )
+
+        try {
+            const response = await httpRequest({
+                url,
+                method: action.method ? action.method : 'POST',
+                headers,
+                body: body || undefined,
+                timeoutMs: action.timeoutMs && action.timeoutMs > 0 ? action.timeoutMs : DEFAULT_TIMEOUT_MS,
+                allowUntrustedCertificate: action.allowUntrustedCertificate,
+            })
+            if (response.status < 200 || response.status >= 300) {
+                // Same rule as a fetch step: never echo the URL, headers or
+                // body back, because a manifest may have put a credential in
+                // any of them.
+                const detail = describeApiError(response.body)
+                return { error: `${name}: ${response.status} ${response.statusText}${detail}`.trim() }
+            }
+        } catch (err) {
+            return { error: `${name}: ${errorText(err)}` }
+        }
+
+        // The thing behind the link just changed, so the cached description of
+        // it is wrong by definition.
+        this.cache.delete(`${match.integration.id}|${text}`)
+        return { error: '' }
     }
 
     private async runHttpStep (
@@ -602,6 +814,144 @@ export class IntegrationRuntimeService {
         // Deliberately not an error: `when`/`unless` rely on this being ''.
         void last
         return { value: '', fromData: true }
+    }
+
+    // ── groups, tabs and actions ─────────────────────────────────────────────
+
+    /**
+     * Arrange the rendered fields into the manifest's groups.
+     *
+     * Grouping is presentation only, so this works off what `buildFields`
+     * already produced rather than resolving anything again — a field that
+     * resolved to nothing is absent here too, and a group left with no fields
+     * does not render. Anything no group claims falls into an implicit
+     * "Details", which is also the whole answer for a manifest that declares no
+     * groups at all.
+     */
+    private buildGroups (integration: Integration, fields: PreviewField[]): PreviewGroup[] {
+        const declared = integration.manifest.fieldGroups ?? []
+        if (!declared.length) {
+            return fields.length ? [{ key: 'details', label: '', fields }] : []
+        }
+        const byKey = new Map(fields.map(f => [f.key, f]))
+        const claimed = new Set<string>()
+        const groups: PreviewGroup[] = []
+        for (const group of declared) {
+            const members: PreviewField[] = []
+            for (const key of group.fields ?? []) {
+                const field = byKey.get(key)
+                if (field) {
+                    members.push(field)
+                    claimed.add(key)
+                }
+            }
+            if (members.length) {
+                groups.push({
+                    key: group.key ?? group.label ?? '',
+                    label: group.label ?? '',
+                    fields: members,
+                })
+            }
+        }
+        const rest = fields.filter(f => !claimed.has(f.key))
+        if (rest.length) {
+            // Unclaimed fields lead, because a manifest that groups only its
+            // secondary data still wants its title and status at the top.
+            groups.unshift({ key: 'details', label: '', fields: rest })
+        }
+        return groups
+    }
+
+    private buildTabs (integration: Integration, results: Record<string, any>, last: any): PreviewTab[] {
+        const wanted = this.registry.visibleTabKeys(integration)
+        const out: PreviewTab[] = []
+        for (const tab of integration.manifest.tabs ?? []) {
+            const key = tab.key ?? tab.label ?? ''
+            if (!wanted.includes(key)) {
+                continue
+            }
+            const value = lookupPath(tab.path, results, last)
+            if (value === null || value === undefined) {
+                continue
+            }
+            const kind = tab.kind ?? 'body'
+            if (kind === 'list') {
+                const items = Array.isArray(value) ? value : []
+                const rows: PreviewTabItem[] = []
+                for (const item of items.slice(-MAX_TAB_ITEMS)) {
+                    const body = readTabBody(lookupIn(item, tab.itemBodyPath), tab.format)
+                    if (!body) {
+                        continue
+                    }
+                    rows.push({
+                        author: valueToString(lookupIn(item, tab.itemAuthorPath)),
+                        avatarUri: valueToString(lookupIn(item, tab.itemAvatarPath)),
+                        body,
+                        time: formatValue(valueToString(lookupIn(item, tab.itemTimePath)), 'relativeTime'),
+                    })
+                }
+                if (rows.length) {
+                    out.push({ key, label: tab.label ?? key, kind, body: '', markdown: false, items: rows })
+                }
+                continue
+            }
+            const body = readTabBody(value, tab.format)
+            if (body) {
+                out.push({
+                    key,
+                    label: tab.label ?? key,
+                    kind: 'body',
+                    body,
+                    markdown: tab.format === 'markdown',
+                    items: [],
+                })
+            }
+        }
+        return out
+    }
+
+    /**
+     * Resolve each action's options from what the fetch produced.
+     *
+     * An action with no options left is dropped: a `choice` whose list came back
+     * empty — or whose step was optional and failed — is a control that could
+     * only ever say "nothing to pick".
+     */
+    private buildActions (integration: Integration, results: Record<string, any>, last: any): PreviewAction[] {
+        const out: PreviewAction[] = []
+        for (const action of integration.manifest.actions ?? []) {
+            const kind = action.kind ?? 'button'
+            const resolved: PreviewAction = {
+                key: action.key ?? action.label ?? '',
+                label: action.label ?? action.key ?? '',
+                kind,
+                options: [],
+                currentState: valueToString(lookupPath(action.currentStatePath, results, last)),
+            }
+            if (kind === 'choice') {
+                const raw = lookupPath(action.optionsPath, results, last)
+                const options = Array.isArray(raw) ? raw : []
+                for (const option of options.slice(0, MAX_ACTION_OPTIONS)) {
+                    const id = valueToString(lookupIn(option, action.optionIdPath))
+                    if (!id) {
+                        continue
+                    }
+                    resolved.options.push({
+                        id,
+                        label: valueToString(lookupIn(option, action.optionLabelPath)) || id,
+                        badge: valueToString(lookupIn(option, action.optionBadgePath)),
+                        color: valueToString(lookupIn(option, action.optionColorPath)),
+                        targetId: valueToString(lookupIn(option, action.optionTargetIdPath)),
+                        fields: readRequiredFields(lookupIn(option, action.optionFieldsPath)),
+                    })
+                }
+                if (!resolved.options.length) {
+                    continue
+                }
+            }
+            out.push(resolved)
+        }
+        return out
     }
 
     // ── display fields ───────────────────────────────────────────────────────

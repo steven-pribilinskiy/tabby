@@ -1,15 +1,15 @@
 {
     "id": "jira",
     "name": "Jira",
-    "icon": "",
-    "version": 1,
+    "icon": "",
+    "version": 2,
     "cacheSeconds": 300,
     "settings": [
         {
             "key": "host",
             "label": "Site host",
             "placeholder": "acme.atlassian.net",
-            "description": "The Jira Cloud site (or Jira Server host) whose links to preview. Paste any URL from the site and it is reduced to the host; a bare name gets .atlassian.net added. Credentials are only ever sent to this host.",
+            "description": "The Jira Cloud site (or Jira Server host) whose links to preview. Credentials are only ever sent to this host.",
             "required": true,
             "normalize": "host",
             "suffix": ".atlassian.net"
@@ -19,15 +19,16 @@
         {
             "key": "email",
             "label": "Account email",
-            "placeholder": "you@example.com",
-            "description": "The Atlassian account the API token belongs to. Not a secret, so it is shown back to you.",
-            "secret": false
+            "description": "The Atlassian account the API token belongs to.",
+            "secret": false,
+            "required": true
         },
         {
             "key": "token",
             "label": "API token",
             "description": "Create one at id.atlassian.com → Security → API tokens.",
-            "secret": true
+            "secret": true,
+            "required": true
         }
     ],
     "matchers": [
@@ -49,19 +50,274 @@
             "id": "issue",
             "type": "http",
             "method": "GET",
-            "url": "https://{{settings.host}}/rest/api/3/issue/{{key}}?fields=summary,status,assignee,priority,issuetype,updated,reporter",
-            "auth": { "type": "basic", "user": "{{credentials.email}}", "password": "{{credentials.token}}" },
-            "headers": { "Accept": "application/json" },
+            "url": "https://{{settings.host}}/rest/api/3/issue/{{key}}?fields=summary,status,resolution,assignee,priority,issuetype,updated,reporter,description,comment",
+            "auth": {
+                "type": "basic",
+                "user": "{{credentials.email}}",
+                "password": "{{credentials.token}}"
+            },
+            "headers": {
+                "Accept": "application/json"
+            },
+            "timeoutMs": 8000
+        },
+        {
+            "id": "transitions",
+            "type": "http",
+            "method": "GET",
+            "optional": true,
+            "url": "https://{{settings.host}}/rest/api/3/issue/{{key}}/transitions?expand=transitions.fields",
+            "auth": {
+                "type": "basic",
+                "user": "{{credentials.email}}",
+                "password": "{{credentials.token}}"
+            },
+            "headers": {
+                "Accept": "application/json"
+            },
+            "timeoutMs": 8000
+        },
+        {
+            "id": "devsummary",
+            "type": "http",
+            "method": "GET",
+            "optional": true,
+            "when": "{{issue:/id}}",
+            "url": "https://{{settings.host}}/rest/dev-status/latest/issue/summary?issueId={{issue:/id}}",
+            "auth": {
+                "type": "basic",
+                "user": "{{credentials.email}}",
+                "password": "{{credentials.token}}"
+            },
+            "headers": {
+                "Accept": "application/json"
+            },
+            "timeoutMs": 8000
+        },
+        {
+            "id": "devdetail",
+            "type": "http",
+            "method": "GET",
+            "optional": true,
+            "when": "{{issue:/id}}",
+            "url": "https://{{settings.host}}/rest/dev-status/latest/issue/detail?issueId={{issue:/id}}&applicationType=GitHub&dataType=pullrequest",
+            "auth": {
+                "type": "basic",
+                "user": "{{credentials.email}}",
+                "password": "{{credentials.token}}"
+            },
+            "headers": {
+                "Accept": "application/json"
+            },
             "timeoutMs": 8000
         }
     ],
+    "fieldGroups": [
+        {
+            "key": "details",
+            "label": "Details",
+            "fields": [
+                "summary",
+                "status",
+                "resolution",
+                "assignee",
+                "priority",
+                "type",
+                "reporter",
+                "updated"
+            ]
+        },
+        {
+            "key": "development",
+            "label": "Development",
+            "fields": [
+                "devBranches",
+                "devCommits",
+                "devPullRequests",
+                "devPullRequestState",
+                "devLatestPull",
+                "devLatestPullState",
+                "devBuilds",
+                "devBuildsFailed",
+                "devDeployments"
+            ]
+        }
+    ],
     "fields": [
-        { "key": "summary", "label": "Summary", "path": "/fields/summary", "kind": "title", "default": true },
-        { "key": "status", "label": "Status", "path": "/fields/status/name", "kind": "badge", "colorPath": "/fields/status/statusCategory/colorName", "default": true },
-        { "key": "assignee", "label": "Assignee", "path": "/fields/assignee/displayName", "kind": "text", "iconPath": "/fields/assignee/avatarUrls/24x24", "default": true },
-        { "key": "priority", "label": "Priority", "path": "/fields/priority/name", "kind": "text", "iconPath": "/fields/priority/iconUrl", "default": false },
-        { "key": "type", "label": "Type", "path": "/fields/issuetype/name", "kind": "text", "iconPath": "/fields/issuetype/iconUrl", "default": false },
-        { "key": "reporter", "label": "Reporter", "path": "/fields/reporter/displayName", "kind": "text", "iconPath": "/fields/reporter/avatarUrls/24x24", "default": false },
-        { "key": "updated", "label": "Updated", "path": "/fields/updated", "kind": "text", "format": "relativeTime", "default": true }
+        {
+            "key": "summary",
+            "label": "Summary",
+            "path": "issue:/fields/summary",
+            "kind": "title",
+            "default": true
+        },
+        {
+            "key": "status",
+            "label": "Status",
+            "path": "issue:/fields/status/name",
+            "kind": "badge",
+            "colorPath": "issue:/fields/status/statusCategory/colorName",
+            "default": true
+        },
+        {
+            "key": "resolution",
+            "label": "Resolution",
+            "path": "issue:/fields/resolution/name",
+            "kind": "badge",
+            "default": false
+        },
+        {
+            "key": "assignee",
+            "label": "Assignee",
+            "path": "issue:/fields/assignee/displayName",
+            "kind": "text",
+            "iconPath": "issue:/fields/assignee/avatarUrls/24x24",
+            "default": true
+        },
+        {
+            "key": "priority",
+            "label": "Priority",
+            "path": "issue:/fields/priority/name",
+            "kind": "text",
+            "iconPath": "issue:/fields/priority/iconUrl",
+            "default": false
+        },
+        {
+            "key": "type",
+            "label": "Type",
+            "path": "issue:/fields/issuetype/name",
+            "kind": "text",
+            "iconPath": "issue:/fields/issuetype/iconUrl",
+            "default": false
+        },
+        {
+            "key": "reporter",
+            "label": "Reporter",
+            "path": "issue:/fields/reporter/displayName",
+            "kind": "text",
+            "iconPath": "issue:/fields/reporter/avatarUrls/24x24",
+            "default": false
+        },
+        {
+            "key": "updated",
+            "label": "Updated",
+            "path": "issue:/fields/updated",
+            "kind": "text",
+            "format": "relativeTime",
+            "default": true
+        },
+        {
+            "key": "devBranches",
+            "label": "Branches",
+            "path": "devsummary:/summary/branch/overall/count",
+            "kind": "text",
+            "default": false
+        },
+        {
+            "key": "devCommits",
+            "label": "Commits",
+            "path": "devsummary:/summary/repository/overall/count",
+            "kind": "text",
+            "default": false
+        },
+        {
+            "key": "devPullRequests",
+            "label": "Pull requests",
+            "path": "devsummary:/summary/pullrequest/overall/count",
+            "kind": "text",
+            "default": false
+        },
+        {
+            "key": "devPullRequestState",
+            "label": "Pull request state",
+            "path": "devsummary:/summary/pullrequest/overall/state",
+            "kind": "badge",
+            "default": false
+        },
+        {
+            "key": "devLatestPull",
+            "label": "Latest pull request",
+            "path": "devdetail:/detail/0/pullRequests/0/name",
+            "kind": "text",
+            "default": false
+        },
+        {
+            "key": "devLatestPullState",
+            "label": "Latest pull request status",
+            "path": "devdetail:/detail/0/pullRequests/0/status",
+            "kind": "badge",
+            "default": false
+        },
+        {
+            "key": "devBuilds",
+            "label": "Builds",
+            "path": "devsummary:/summary/build/overall/count",
+            "kind": "text",
+            "default": false
+        },
+        {
+            "key": "devBuildsFailed",
+            "label": "Failed builds",
+            "path": "devsummary:/summary/build/overall/failedBuildCount",
+            "kind": "text",
+            "default": false
+        },
+        {
+            "key": "devDeployments",
+            "label": "Deployments",
+            "path": "devsummary:/summary/deployment-environment/overall/count",
+            "kind": "text",
+            "default": false
+        }
+    ],
+    "tabs": [
+        {
+            "key": "description",
+            "label": "Description",
+            "kind": "body",
+            "path": "issue:/fields/description",
+            "format": "adf",
+            "default": true
+        },
+        {
+            "key": "comments",
+            "label": "Comments",
+            "kind": "list",
+            "path": "issue:/fields/comment/comments",
+            "format": "adf",
+            "itemAuthorPath": "/author/displayName",
+            "itemAvatarPath": "/author/avatarUrls/24x24",
+            "itemBodyPath": "/body",
+            "itemTimePath": "/created",
+            "default": false
+        }
+    ],
+    "actions": [
+        {
+            "key": "transition",
+            "label": "Move to",
+            "kind": "choice",
+            "optionsPath": "transitions:/transitions",
+            "optionIdPath": "/id",
+            "optionLabelPath": "/name",
+            "optionBadgePath": "/to/name",
+            "optionColorPath": "/to/statusCategory/colorName",
+            "optionTargetIdPath": "/to/id",
+            "optionFieldsPath": "/fields",
+            "currentStatePath": "issue:/fields/status/id",
+            "method": "POST",
+            "url": "https://{{settings.host}}/rest/api/3/issue/{{key}}/transitions",
+            "body": "{\"transition\":{\"id\":\"{{choice}}\"}}",
+            "auth": {
+                "type": "basic",
+                "user": "{{credentials.email}}",
+                "password": "{{credentials.token}}"
+            },
+            "headers": {
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            },
+            "timeoutMs": 8000
+        }
     ]
 }

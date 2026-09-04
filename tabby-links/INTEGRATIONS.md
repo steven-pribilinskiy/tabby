@@ -30,9 +30,12 @@ stays usable, just without a preview.
 |---|---|---|---|
 | **Jira** | `https://<host>/browse/<KEY>` links, and (opt-in) issue keys like `CAB-8209` in plain text | Site host (setting) + account email and API token (credentials) | Credentials are only ever sent to the configured host — see [Host guarding](#host-guarding). Create an API token at `id.atlassian.com` → Security → API tokens. |
 | **Slack** | `https://<workspace>.slack.com/archives/<channel>/p<ts>` permalinks, including thread replies (`?thread_ts=`) | A bot token (credential) | The token needs the `channels:history`, `groups:history` and `users:read` scopes, and the bot must be a member of the channel it's reading. |
-| **stith** | `stith://session/<id>`, `stith://focus/<id>`, and `https://<server>/(s\|agent\|sessions\|embed/s)/<id>` links | Server URL (setting) | No credentials. Its fetch step allows an untrusted certificate, so a self-signed `lvh.me` cert doesn't block the preview. |
+| **stith** | `stith://session/<id>`, `stith://focus/<id>`, and `https://<server>/(s\|agent\|sessions\|embed/s)/<id>` links | Server URL (setting) | No credentials. Its fetch step allows an untrusted certificate, so a self-signed `lvh.me` cert doesn't block the preview. A [`detectPatterns`](#detectpatterns) entry claims a bare `stith://…` in plain output. |
+| **GitHub** | Issue, pull request, commit and repository links | The `gh` CLI's token when you are logged in, otherwise a stored token | Thirteen fetch steps, most of them [optional](#optional-steps), so a token without a scope loses that section rather than the whole card. |
 
-Each plugin's fields can be trimmed on the Integrations settings page.
+Jira and GitHub also carry [field groups](#field-groups) and [tabs](#tabs), and Jira a
+[choice action](#actions) that moves an issue through its workflow. Which fields, groups and tabs
+appear can be trimmed on the Integrations settings page.
 
 ## The Integrations settings page
 
@@ -209,9 +212,15 @@ fatal.
 ### Manifest reference
 
 Top-level keys: `id` (required — a manifest without one is invalid), `name`, `icon`, `version`
-(informational), `cacheSeconds`, `settings`, `credentials`, `matchers`, `fetch`, `fields`, and
-`html` (see [HTML representation](#html-representation)). **Unknown keys are ignored**, which is
-what lets the format grow.
+(informational), `cacheSeconds`, `settings`, `credentials`, `matchers`, `fetch`, `fields`,
+[`fieldGroups`](#field-groups), [`tabs`](#tabs), [`actions`](#actions),
+[`detectPatterns`](#detectpatterns), and `html` (see
+[HTML representation](#html-representation)). **Unknown keys are ignored**, which is what lets the
+format grow — and is what let the four keys above be added without breaking anything that had
+never heard of them.
+
+A useful manifest is far smaller than that list suggests: an `id`, one matcher, one fetch step and
+a short `fields` list is the whole of Slack's. Everything else is optional.
 
 #### Settings / credentials fields
 
@@ -285,6 +294,110 @@ Badge colours accept `#rrggbb` or a name: `green`/`success`/`done`/`live`/`runni
 `yellow`/`inprogress`/`warning`/`waiting`/`idle`, `red`/`error`/`failed`/`blocked`/`dead`/`stale`,
 `blue`/`info`/`new`/`open`. Anything else — including Jira's `blue-gray` — renders grey. Badges
 are drawn translucent over the card's own background so they read in both themes.
+
+#### Field groups
+
+`fieldGroups` names sets of display fields that belong together. The card renders them under the
+group's heading, and the Integrations page gives each group a header checkbox that selects or
+clears all of its fields at once — a manifest with twenty-odd fields is unusable as one flat list.
+
+| Key | Meaning |
+|---|---|
+| `key` | Identifies the group. |
+| `label` | Heading shown on the card and in settings. |
+| `fields` | Display field `key`s, in the order the group shows them. |
+
+Grouping is presentation only. A field still has to exist, a group whose fields all resolve to
+nothing does not render, and anything no group claims falls into an implicit unlabelled group
+that is shown **first** — so a manifest that groups only its secondary data still leads with its
+title and status.
+
+#### Tabs
+
+Secondary content — too long for a field row — behind a strip above the field list.
+
+| Key | Meaning |
+|---|---|
+| `key`, `label` | Identify and caption the tab. |
+| `kind` | `body` (default): one long value. `list`: a repeating author/avatar/body/time row. |
+| `path` | `body`: the value. `list`: the array to repeat over. |
+| `format` | `markdown`, `adf` (Atlassian Document Format, flattened to text) or `text`. |
+| `itemAuthorPath`, `itemAvatarPath`, `itemBodyPath`, `itemTimePath` | `list` only, and relative to *each element* of the array. |
+| `default` | Shown before the user picks a custom set. |
+
+A `list` tab whose array *is* the whole result of a step — GitHub's issue comments come back as a
+bare JSON array — points at the step with an empty pointer: `"path": "comments:"`, per RFC 6901.
+
+**Markdown is never turned into HTML here.** It is parsed to plain data — blocks and inline spans
+— and the template renders that through interpolation, so a comment written by whoever opened the
+ticket cannot become markup. Only a small subset is understood: headings, list items, block
+quotes, fenced code, and inline bold/italic/code/links. Bodies are capped, and a comment thread
+shows its most recent entries rather than all of them.
+
+#### Actions
+
+An action is something the card can **do** to the thing behind the link, rather than something it
+reads. It is the only part of this format that writes.
+
+| Key | Meaning |
+|---|---|
+| `key`, `label` | Identify and caption the control. |
+| `kind` | `button` (default): one request. `choice`: pick from options an earlier step produced. |
+| `optionsPath` | Choice only: the array of options in a step's result. |
+| `optionIdPath` | Relative to one option: what `{{choice}}` becomes. |
+| `optionLabelPath` | Relative to one option: what to show. |
+| `optionBadgePath` / `optionColorPath` | Relative to one option: the state it leads to, and that badge's colour. |
+| `optionTargetIdPath` | Relative to one option: the id of the state it moves the thing *to*. |
+| `currentStatePath` | Where the thing's current state id lives. With `optionTargetIdPath`, this is what lets an undo find the option that leads back. |
+| `optionFieldsPath` | Relative to one option: fields the far end demands first. The card shows a form and waits. |
+| `method` | Defaults to **`POST`** — note a fetch step defaults to `GET`. |
+| `url`, `body`, `headers`, `auth`, `allowUntrustedCertificate`, `timeoutMs` | As a fetch step. |
+
+Applying one runs the request and refreshes the preview, bypassing the cache, so the badge updates
+in place. Values typed into a required-field form are merged into the request as a top-level
+`fields` object alongside whatever `body` declares, and are individually available as
+`{{field.<key>}}`. A body that is not JSON is left exactly as written, and the form is then only
+reachable through those templates.
+
+**Undo is offered only when the far end provides a way back** — when some other option's
+`optionTargetIdPath` equals the `currentStatePath` value from *before* the change. Jira workflows
+are frequently one-directional, so this is often absent, and the card then says nothing rather
+than offering an undo that would fail.
+
+An action whose option list came back empty is dropped: a control that can only say "nothing to
+pick" is worse than no control.
+
+#### detectPatterns
+
+A list of regexes scanned in plain output while the plugin is enabled. Each match becomes
+hoverable as if a text rule had matched it — which is how a scheme the plugin owns works even when
+nothing marked it as a link.
+
+```jsonc
+"detectPatterns": [ "stith://(?:session|focus)/[A-Za-z0-9-]{4,64}" ]
+```
+
+They join the same pool as the built-in detectors and the user's text rules, so the **16 active
+text patterns** limit and the ReDoS guard cover them too, and a rule the user wrote wins over one
+of these.
+
+This is distinct from a `"kind": "text"` [matcher](#matchers), which only *offers* itself on the
+settings page as "Add as rule" and needs opting into. A `detectPatterns` entry needs no rule at
+all, so it belongs to schemes a plugin unambiguously owns.
+
+> In this fork it is often belt and braces for scheme-shaped patterns: Tabby's own URI detector
+> already claims anything with a `scheme://`, so `stith://…` in plain output is hoverable without
+> it. It earns its keep on patterns that are not URIs.
+
+#### Optional steps
+
+The pipeline normally stops at the first step that fails, and the card shows that error. A step
+marked `"optional": true` is different: the failure is recorded and the pipeline carries on.
+Anything reading its result resolves to nothing, so fields depending on it are simply skipped —
+an empty value never renders a row.
+
+This is what lets Jira's Development panel and GitHub's richer endpoints be permission-dependent
+without a 403 costing the whole card.
 
 ### Templates
 

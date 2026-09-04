@@ -51,7 +51,7 @@ async function main () {
     check('Integrations page present', navTitles.some(t => t.includes('Integrations')), true)
     note(`pages: ${navTitles.join(' | ')}`)
 
-    console.log('\n── the Integrations page finds the three built-ins ──')
+    console.log('\n── the Integrations page finds the four built-ins ──')
     const integrations = await evaluate(`
         const links = [...document.querySelectorAll('settings-tab .nav-link')]
         const target = links.find(x => x.textContent.includes('Integrations'))
@@ -71,13 +71,13 @@ async function main () {
             rendered: el.textContent.includes('Jira') && el.textContent.includes('Slack') && el.textContent.includes('Stith'),
         }
     `)
-    check('all three built-ins discovered', integrations.ids, ['jira', 'slack', 'stith'])
-    check('sources say built-in', integrations.sources, ['built-in', 'built-in', 'built-in'])
+    check('all four built-ins discovered', integrations.ids, ['github', 'jira', 'slack', 'stith'])
+    check('sources say built-in', integrations.sources.every(x => x === 'built-in'), true)
     // Stith declares a required setting and no credentials, so "configured"
     // must track that setting exactly. Asserted as a relationship rather than a
     // fixed value, because this profile may legitimately have the server set.
     check('stith is configured exactly when its server setting is present',
-        integrations.configured[2], !!integrations.stithBaseUrl)
+        integrations.configured[integrations.ids.indexOf('stith')], !!integrations.stithBaseUrl)
     check('the page actually rendered them', integrations.rendered, true)
     check('safeStorage is available on this machine', integrations.encryptionAvailable, true)
     note(`user manifest dir: ${integrations.userDirectory}`)
@@ -116,7 +116,7 @@ async function main () {
         }
     `)
     check('all seven defaults render', linkPage.hasDefaults, true)
-    check('the rule editor can offer every integration', linkPage.integrationsInDropdown, ['jira', 'slack', 'stith'])
+    check('the rule editor can offer every integration', linkPage.integrationsInDropdown, ['github', 'jira', 'slack', 'stith'])
     // Not "zero": this profile is reused between runs and the rule this suite
     // adds is left behind for the hover checks that follow. The count only has
     // to grow by exactly one when a rule is added.

@@ -1,6 +1,10 @@
 import { ChangeDetectorRef, Component, ElementRef, OnDestroy, ViewChild } from '@angular/core'
 
-import { LinkPreview, LinkTooltipAction, PreviewField } from '../api'
+import {
+    LinkPreview, LinkTooltipAction, PreviewAction, PreviewActionOption,
+    PreviewField, PreviewGroup, PreviewTab,
+} from '../api'
+import { MarkdownBlock, parseMarkdown } from '../richText'
 import { HTML_DEFAULT_HEIGHT, buildHtmlDocument, parseHtmlHostMessage } from '../htmlHost'
 import { badgeColor } from '../services/integrationRuntime.service'
 
@@ -44,6 +48,11 @@ export interface CardHandlers {
     htmlResized: () => void
     /** The page asked for a link to be opened, the way the Open button would. */
     htmlOpen: (url: string) => void
+    /**
+     * Apply an integration action and refresh the preview. Resolves to an error
+     * string, empty when it worked.
+     */
+    applyAction: (actionKey: string, optionId: string, fields: Record<string, string>) => Promise<string>
 }
 
 export function emptyModel (): CardModel {
@@ -89,6 +98,23 @@ export class LinkHoverCardComponent implements OnDestroy {
     private appliedKey = ''
     private frameLoads = 0
 
+    /** Which tab the user picked, when the card offers more than one. */
+    activeTabKey = ''
+    // `| undefined` on purpose: without `noUncheckedIndexedAccess` an index
+    // signature reads as always-present, and the guards below — which are real —
+    // would be flagged as redundant.
+    /** Chosen option per choice action, before it is applied. */
+    chosen: Record<string, string | undefined> = {}
+    /** What the user typed into an option's required-field form. */
+    pendingFields: Record<string, Record<string, string | undefined> | undefined> = {}
+    /** The action currently in flight, so its control can show it. */
+    applying = ''
+    actionError = ''
+    /** Where the last applied action came *from*, so an undo can look for it. */
+    private undoTarget: { actionKey: string, stateId: string } | null = null
+    private markdownCacheKey = ''
+    private markdownCache: MarkdownBlock[] = []
+
     constructor (private changeDetector: ChangeDetectorRef) {
         window.addEventListener('message', this.onFrameMessage)
     }
@@ -118,6 +144,164 @@ export class LinkHoverCardComponent implements OnDestroy {
     /** Whether this card renders a plugin's document instead of the field list. */
     get showHtml (): boolean {
         return this.model.allowHtml && !!this.model.preview?.html && !this.model.preview.error
+    }
+
+    // ── tabs ─────────────────────────────────────────────────────────────────
+
+    /** The tab on screen. Falls back to the first, so one is always selected. */
+    get activeTab (): PreviewTab | null {
+        const tabs = this.model.preview?.tabs ?? []
+        if (!tabs.length) {
+            return null
+        }
+        return tabs.find(t => t.key === this.activeTabKey) ?? tabs[0]
+    }
+
+    selectTab (tab: PreviewTab): void {
+        this.activeTabKey = tab.key
+    }
+
+    /**
+     * A markdown body, parsed to blocks.
+     *
+     * Memoised on the text itself: change detection asks for this on every pass,
+     * and re-parsing a comment thread each time would be a needless cost on a
+     * card that is already redrawn whenever the terminal scrolls.
+     */
+    blocksFor (tab: PreviewTab): MarkdownBlock[] {
+        if (!tab.markdown) {
+            return []
+        }
+        if (this.markdownCacheKey !== tab.body) {
+            this.markdownCacheKey = tab.body
+            this.markdownCache = parseMarkdown(tab.body)
+        }
+        return this.markdownCache
+    }
+
+    // ── actions ──────────────────────────────────────────────────────────────
+
+    optionFor (action: PreviewAction): PreviewActionOption | null {
+        const chosen = this.chosen[action.key]
+        return action.options.find(o => o.id === chosen) ?? null
+    }
+
+    chooseOption (action: PreviewAction, optionId: string): void {
+        this.chosen[action.key] = optionId
+        this.actionError = ''
+    }
+
+    /** The fields the chosen option demands, if any. */
+    requiredFields (action: PreviewAction): { key: string, label: string, required: boolean }[] {
+        return this.optionFor(action)?.fields ?? []
+    }
+
+    fieldValue (action: PreviewAction, key: string): string {
+        return this.pendingFields[action.key]?.[key] ?? ''
+    }
+
+    setFieldValue (action: PreviewAction, key: string, value: string): void {
+        this.pendingFields[action.key] = { ...this.pendingFields[action.key], [key]: value }
+    }
+
+    /** Only the entries actually filled in, as plain strings. */
+    private filledFields (action: PreviewAction): Record<string, string> {
+        const out: Record<string, string> = {}
+        for (const [key, value] of Object.entries(this.pendingFields[action.key] ?? {})) {
+            if (value) {
+                out[key] = value
+            }
+        }
+        return out
+    }
+
+    /** Every field the far end insists on has to be filled before Apply lights. */
+    canApply (action: PreviewAction): boolean {
+        if (this.applying) {
+            return false
+        }
+        if (action.kind === 'button') {
+            return true
+        }
+        const option = this.optionFor(action)
+        if (!option) {
+            return false
+        }
+        return option.fields.every(f => !f.required || this.fieldValue(action, f.key))
+    }
+
+    async apply (action: PreviewAction): Promise<void> {
+        if (!this.handlers || !this.canApply(action)) {
+            return
+        }
+        this.applying = action.key
+        this.actionError = ''
+        // Remembered before the change, because an undo is "the option whose
+        // target is where we just came from" — and after the refresh that value
+        // is gone.
+        const cameFrom = action.currentState
+        try {
+            const error = await this.handlers.applyAction(
+                action.key,
+                this.chosen[action.key] ?? '',
+                this.filledFields(action),
+            )
+            this.actionError = error
+            if (!error) {
+                this.undoTarget = cameFrom ? { actionKey: action.key, stateId: cameFrom } : null
+                Reflect.deleteProperty(this.chosen, action.key)
+                Reflect.deleteProperty(this.pendingFields, action.key)
+            }
+        } finally {
+            this.applying = ''
+            this.refresh()
+        }
+    }
+
+    /**
+     * The option that leads back to where we were, when the far end offers one.
+     *
+     * Jira workflows are frequently one-directional, so this is often absent —
+     * in which case the card says nothing rather than offering an undo that
+     * would fail.
+     */
+    undoOption (action: PreviewAction): PreviewActionOption | null {
+        if (this.undoTarget?.actionKey !== action.key) {
+            return null
+        }
+        const target = this.undoTarget.stateId
+        return action.options.find(o => o.targetId && o.targetId === target) ?? null
+    }
+
+    async undo (action: PreviewAction): Promise<void> {
+        const option = this.undoOption(action)
+        if (!option) {
+            return
+        }
+        this.chosen[action.key] = option.id
+        this.undoTarget = null
+        await this.apply(action)
+    }
+
+    optionBadgeBackground (option: PreviewActionOption): string {
+        return `${badgeColor(option.color)}55`
+    }
+
+    trackTab (_index: number, tab: PreviewTab): string {
+        return tab.key
+    }
+
+    trackGroup (_index: number, group: PreviewGroup): string {
+        return group.key
+    }
+
+    /** Distinct from `trackAction`, which tracks a *rule's* custom buttons. */
+    trackIntegrationAction (_index: number, action: PreviewAction): string {
+        return action.key
+    }
+
+    trackItem (index: number): number {
+        return index
     }
 
     badgeBackground (field: PreviewField): string {

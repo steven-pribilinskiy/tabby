@@ -2,7 +2,9 @@ import { Component, Optional } from '@angular/core'
 import { ConfigService, NotificationsService, PlatformService } from 'tabby-core'
 import { SettingsTabComponent } from 'tabby-settings'
 
-import { Integration, IntegrationField, IntegrationMatcher, newRule } from '../api'
+import {
+    Integration, IntegrationDisplayField, IntegrationField, IntegrationMatcher, newRule,
+} from '../api'
 import { IntegrationCredentialsService } from '../services/integrationCredentials.service'
 import { IntegrationRegistryService, isSecretField, normalizeSettingValue } from '../services/integrationRegistry.service'
 
@@ -149,6 +151,73 @@ export class IntegrationsSettingsTabComponent {
 
     setFieldVisible (integration: Integration, key: string, visible: boolean): void {
         this.registry.setFieldVisible(integration.id, key, visible)
+    }
+
+    isTabVisible (integration: Integration, key: string): boolean {
+        return this.registry.visibleTabKeys(integration).includes(key)
+    }
+
+    setTabVisible (integration: Integration, key: string, visible: boolean): void {
+        this.registry.setTabVisible(integration.id, key, visible)
+    }
+
+    /**
+     * The manifest's field groups, resolved to the actual field objects — plus
+     * an implicit unlabelled group for anything no group claims, so every field
+     * is reachable however the manifest is written.
+     */
+    fieldGroups (integration: Integration): { key: string, label: string, fields: IntegrationDisplayField[] }[] {
+        const all = integration.manifest.fields ?? []
+        const declared = integration.manifest.fieldGroups ?? []
+        if (!declared.length) {
+            return [{ key: 'all', label: '', fields: all }]
+        }
+        const byKey = new Map(all.map(f => [f.key ?? f.label ?? '', f]))
+        const claimed = new Set<string>()
+        const groups = declared.map(group => {
+            const fields: IntegrationDisplayField[] = []
+            for (const key of group.fields ?? []) {
+                const field = byKey.get(key)
+                if (field) {
+                    fields.push(field)
+                    claimed.add(key)
+                }
+            }
+            return { key: group.key ?? group.label ?? '', label: group.label ?? '', fields }
+        }).filter(g => g.fields.length)
+        const rest = all.filter(f => !claimed.has(f.key ?? f.label ?? ''))
+        if (rest.length) {
+            groups.unshift({ key: 'other', label: '', fields: rest })
+        }
+        return groups
+    }
+
+    /**
+     * Whether a group is fully on, fully off, or somewhere between — the third
+     * state is what stops the header checkbox from lying about a group where
+     * only some fields are shown.
+     */
+    groupState (
+        integration: Integration,
+        group: { fields: IntegrationDisplayField[] },
+    ): boolean | 'partial' {
+        const visible = this.registry.visibleFieldKeys(integration)
+        const keys = group.fields.map(f => f.key ?? f.label ?? '')
+        const on = keys.filter(k => visible.includes(k)).length
+        if (!on) {
+            return false
+        }
+        return on === keys.length ? true : 'partial'
+    }
+
+    setGroupVisible (
+        integration: Integration,
+        group: { fields: IntegrationDisplayField[] },
+        visible: boolean,
+    ): void {
+        for (const field of group.fields) {
+            this.registry.setFieldVisible(integration.id, field.key ?? field.label ?? '', visible)
+        }
     }
 
     // ── suggested text matchers ──────────────────────────────────────────────

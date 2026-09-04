@@ -136,3 +136,21 @@
 .field-check {
     flex: 0 0 calc(50% - 20px);
 }
+
+.group-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 10px 0 2px;
+    font-weight: 600;
+
+    // A group where only some fields are shown: the header checkbox is off,
+    // so this says the group is not simply empty.
+    .partial {
+        opacity: .55;
+    }
+}
+
+.field-checks.grouped {
+    padding-left: 14px;
+}

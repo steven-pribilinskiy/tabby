@@ -1,9 +1,10 @@
 import { Injectable } from '@angular/core'
 import { ConfigService, NotificationsService } from 'tabby-core'
 
-import { EffectiveTooltipSettings, LinkTooltipRule, LinkMatchKind, hydrateRule } from '../api'
+import { EffectiveTooltipSettings, LinkTooltipRule, LinkMatchKind, hydrateRule, newRule } from '../api'
 import { matchesFileType } from '../fileTypes'
 import { GuardedRegex, MAX_TEXT_INPUT } from '../regexGuard'
+import { IntegrationRegistryService } from './integrationRegistry.service'
 
 /** How many text patterns may be scanned at once, matching the other fork. */
 export const MAX_TEXT_PATTERNS = 16
@@ -39,6 +40,7 @@ export class LinkRulesService {
     constructor (
         private config: ConfigService,
         private notifications: NotificationsService,
+        private registry: IntegrationRegistryService,
     ) {
         // `config.store` is replaced wholesale on every reload — including a
         // reload triggered by another window — so nothing here may hold on to a
@@ -85,6 +87,26 @@ export class LinkRulesService {
             out.push({ rule, search })
             if (out.length >= MAX_TEXT_PATTERNS) {
                 break
+            }
+        }
+
+        // An integration's `detectPatterns` join the same pool, as synthetic
+        // rules — which is what makes them obey the same 16-pattern cap, the
+        // same ReDoS guard and the same first-match-wins resolution without any
+        // of that being written twice. They come *after* the user's rules, so a
+        // rule the user wrote about the same text still wins.
+        for (const { integrationId, pattern } of this.registry.detectPatterns()) {
+            if (out.length >= MAX_TEXT_PATTERNS) {
+                break
+            }
+            const rule = newRule()
+            rule.name = integrationId
+            rule.match = 'text'
+            rule.pattern = pattern
+            rule.integration = integrationId
+            const search = this.regexFor(pattern, 'g', rule)
+            if (search.usable) {
+                out.push({ rule, search })
             }
         }
         return out

@@ -44,37 +44,120 @@
             (load)='onFrameLoad()',
         )
 
+        //- Secondary content — a description, a comment thread — behind a strip, so
+        //- it never pushes the fields off the card.
+        .tabs(*ngIf='!showHtml && model.preview?.tabs?.length')
+            .tab-strip(*ngIf='(model.preview?.tabs || []).length > 1')
+                button.tab(
+                    *ngFor='let tab of model.preview?.tabs; trackBy: trackTab',
+                    [class.active]='tab.key === activeTab?.key',
+                    (click)='selectTab(tab)',
+                ) {{tab.label}}
+
+            .tab-body(*ngIf='activeTab?.kind === "body"')
+                //- Markdown is rendered from parsed data, never as HTML: this text
+                //- was written by whoever opened the ticket.
+                ng-container(*ngIf='activeTab?.markdown')
+                    .md(*ngFor='let block of blocksFor(activeTab!); trackBy: trackItem', [ngClass]='"md-" + block.kind')
+                        span.bullet(*ngIf='block.kind === "li"') •&nbsp;
+                        ng-container(*ngFor='let span of block.spans; trackBy: trackItem')
+                            a.md-link(*ngIf='span.href', href='javascript:void(0)', (click)='handlers?.htmlOpen(span.href)') {{span.text}}
+                            code.md-code(*ngIf='!span.href && span.code') {{span.text}}
+                            b(*ngIf='!span.href && !span.code && span.bold') {{span.text}}
+                            i(*ngIf='!span.href && !span.code && !span.bold && span.italic') {{span.text}}
+                            span(*ngIf='!span.href && !span.code && !span.bold && !span.italic') {{span.text}}
+                .tab-text(*ngIf='!activeTab?.markdown') {{activeTab?.body}}
+
+            .tab-list(*ngIf='activeTab?.kind === "list"')
+                .tab-item(*ngFor='let item of activeTab?.items; trackBy: trackItem')
+                    .tab-item-head
+                        img.tab-avatar(*ngIf='item.avatarUri', [src]='item.avatarUri')
+                        span.tab-author {{item.author}}
+                        span.tab-time {{item.time}}
+                    .tab-item-body {{item.body}}
+
         .preview-fields(*ngIf='!model.preview?.error && !showHtml')
-            ng-container(*ngFor='let field of model.preview?.fields; trackBy: trackField')
-                .field-title(*ngIf='field.kind === "title"')
-                    img.field-icon(*ngIf='field.iconUri', [src]='field.iconUri')
-                    span {{field.value}}
-                .field-subtitle(*ngIf='field.kind === "subtitle"') {{field.value}}
-                .field-row(*ngIf='field.kind !== "title" && field.kind !== "subtitle"')
-                    .field-label {{field.label}}
-                    .field-value
+            //- Grouped, when the manifest says so. A single unlabelled group is the
+            //- plain field list, which is what most manifests still are.
+            ng-container(*ngFor='let group of model.preview?.groups; trackBy: trackGroup')
+                .group-label(*ngIf='group.label') {{group.label}}
+                ng-container(*ngFor='let field of group.fields; trackBy: trackField')
+                    .field-title(*ngIf='field.kind === "title"')
                         img.field-icon(*ngIf='field.iconUri', [src]='field.iconUri')
-                        span.badge-pill(
-                            *ngIf='field.kind === "badge"',
-                            [style.background]='badgeBackground(field)',
-                        ) {{field.value}}
-                        //- An `image` field is a picture, not the URL of one.
-                        img.field-image(
-                            *ngIf='field.kind === "image"',
-                            [src]='field.value',
-                            [alt]='field.label',
+                        span {{field.value}}
+                    .field-subtitle(*ngIf='field.kind === "subtitle"') {{field.value}}
+                    .field-row(*ngIf='field.kind !== "title" && field.kind !== "subtitle"')
+                        .field-label {{field.label}}
+                        .field-value
+                            img.field-icon(*ngIf='field.iconUri', [src]='field.iconUri')
+                            span.badge-pill(
+                                *ngIf='field.kind === "badge"',
+                                [style.background]='badgeBackground(field)',
+                            ) {{field.value}}
+                            //- An `image` field is a picture, not the URL of one.
+                            img.field-image(
+                                *ngIf='field.kind === "image"',
+                                [src]='field.value',
+                                [alt]='field.label',
+                            )
+                            //- A `link` field is clickable, and goes through the same
+                            //- open path as the Open button so the scheme is checked.
+                            a.field-text(
+                                *ngIf='field.kind === "link"',
+                                href='javascript:void(0)',
+                                (click)='handlers?.htmlOpen(field.value)',
+                            ) {{field.value}}
+                            span.field-text(
+                                *ngIf='field.kind !== "badge" && field.kind !== "image" && field.kind !== "link"',
+                                [class.multiline]='field.kind === "multiline"',
+                            ) {{field.value}}
+
+        //- Things the card can *do* to the thing behind the link, as opposed to
+        //- everything above, which only reads it.
+        .integration-actions(*ngIf='!showHtml && model.preview?.actions?.length')
+            .integration-action(*ngFor='let action of model.preview?.actions; trackBy: trackIntegrationAction')
+                .action-label {{action.label}}
+
+                .action-options(*ngIf='action.kind === "choice"')
+                    button.option(
+                        *ngFor='let option of action.options; trackBy: trackItem',
+                        [class.selected]='option.id === chosen[action.key]',
+                        (click)='chooseOption(action, option.id)',
+                    )
+                        span.option-label {{option.label}}
+                        //- The state this option leads to, the way the far end's
+                        //- own menu shows it.
+                        span.option-badge(
+                            *ngIf='option.badge',
+                            [style.background]='optionBadgeBackground(option)',
+                        ) {{option.badge}}
+
+                //- Only what the chosen option actually demands.
+                .action-fields(*ngIf='requiredFields(action).length')
+                    .action-field(*ngFor='let field of requiredFields(action); trackBy: trackItem')
+                        span.action-field-label {{field.label}}
+                        input.form-control.form-control-sm(
+                            type='text',
+                            [ngModel]='fieldValue(action, field.key)',
+                            (ngModelChange)='setFieldValue(action, field.key, $event)',
                         )
-                        //- A `link` field is clickable, and goes through the same
-                        //- open path as the Open button so the scheme is checked.
-                        a.field-text(
-                            *ngIf='field.kind === "link"',
-                            href='javascript:void(0)',
-                            (click)='handlers?.htmlOpen(field.value)',
-                        ) {{field.value}}
-                        span.field-text(
-                            *ngIf='field.kind !== "badge" && field.kind !== "image" && field.kind !== "link"',
-                            [class.multiline]='field.kind === "multiline"',
-                        ) {{field.value}}
+
+                .action-buttons
+                    button.btn.btn-sm.btn-primary(
+                        [disabled]='!canApply(action)',
+                        (click)='apply(action)',
+                    )
+                        i.fas.fa-fw.fa-circle-notch.fa-spin.me-1(*ngIf='applying === action.key')
+                        span(translate) Apply
+                    //- Offered only when the far end provides a way back.
+                    button.btn.btn-sm.btn-secondary.ms-2(
+                        *ngIf='undoOption(action)',
+                        (click)='undo(action)',
+                    )
+                        i.fas.fa-fw.fa-rotate-left.me-1
+                        span(translate) Undo
+
+            .action-error(*ngIf='actionError') {{actionError}}
 
     .actions(*ngIf='hasActions')
         button.btn.btn-sm.btn-secondary(*ngIf='model.showOpen', (click)='handlers?.open()')

@@ -13,6 +13,7 @@ import { IntegrationCredentialsService } from './integrationCredentials.service'
  * identity is the compatibility test for the manifest format.
  */
 const BUILT_IN: IntegrationManifest[] = [
+    require('../integrations/github.json'),
     require('../integrations/jira.json'),
     require('../integrations/slack.json'),
     require('../integrations/stith.json'),
@@ -173,6 +174,7 @@ export class IntegrationRegistryService {
                 // different answers, and only the first means "use the
                 // manifest's defaults".
                 fields: Array.isArray(state.fields) ? state.fields : null,
+                tabs: Array.isArray(state.tabs) ? state.tabs : null,
                 configured: isConfigured(manifest, settings, credentialValues),
             })
         }
@@ -307,6 +309,58 @@ export class IntegrationRegistryService {
             .map(f => f.key ?? f.label ?? '')
     }
 
+    /** Which tabs to show, on the same rules as the display fields. */
+    visibleTabKeys (integration: Integration): string[] {
+        if (integration.tabs) {
+            return integration.tabs
+        }
+        return (integration.manifest.tabs ?? [])
+            .filter(t => t.default)
+            .map(t => t.key ?? t.label ?? '')
+    }
+
+    setTabVisible (id: string, key: string, visible: boolean): void {
+        const integration = this.byId(id)
+        if (!integration) {
+            return
+        }
+        const order = (integration.manifest.tabs ?? []).map(t => t.key ?? t.label ?? '')
+        const current = integration.tabs
+            ?? (integration.manifest.tabs ?? []).filter(t => t.default).map(t => t.key ?? t.label ?? '')
+        const next = new Set(current)
+        if (visible) {
+            next.add(key)
+        } else {
+            next.delete(key)
+        }
+        this.stateFor(id).tabs = order.filter(k => next.has(k))
+        this.config.save()
+    }
+
+    /**
+     * Every `detectPatterns` entry from every enabled integration, tagged with
+     * the integration that owns it.
+     *
+     * Unlike a text matcher, these need no rule and no opt-in beyond the plugin
+     * being on — they are for schemes a plugin unambiguously owns. Being
+     * configured is deliberately not required: turning `stith://…` into a
+     * hoverable link needs no credential, only previewing it does.
+     */
+    detectPatterns (): { integrationId: string, pattern: string }[] {
+        const out: { integrationId: string, pattern: string }[] = []
+        for (const integration of this.current()) {
+            if (!integration.enabled) {
+                continue
+            }
+            for (const pattern of integration.manifest.detectPatterns ?? []) {
+                if (pattern) {
+                    out.push({ integrationId: integration.id, pattern })
+                }
+            }
+        }
+        return out
+    }
+
     /**
      * Forget an entry that has been reduced to its defaults.
      *
@@ -318,7 +372,8 @@ export class IntegrationRegistryService {
     private prune (id: string): void {
         const all = this.config.store.integrations
         const state = all?.[id]
-        if (!state || state.enabled === false || Array.isArray(state.fields)) {
+        if (!state || state.enabled === false
+            || Array.isArray(state.fields) || Array.isArray(state.tabs)) {
             return
         }
         if (Object.keys(state.settings ?? {}).length) {

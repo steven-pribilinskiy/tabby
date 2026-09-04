@@ -1,0 +1,478 @@
+{
+    "id": "github",
+    "name": "GitHub",
+    "icon": "",
+    "version": 1,
+    "cacheSeconds": 300,
+    "settings": [],
+    "credentials": [
+        {
+            "key": "token",
+            "label": "Personal access token",
+            "description": "Optional. The GitHub CLI is tried first: if `gh auth token` returns a token, this is never used. Create a fine-grained token at github.com/settings/tokens with read-only Contents, Issues, Pull requests and Checks access.",
+            "secret": true,
+            "required": false
+        }
+    ],
+    "matchers": [
+        {
+            "kind": "link",
+            "pattern": "^https://github\\.com/(?<owner>[^/]+)/(?<repo>[^/]+)/(?<ispull>pull)/(?<number>\\d+)"
+        },
+        {
+            "kind": "link",
+            "pattern": "^https://github\\.com/(?<owner>[^/]+)/(?<repo>[^/]+)/(?<isissue>issues)/(?<number>\\d+)"
+        },
+        {
+            "kind": "link",
+            "pattern": "^https://github\\.com/(?<owner>[^/]+)/(?<repo>[^/]+)/commit/(?<sha>[0-9a-f]{7,40})"
+        }
+    ],
+    "fetch": [
+        {
+            "id": "ghtoken",
+            "type": "command",
+            "optional": true,
+            "commandLine": "pwsh -NoProfile -NonInteractive -Command \"@{ token = (gh auth token 2>$null | Out-String).Trim() } | ConvertTo-Json -Compress\"",
+            "timeoutMs": 4000
+        },
+        {
+            "id": "item",
+            "type": "http",
+            "method": "GET",
+            "when": "{{ghtoken:/token}}",
+            "unless": "{{isissue}}{{sha}}",
+            "url": "https://api.github.com/repos/{{owner}}/{{repo}}/pulls/{{number}}",
+            "auth": {
+                "type": "bearer",
+                "value": "{{ghtoken:/token}}"
+            },
+            "headers": {
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28"
+            },
+            "timeoutMs": 8000
+        },
+        {
+            "id": "item",
+            "type": "http",
+            "method": "GET",
+            "when": "{{ispull}}",
+            "unless": "{{ghtoken:/token}}",
+            "url": "https://api.github.com/repos/{{owner}}/{{repo}}/pulls/{{number}}",
+            "auth": {
+                "type": "bearer",
+                "value": "{{credentials.token}}"
+            },
+            "headers": {
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28"
+            },
+            "timeoutMs": 8000
+        },
+        {
+            "id": "item",
+            "type": "http",
+            "method": "GET",
+            "when": "{{ghtoken:/token}}",
+            "unless": "{{ispull}}{{sha}}",
+            "url": "https://api.github.com/repos/{{owner}}/{{repo}}/issues/{{number}}",
+            "auth": {
+                "type": "bearer",
+                "value": "{{ghtoken:/token}}"
+            },
+            "headers": {
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28"
+            },
+            "timeoutMs": 8000
+        },
+        {
+            "id": "item",
+            "type": "http",
+            "method": "GET",
+            "when": "{{isissue}}",
+            "unless": "{{ghtoken:/token}}",
+            "url": "https://api.github.com/repos/{{owner}}/{{repo}}/issues/{{number}}",
+            "auth": {
+                "type": "bearer",
+                "value": "{{credentials.token}}"
+            },
+            "headers": {
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28"
+            },
+            "timeoutMs": 8000
+        },
+        {
+            "id": "commit",
+            "type": "http",
+            "method": "GET",
+            "when": "{{ghtoken:/token}}",
+            "unless": "{{number}}",
+            "url": "https://api.github.com/repos/{{owner}}/{{repo}}/commits/{{sha}}",
+            "auth": {
+                "type": "bearer",
+                "value": "{{ghtoken:/token}}"
+            },
+            "headers": {
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28"
+            },
+            "timeoutMs": 8000
+        },
+        {
+            "id": "commit",
+            "type": "http",
+            "method": "GET",
+            "when": "{{sha}}",
+            "unless": "{{ghtoken:/token}}",
+            "url": "https://api.github.com/repos/{{owner}}/{{repo}}/commits/{{sha}}",
+            "auth": {
+                "type": "bearer",
+                "value": "{{credentials.token}}"
+            },
+            "headers": {
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28"
+            },
+            "timeoutMs": 8000
+        },
+        {
+            "id": "checks",
+            "type": "http",
+            "method": "GET",
+            "optional": true,
+            "when": "{{ghtoken:/token}}",
+            "unless": "{{isissue}}",
+            "url": "https://api.github.com/repos/{{owner}}/{{repo}}/commits/{{sha}}{{item:/head/sha}}/check-runs?per_page=20",
+            "auth": {
+                "type": "bearer",
+                "value": "{{ghtoken:/token}}"
+            },
+            "headers": {
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28"
+            },
+            "timeoutMs": 8000
+        },
+        {
+            "id": "checks",
+            "type": "http",
+            "method": "GET",
+            "optional": true,
+            "when": "{{sha}}{{item:/head/sha}}",
+            "unless": "{{ghtoken:/token}}",
+            "url": "https://api.github.com/repos/{{owner}}/{{repo}}/commits/{{sha}}{{item:/head/sha}}/check-runs?per_page=20",
+            "auth": {
+                "type": "bearer",
+                "value": "{{credentials.token}}"
+            },
+            "headers": {
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28"
+            },
+            "timeoutMs": 8000
+        },
+        {
+            "id": "reviews",
+            "type": "http",
+            "method": "GET",
+            "optional": true,
+            "when": "{{ghtoken:/token}}",
+            "unless": "{{isissue}}{{sha}}",
+            "url": "https://api.github.com/repos/{{owner}}/{{repo}}/pulls/{{number}}/reviews?per_page=20",
+            "auth": {
+                "type": "bearer",
+                "value": "{{ghtoken:/token}}"
+            },
+            "headers": {
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28"
+            },
+            "timeoutMs": 8000
+        },
+        {
+            "id": "reviews",
+            "type": "http",
+            "method": "GET",
+            "optional": true,
+            "when": "{{item:/head/sha}}",
+            "unless": "{{ghtoken:/token}}",
+            "url": "https://api.github.com/repos/{{owner}}/{{repo}}/pulls/{{number}}/reviews?per_page=20",
+            "auth": {
+                "type": "bearer",
+                "value": "{{credentials.token}}"
+            },
+            "headers": {
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28"
+            },
+            "timeoutMs": 8000
+        },
+        {
+            "id": "comments",
+            "type": "http",
+            "method": "GET",
+            "optional": true,
+            "when": "{{ghtoken:/token}}",
+            "unless": "{{sha}}",
+            "url": "https://api.github.com/repos/{{owner}}/{{repo}}/issues/{{number}}/comments?per_page=20",
+            "auth": {
+                "type": "bearer",
+                "value": "{{ghtoken:/token}}"
+            },
+            "headers": {
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28"
+            },
+            "timeoutMs": 8000
+        },
+        {
+            "id": "comments",
+            "type": "http",
+            "method": "GET",
+            "optional": true,
+            "when": "{{number}}",
+            "unless": "{{ghtoken:/token}}",
+            "url": "https://api.github.com/repos/{{owner}}/{{repo}}/issues/{{number}}/comments?per_page=20",
+            "auth": {
+                "type": "bearer",
+                "value": "{{credentials.token}}"
+            },
+            "headers": {
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28"
+            },
+            "timeoutMs": 8000
+        }
+    ],
+    "fieldGroups": [
+        {
+            "key": "details",
+            "label": "Details",
+            "fields": [
+                "title",
+                "state",
+                "merged",
+                "author",
+                "head",
+                "base",
+                "updated",
+                "error"
+            ]
+        },
+        {
+            "key": "activity",
+            "label": "Activity",
+            "fields": [
+                "commentCount",
+                "review",
+                "checks",
+                "checksCount",
+                "additions",
+                "deletions",
+                "changedFiles",
+                "commits",
+                "mergeable"
+            ]
+        },
+        {
+            "key": "commit",
+            "label": "Commit",
+            "fields": [
+                "message",
+                "commitAuthor",
+                "committed",
+                "commitAdditions",
+                "commitDeletions"
+            ]
+        }
+    ],
+    "fields": [
+        {
+            "key": "title",
+            "label": "Title",
+            "path": "item:/title",
+            "kind": "title",
+            "default": true
+        },
+        {
+            "key": "state",
+            "label": "State",
+            "path": "item:/state",
+            "kind": "badge",
+            "colorPath": "item:/state",
+            "default": true
+        },
+        {
+            "key": "merged",
+            "label": "Merged",
+            "path": "item:/merged_at",
+            "kind": "badge",
+            "color": "#8957e5",
+            "format": "date",
+            "default": true
+        },
+        {
+            "key": "author",
+            "label": "Author",
+            "path": "item:/user/login",
+            "kind": "text",
+            "iconPath": "item:/user/avatar_url",
+            "default": true
+        },
+        {
+            "key": "head",
+            "label": "Branch",
+            "path": "item:/head/label",
+            "kind": "text",
+            "default": true
+        },
+        {
+            "key": "base",
+            "label": "Into",
+            "path": "item:/base/ref",
+            "kind": "text",
+            "default": true
+        },
+        {
+            "key": "updated",
+            "label": "Updated",
+            "path": "item:/updated_at",
+            "kind": "text",
+            "format": "relativeTime",
+            "default": true
+        },
+        {
+            "key": "error",
+            "label": "GitHub",
+            "path": "item:/message",
+            "kind": "badge",
+            "color": "#c0392b",
+            "default": true
+        },
+        {
+            "key": "commentCount",
+            "label": "Comments",
+            "path": "item:/comments",
+            "kind": "text",
+            "default": true
+        },
+        {
+            "key": "review",
+            "label": "Review",
+            "path": "reviews:/-1/state",
+            "kind": "badge",
+            "default": true
+        },
+        {
+            "key": "checks",
+            "label": "Checks",
+            "path": "checks:/check_runs/-1/conclusion",
+            "kind": "badge",
+            "default": true
+        },
+        {
+            "key": "checksCount",
+            "label": "Checks run",
+            "path": "checks:/total_count",
+            "kind": "text",
+            "default": false
+        },
+        {
+            "key": "additions",
+            "label": "Added",
+            "path": "item:/additions",
+            "kind": "text",
+            "default": true
+        },
+        {
+            "key": "deletions",
+            "label": "Removed",
+            "path": "item:/deletions",
+            "kind": "text",
+            "default": true
+        },
+        {
+            "key": "changedFiles",
+            "label": "Files changed",
+            "path": "item:/changed_files",
+            "kind": "text",
+            "default": false
+        },
+        {
+            "key": "commits",
+            "label": "Commits",
+            "path": "item:/commits",
+            "kind": "text",
+            "default": false
+        },
+        {
+            "key": "mergeable",
+            "label": "Mergeable",
+            "path": "item:/mergeable_state",
+            "kind": "badge",
+            "default": false
+        },
+        {
+            "key": "message",
+            "label": "Message",
+            "path": "commit:/commit/message",
+            "kind": "title",
+            "default": true
+        },
+        {
+            "key": "commitAuthor",
+            "label": "Author",
+            "path": "commit:/author/login",
+            "kind": "text",
+            "iconPath": "commit:/author/avatar_url",
+            "default": true
+        },
+        {
+            "key": "committed",
+            "label": "Committed",
+            "path": "commit:/commit/author/date",
+            "kind": "text",
+            "format": "relativeTime",
+            "default": true
+        },
+        {
+            "key": "commitAdditions",
+            "label": "Added",
+            "path": "commit:/stats/additions",
+            "kind": "text",
+            "default": true
+        },
+        {
+            "key": "commitDeletions",
+            "label": "Removed",
+            "path": "commit:/stats/deletions",
+            "kind": "text",
+            "default": true
+        }
+    ],
+    "tabs": [
+        {
+            "key": "description",
+            "label": "Description",
+            "kind": "body",
+            "path": "item:/body",
+            "format": "markdown",
+            "default": true
+        },
+        {
+            "key": "comments",
+            "label": "Comments",
+            "kind": "list",
+            "path": "comments:",
+            "format": "markdown",
+            "itemAuthorPath": "/user/login",
+            "itemAvatarPath": "/user/avatar_url",
+            "itemBodyPath": "/body",
+            "itemTimePath": "/created_at",
+            "default": false
+        }
+    ]
+}

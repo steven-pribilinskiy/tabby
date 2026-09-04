@@ -305,6 +305,50 @@ The parts that cost real time:
   `openExternal('file://' + p)` — that yields `file://C:\foo` on Windows and is
   an existing upstream bug in `tabby-linkifier/src/handlers.ts`.
 
+### Rich integrations
+
+The reference fork grew five manifest keys in `3f221ee31`, and a manifest using
+them **degraded silently here** until this was done — which is the actual threat
+to "one manifest, many terminals", far more than any cosmetic divergence.
+
+- **`fieldGroups`** — named sets of display fields, with a heading on the card
+  and a tri-state header checkbox in settings. Anything no group claims becomes
+  an implicit unlabelled group shown *first*, so a manifest that groups only its
+  secondary data still leads with its title.
+- **`tabs`** — a description body or a comment list, behind a strip. `adf`
+  (Atlassian Document Format) is flattened by walking the node tree; `markdown`
+  is **parsed to data, never to HTML**, and the template renders blocks and
+  inline spans through interpolation. This text is written by whoever opened the
+  ticket, so there is deliberately nothing to sanitise.
+- **`actions`** — the only part of this subsystem that *writes*. A `choice`
+  resolves its options from an earlier step, applies one, drops the cached
+  preview and re-fetches so the badge updates in place. Undo is offered only
+  when some other option leads back to where you were — Jira workflows are
+  frequently one-directional, and the card says nothing rather than offering an
+  undo that would fail.
+- **`detectPatterns`** — joined to the scan pool as *synthetic rules*, which is
+  what makes them obey the 16-pattern cap, the ReDoS guard and first-match-wins
+  without any of that being written twice. User rules are added first, so one the
+  user wrote still wins.
+- **step `optional`** — a failing step is recorded and stepped over. Jira's
+  Development panel and GitHub's richer endpoints are permission-dependent, and a
+  403 should cost that section, not the card.
+
+`github.json` joins the built-ins; all four manifests are now byte-identical to
+the reference's committed copies apart from Jira's two additive host keys and
+stith's `html` block, and the test asserts that key by key.
+
+Two things worth knowing:
+
+- **`detectPatterns` is often belt and braces here.** Tabby's own URI detector
+  already claims anything with a `scheme://`, so `stith://…` in plain output was
+  hoverable before this. Measured, not assumed: two providers claim it, both as a
+  *link*. It earns its keep on patterns that are not URIs.
+- **A restored-but-never-rendered tab has a frontend and an `xterm` but no
+  provider of ours.** Of six terminals in the scratch profile only two had the
+  decorator attached, and a test that picks the first one makes a working
+  detector look broken. Select on `decorator.states.has(tab)`.
+
 ### The `html` representation
 
 A manifest may carry an `html` key — a complete HTML document, rendered in place
