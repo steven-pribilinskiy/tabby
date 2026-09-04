@@ -605,24 +605,65 @@ Kept to a minimum — every one is a line that conflicts on rebase.
   identical output at 1 and at 4, while 6 still escalates it, so raising the
   setting for accessibility keeps working.
 
+## The splash screen
+
+Follows the OS scheme now. The window's backing colour already did
+(`opaqueBackgroundColor()` reads `nativeTheme.shouldUseDarkColors`); only the CSS
+was hardcoded dark, so a light desktop got a black flash before the window drew.
+
+`app/src/preload.scss` keeps its dark values as-is and adds a
+`@media (prefers-color-scheme: light)` block that overrides four of them — an
+override rather than a pair of themes, so the dark path's diff is nil and the
+rebase surface on an upstream file stays one appended block.
+
+- **`prefers-color-scheme` is already correct when the splash paints.**
+  `setDarkMode()` runs during window construction (`window.ts:141`), before the
+  page is shown, so the media query reflects `appearance.colorSchemeMode` — the
+  user's choice, not merely the OS default.
+- The light background is `#f5f7f9`, deliberately not white: the logo's palest
+  gradient stops (`#ccecff`, `#9feced`) all but vanish against pure white.
+- Verified by extracting the compiled stylesheet out of `app/dist/preload.js` and
+  rendering the real splash markup under both `nativeTheme.themeSource` values in
+  an off-screen window — dark stays exactly `#1d272d`/`#a1c5e4`, light comes back
+  `#f5f7f9`/`#2f5d80`.
+
 ## Known issues to fix in this fork
 
-- **Emoji width**: `❇️ ` (and other VS16 emoji) render one column too wide, leaving a
-  stray space that Windows Terminal does not produce. xterm.js width handling.
+- **Emoji width** — see Planned below for the measured cause. In short: xterm gives
+  `❇️ ` **one** column where Windows Terminal gives two, so the glyph paints wider
+  than the cell reserved for it and everything after it sits one column off. (This
+  used to be listed twice, here as "one column too wide" and below as "one column
+  narrower". Both described the same defect from opposite ends — the *cell* is a
+  column too narrow, the *glyph* therefore too wide for it.)
 - Open upstream PR by us, not yet merged — carry it here rather than waiting:
   [#11383](https://github.com/Eugeny/tabby/pull/11383) fix(linkifier): keep `:` `,` `/`
   in clickable URL path/query.
 
 ## Planned
 
-- **Emoji width.** `❇️ ` (U+2747 + VS16) renders one column narrower than Windows Terminal,
-  leaving a stray space. `xtermFrontend.ts:145-146` already loads `Unicode11Addon` with
-  `unicode.activeVersion = '11'` — but the Unicode 11 addon computes width per codepoint
-  and ignores variation selectors, so VS16 (width 0) never promotes U+2747 from width 1
-  to the emoji-presentation width 2 that other terminals use. Fix is
-  `@xterm/addon-unicode-graphemes` (grapheme clustering + VS16), which needs `@xterm/xterm`
-  moved off the pinned 5.4.0 — a renderer-wide upgrade, so do it deliberately and
-  regression-test the terminal.
+- **Emoji width.** Measured, not assumed — with the addon this fork actually loads
+  (`@xterm/addon-unicode11`, `xtermFrontend.ts:145-146`):
+
+  | sequence | xterm | other terminals |
+  |---|---|---|
+  | `U+2747` alone | 1 | 1 |
+  | `U+2747 U+FE0F` (`❇️ `) | 1 + 0 = **1** | **2** |
+  | `U+2705` (emoji by default) | 2 | 2 |
+
+  VS16 is width 0 and never promotes its base to the emoji-presentation width 2.
+
+  **Swapping in `@xterm/addon-unicode-graphemes` alone does nothing — verified.**
+  The stable 0.4.0 declares no peer dependency and its provider does expose
+  `charProperties`, so it looks like a drop-in. But xterm 5.4.0's `UnicodeService`
+  delegates only `wcwidth` to the provider (`wcwidth(e){return
+  this._activeProvider.wcwidth(e)}`) and implements `charProperties` itself on top
+  of it; the provider's richer version is never called. Confirmed against the
+  installed bundle, and by loading the addon standalone: its `wcwidth` still
+  answers 1 for `U+2747 U+FE0F`.
+
+  So the fix genuinely requires **xterm 6**, where `UnicodeService` delegates
+  `charProperties` too — a major bump of the core terminal engine. Renderer-wide,
+  its own branch, its own regression pass.
 - **Frame and write latency.** The stall recorder (below) covers the event loop; it
   says nothing about a terminal that renders slowly while the loop stays free. Time
   the xterm write path and frame callbacks so that shows up too.
@@ -632,9 +673,3 @@ Kept to a minimum — every one is a line that conflicts on rebase.
 
 - A **Settings page listing upstream commits this fork lacks** — compares
   `local` against `upstream/master` and shows what has not been pulled in.
-- **Splash screen should follow the system theme.** It is hardcoded dark today:
-  `app/src/preload.scss` (`app-root { background: #1D272D }`, `.preload-logo`
-  radial-gradient to black, `.tabby-title` `#a1c5e4`) and `app/lib/window.ts:205`
-  (`setBackgroundColor('#131d27')`). Nothing consults `prefers-color-scheme` or
-  Electron's `nativeTheme`, though `window.ts:215` already sets `nativeTheme.themeSource`
-  from config — so the config value exists to key off.

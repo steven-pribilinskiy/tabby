@@ -65,3 +65,41 @@ app-root {
       color: #842fe0;
   }
 }
+
+
+// The splash is the first thing drawn and used to be dark whatever the OS said,
+// so a light-themed desktop got a black flash before the window rendered.
+//
+// `window.ts` already picks the window's backing colour from
+// `nativeTheme.shouldUseDarkColors`, and sets `nativeTheme.themeSource` from
+// `appearance.colorSchemeMode` while the window is being constructed — so by the
+// time this stylesheet applies, `prefers-color-scheme` already reflects the
+// user's choice rather than only the OS default.
+//
+// Written as an override of the dark values above rather than as a pair of
+// themes, so the dark path keeps exactly the colours it had.
+@media (prefers-color-scheme: light) {
+  app-root {
+    background: #f5f7f9;
+  }
+
+  .preload-logo {
+    // Not pure white: the logo's palest tones (#ccecff, #9feced) all but vanish
+    // against it.
+    background-image: radial-gradient(#3a668212 0%, #e4ecf2 30%, #f5f7f9 100%);
+    background-color: #f5f7f9;
+
+    &>div .progress {
+      background: rgba(0, 0, 0, .08);
+
+      .bar {
+        background: #3a6682;
+        box-shadow: 0 0 2px #0000001f;
+      }
+    }
+  }
+
+  .tabby-title {
+    color: #2f5d80;
+  }
+}
