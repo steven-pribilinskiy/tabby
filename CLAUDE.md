@@ -706,6 +706,109 @@ question, answered without leaving the app.
   branch, the newest local subject, and the resolved GitHub URL all match, and
   the Fetch button moves `FETCH_HEAD` in ~1.5s.
 
+## The renderer and xterm 6
+
+The terminal renders through **WebGL**, on **xterm.js 6.0**. Two things worth
+knowing before touching either.
+
+**The canvas renderer is gone.** `terminal.frontend: xterm` used to mean
+`@xterm/addon-canvas`; that addon was last released in April 2024 against
+`@xterm/xterm ^5.0.0` and xterm 6 deletes it outright (xtermjs/xterm.js#5105).
+It is also the renderer behind every stale-glyph report upstream has open
+(#11511, #9429, #9263, #10378): it repaints only the rows it believes are
+dirty, so anything it draws and then loses track of stays on screen until
+something forces a full repaint. `XTermFrontend` now means xterm's own DOM
+renderer — slow but always correct, and the fallback for the SwiftShader
+workaround (#8884) and for a pane whose WebGL context could not be recovered.
+
+**A saved `frontend: xterm` is aliased to WebGL** in
+`baseTerminalTab.component.ts` rather than migrated. A fork-owned bump of
+`config.version` would make upstream's own migration 9 skip these configs at
+the next sync, so the alias is one map entry and no versioning risk.
+
+Four things break in `xtermFrontend.ts` against 6.0, each checked against the
+shipped sources rather than the changelog:
+
+- `overviewRulerWidth` is now `overviewRuler: { width, showTopBorder,
+  showBottomBorder }`.
+- **`_core.viewport._refresh()` is gone.** The viewport is private (`_viewport`)
+  and rebuilt on VS Code's scrollable element; `queueSync()` replaces it. The
+  synchronous `_renderService._renderRows()` after a fit stays — it is what
+  closes the blank frame during a window drag, and `xterm.refresh()` cannot
+  replace it because that goes through the render debouncer and lands a frame
+  later.
+- **`_core.browser` cannot be assigned into.** It is xterm's `common/Platform`
+  module namespace, whose properties are read-only getters, so the three
+  platform assignments in `configure()` throw. Spread it instead. This only
+  bites on 6.0 because the ESM build hands out a real namespace object where
+  the CommonJS one handed out a plain object.
+- **`scrollToBottom()` gained `disableSmoothScroll`** and xterm's own callers
+  pass `true`. Without it every pinned write starts a scroll animation. Same for
+  restoring a scroll position while unpinned, which is why that now goes through
+  the viewport directly.
+
+xterm 6 also **paints `.xterm-viewport` black and `.xterm-scrollable-element`
+white**, both on top of Tabby's background — measured, not theorised. Both are
+overridden in `xterm.css`. The scrollbar slider needs nothing from us: xterm
+derives it from the theme's foreground at 20/40/50% opacity, which already
+follows a light or dark scheme.
+
+### The addon that cannot be bundled
+
+**`@xterm/addon-unicode-graphemes@0.4.0` hangs the renderer if it is imported
+into `tabby-terminal` at all.** This is what forced the previous attempt at the
+xterm 6 upgrade to be reverted (`9c4266f0` / `c9fcd052`), and it is why the
+emoji-width fix is still open.
+
+The symptom: the renderer spins at 100% CPU during module evaluation — before
+a single plugin loads, because `initModuleLookup()` eagerly requires
+`tabby-terminal` before `findPlugins()` runs — so the app log stops after
+`Window bootstrap data` and the window sits on the splash screen for ever.
+Measured at 270s of CPU and climbing.
+
+- **V8's inspector cannot interrupt it.** `Debugger.enable` gets no reply and
+  no `scriptParsed` events arrive, so `Debugger.pause` never lands. That rules
+  out the usual approach and is itself a clue: a plain JS loop is interruptible.
+- **It is the import, not the use.** Replacing `loadAddon(new
+  UnicodeGraphemesAddon())` with `void UnicodeGraphemesAddon` still hangs.
+  Removing the import entirely boots in seconds.
+- **Not the ESM entry.** Every `@xterm` package at 6.x ships both a CommonJS
+  `main` and an ESM `module`, and the shared config's `mainFields` prefer
+  `module`, so the upgrade does silently move the whole tree onto `.mjs` — but
+  forcing `mainFields: ['main', ...]` (confirmed with
+  `scripts/dev/which-modules.mjs`) hangs identically. Note `resolve.alias` is
+  useless here: `@ngtools/webpack`'s resolver ignores it.
+- **Not babel.** `babel-loader` runs over every `.js` in node_modules; excluding
+  the `@xterm` packages from it hangs identically.
+- **Not the addon itself.** Loaded standalone it takes 11-15 ms, from either the
+  `.js` or the `.mjs` build.
+
+So it is something about that module inside this bundle, and it is still
+unexplained. The earlier investigation cleared the addon by loading it
+standalone, which is exactly the test that does not reproduce it.
+
+### Measuring stale glyphs
+
+`tabby-terminal/test/glyphs.cdp.js` answers "did the renderer leave anything on
+screen the buffer does not account for" with a number, over CDP against a
+hidden dev build (`scripts/dev/launch-hidden.mjs`). It fills the scrollback
+past capacity, scrolls up with real wheel events while output keeps arriving,
+resizes mid-flow, snapshots the renderer's own canvases, forces the full
+repaint a tab switch would do, and snapshots again. Any pixel that moved was
+stale; the buffer is serialized on both sides so a run that changed content is
+discarded.
+
+**It reports 0 dirty cells on canvas, on WebGL and on xterm 6** — so it does
+not reproduce the artifacts that prompted this work and cannot be cited as
+proof they are fixed. Its instrumented `refreshRows` counter says why: under
+this generator a full-viewport repaint follows nearly every buffer scroll, so
+nothing can go stale. Whatever the real conditions are, they are narrower than
+this.
+
+Reading the canvases directly rather than screenshotting is deliberate: the
+result then does not depend on the window being composited, which is what makes
+it usable on a `--hidden` instance.
+
 ## Changed upstream defaults
 
 Kept to a minimum — every one is a line that conflicts on rebase.
@@ -758,40 +861,41 @@ rebase surface on an upstream file stays one appended block.
 
 ## Known issues to fix in this fork
 
-- **Emoji width** — see Planned below for the measured cause. In short: xterm gives
-  `❇️ ` **one** column where Windows Terminal gives two, so the glyph paints wider
-  than the cell reserved for it and everything after it sits one column off. (This
-  used to be listed twice, here as "one column too wide" and below as "one column
-  narrower". Both described the same defect from opposite ends — the *cell* is a
-  column too narrow, the *glyph* therefore too wide for it.)
+- **Emoji width** — `❇️` gets **one** column where Windows Terminal gives two, so
+  the glyph paints wider than the cell reserved for it and everything after it sits
+  one column off. xterm 6 removed the first blocker; the addon that carries the fix
+  is now the blocker. See Planned, and *The addon that cannot be bundled* above.
+- **The stale-glyph artifacts that prompted the renderer work are not reproduced**
+  by `tabby-terminal/test/glyphs.cdp.js`. Retiring the canvas renderer is
+  well-founded on its own, but it is not *measured* to be the fix.
 - Open upstream PR by us, not yet merged — carry it here rather than waiting:
   [#11383](https://github.com/Eugeny/tabby/pull/11383) fix(linkifier): keep `:` `,` `/`
   in clickable URL path/query.
 
 ## Planned
 
-- **Emoji width.** Measured, not assumed — with the addon this fork actually loads
-  (`@xterm/addon-unicode11`, `xtermFrontend.ts:145-146`):
+- **Emoji width.** xterm 6 has landed (see *The renderer and xterm 6* above), which
+  was the prerequisite — but the addon that carries the fix cannot be loaded.
 
-  | sequence | xterm | other terminals |
+  | sequence | xterm + unicode11 | other terminals |
   |---|---|---|
   | `U+2747` alone | 1 | 1 |
-  | `U+2747 U+FE0F` (`❇️ `) | 1 + 0 = **1** | **2** |
+  | `U+2747 U+FE0F` (`❇️`) | 1 + 0 = **1** | **2** |
   | `U+2705` (emoji by default) | 2 | 2 |
 
   VS16 is width 0 and never promotes its base to the emoji-presentation width 2.
+  `@xterm/addon-unicode11` cannot fix that at any version, and on xterm 5.4
+  swapping in `@xterm/addon-unicode-graphemes` did nothing either: 5.4's
+  `UnicodeService` delegates only `wcwidth` to the provider and implements
+  `charProperties` itself on top of it, so the provider's richer version was never
+  called. xterm 6 does delegate `charProperties`, so the swap would now work.
 
-  **Swapping in `@xterm/addon-unicode-graphemes` alone does nothing — verified.**
-  The stable 0.4.0 declares no peer dependency and its provider does expose
-  `charProperties`, so it looks like a drop-in. But xterm 5.4.0's `UnicodeService`
-  delegates only `wcwidth` to the provider (`wcwidth(e){return
-  this._activeProvider.wcwidth(e)}`) and implements `charProperties` itself on top
-  of it; the provider's richer version is never called. Confirmed against the
-  installed bundle, and by loading the addon standalone: its `wcwidth` still
-  answers 1 for `U+2747 U+FE0F`.
+  **What blocks it is that `@xterm/addon-unicode-graphemes@0.4.0` cannot be put
+  in this bundle at all** — see the hang described above. Until that is
+  understood, `unicode11` stays and `❇️` keeps its stray space.
 
-  So the fix genuinely requires **xterm 6**, where `UnicodeService` delegates
-  `charProperties` too — a major bump of the core terminal engine. Renderer-wide,
-  its own branch, its own regression pass.
-*(Nothing else outstanding. The emoji-width item above is the only one left, and
-it is deliberately parked.)*
+- **`useConptyDll`.** node-pty 1.2.0-beta.8 bundles conpty 1.23 under
+  `third_party/conpty/`, but `tabby-local/src/session.ts` never passes
+  `useConptyDll`, so sessions run on whatever conpty ships with Windows. xterm 6's
+  reflow work is aligned to conpty >= 1.22 (xtermjs/xterm.js#5321), and VS Code
+  turned the equivalent setting on to fix resize corruption. Worth measuring.
