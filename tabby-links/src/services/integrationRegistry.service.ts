@@ -169,7 +169,10 @@ export class IntegrationRegistryService {
                 enabled: state.enabled !== false,
                 settings,
                 credentials: credentialValues,
-                fields: Array.isArray(state.fields) ? state.fields : [],
+                // null, not [] — "never chosen" and "chose nothing" are
+                // different answers, and only the first means "use the
+                // manifest's defaults".
+                fields: Array.isArray(state.fields) ? state.fields : null,
                 configured: isConfigured(manifest, settings, credentialValues),
             })
         }
@@ -231,6 +234,7 @@ export class IntegrationRegistryService {
 
     setEnabled (id: string, enabled: boolean): void {
         this.stateFor(id).enabled = enabled
+        this.prune(id)
         this.config.save()
     }
 
@@ -256,6 +260,10 @@ export class IntegrationRegistryService {
             // Storing '' would look configured while not being usable.
             Reflect.deleteProperty(state.settings, key)
         }
+        if (!Object.keys(state.settings).length) {
+            Reflect.deleteProperty(state, 'settings')
+        }
+        this.prune(id)
         this.config.save()
     }
 
@@ -271,9 +279,8 @@ export class IntegrationRegistryService {
             return
         }
         const order = (integration.manifest.fields ?? []).map(f => f.key ?? f.label ?? '')
-        const current = integration.fields.length
-            ? integration.fields
-            : (integration.manifest.fields ?? []).filter(f => f.default).map(f => f.key ?? f.label ?? '')
+        const current = integration.fields
+            ?? (integration.manifest.fields ?? []).filter(f => f.default).map(f => f.key ?? f.label ?? '')
         const next = new Set(current)
         if (visible) {
             next.add(key)
@@ -284,13 +291,39 @@ export class IntegrationRegistryService {
         this.config.save()
     }
 
-    /** The display fields to render, honouring the user's choice or the defaults. */
+    /**
+     * The display fields to render, honouring the user's choice or the defaults.
+     *
+     * An empty *array* is a choice — the user unticked everything — and is
+     * honoured. Only the absence of one falls back to the manifest, or the last
+     * box you unticked would spring straight back on.
+     */
     visibleFieldKeys (integration: Integration): string[] {
-        if (integration.fields.length) {
+        if (integration.fields) {
             return integration.fields
         }
         return (integration.manifest.fields ?? [])
             .filter(f => f.default)
             .map(f => f.key ?? f.label ?? '')
+    }
+
+    /**
+     * Forget an entry that has been reduced to its defaults.
+     *
+     * `config.yaml` is uploaded verbatim by Config Sync, so an integration you
+     * opened once and never configured should not leave `{ enabled: true,
+     * settings: {} }` behind in it forever. An explicit "off", a stored setting
+     * or a field choice are all content and stop this.
+     */
+    private prune (id: string): void {
+        const all = this.config.store.integrations
+        const state = all?.[id]
+        if (!state || state.enabled === false || Array.isArray(state.fields)) {
+            return
+        }
+        if (Object.keys(state.settings ?? {}).length) {
+            return
+        }
+        Reflect.deleteProperty(all, id)
     }
 }

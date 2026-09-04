@@ -14,6 +14,41 @@ export interface ResolvedTarget {
     display: string
 }
 
+function parseUrl (text: string): URL | null {
+    try {
+        return new URL(text)
+    } catch {
+        return null
+    }
+}
+
+/**
+ * The ASCII form of a URI's host, when it is not what the link appears to say.
+ *
+ * `аpple.com` with a Cyrillic а is a different domain from `apple.com` and
+ * looks identical in a terminal font. `new URL()` normalises the host to
+ * punycode, so a `xn--` prefix that the written form does not have is exactly
+ * the case worth naming — that is the whole homograph attack. Returns '' when
+ * there is nothing surprising, which is almost always.
+ *
+ * The Windows Terminal fork does this by comparing `AbsoluteCanonicalUri`
+ * against `AbsoluteUri` (`TermControl.cpp:3839-3867`).
+ */
+export function punycodeHost (text: string): string {
+    const url = parseUrl(text)
+    if (!url?.hostname.includes('xn--')) {
+        return ''
+    }
+    // The authority as actually written, so an author who typed the punycode
+    // themselves is not warned about their own spelling.
+    const written = /^[^:]+:\/\/(?:[^@/]*@)?([^/?#]+)/.exec(text)?.[1] ?? ''
+    const bare = written.replace(/:\d+$/, '').toLowerCase()
+    if (!bare || bare === url.hostname) {
+        return ''
+    }
+    return url.hostname
+}
+
 @Injectable({ providedIn: 'root' })
 export class LinkTargetService {
     constructor (private hostApp: HostAppService) { }
@@ -91,11 +126,38 @@ export class LinkTargetService {
         }
     }
 
+    /**
+     * The default WSL distro's name, which `\\wsl.localhost\` needs — there is
+     * no "default" share to fall back on.
+     *
+     * Finding it costs a registry read, so it is done once and remembered. It
+     * used to be skipped entirely, which meant the most ordinary WSL tab there
+     * is — `wsl` with no `-d` — silently had no Copy path and no Show in
+     * folder. The registry is read rather than `wsl.exe -l` because launching
+     * WSL from a hover is exactly the kind of thing that stalls a UI thread,
+     * and this is one synchronous key lookup.
+     */
+    private defaultDistro: string | null = null
+
     private defaultDistroHost (): string {
-        // `\\wsl.localhost\` needs a name; there is no "default" share. Reading
-        // it costs a subprocess, so it is left to the caller to configure a
-        // named distro — an unnamed one simply gets no path resolution.
-        return ''
+        const cached = this.defaultDistro
+        if (cached !== null) {
+            return cached
+        }
+        let name = ''
+        try {
+            const wnr = require('windows-native-registry')
+            const base = 'Software\\Microsoft\\Windows\\CurrentVersion\\Lxss'
+            const guid = wnr.getRegistryKey(wnr.HK.CU, base)?.DefaultDistribution?.value
+            if (guid) {
+                name = wnr.getRegistryKey(wnr.HK.CU, `${base}\\${guid}`)?.DistributionName?.value ?? ''
+            }
+        } catch {
+            // No registry module, no WSL, or a shape we don't recognise. A
+            // missing path is the same outcome as before, not an error.
+        }
+        this.defaultDistro = name
+        return name
     }
 
     private async exists (p: string): Promise<boolean> {

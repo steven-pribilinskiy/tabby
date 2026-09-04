@@ -124,6 +124,14 @@ async function follow (request: HttpRequest, url: string, redirectsLeft: number)
 
 export interface CommandResult {
     stdout: string
+    /**
+     * Kept apart from stdout, because a step's contract is "parse stdout as
+     * JSON" and plenty of well-behaved commands write a warning to stderr on
+     * the way to a perfectly good result. Merging them made every such command
+     * fail to parse, reporting "produced no usable output" about output that
+     * was fine. Surfaced only when there is nothing to parse.
+     */
+    stderr: string
 }
 
 /** Run a local command and capture its output, bounded by the same timeout. */
@@ -139,6 +147,7 @@ export function runCommand (commandLine: string, stdin: string, timeoutMs: numbe
             windowsHide: true,
         })
         const chunks: Buffer[] = []
+        const errorChunks: Buffer[] = []
         let size = 0
         let settled = false
         // `timer` is assigned below and only ever read from a callback that
@@ -157,19 +166,24 @@ export function runCommand (commandLine: string, stdin: string, timeoutMs: numbe
             finish(() => reject(new Error('timed out')))
         }, timeoutMs > 0 ? timeoutMs : 8000)
 
-        const collect = (chunk: Buffer) => {
+        // Both streams count against the same cap — the limit is on how much a
+        // step may produce, not on which pipe it chose.
+        const collect = (into: Buffer[]) => (chunk: Buffer) => {
             size += chunk.length
             if (size > MAX_BODY_BYTES) {
                 child.kill()
                 finish(() => reject(new Error('the command produced too much output')))
                 return
             }
-            chunks.push(chunk)
+            into.push(chunk)
         }
-        child.stdout?.on('data', collect)
-        child.stderr?.on('data', collect)
+        child.stdout?.on('data', collect(chunks))
+        child.stderr?.on('data', collect(errorChunks))
         child.on('error', (err: Error) => finish(() => reject(err)))
-        child.on('close', () => finish(() => resolve({ stdout: Buffer.concat(chunks).toString('utf8') })))
+        child.on('close', () => finish(() => resolve({
+            stdout: Buffer.concat(chunks).toString('utf8'),
+            stderr: Buffer.concat(errorChunks).toString('utf8'),
+        })))
 
         if (stdin) {
             child.stdin?.write(stdin)
