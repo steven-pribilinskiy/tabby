@@ -536,6 +536,12 @@ export class XTermFrontend extends Frontend {
             background: getXtermBackgroundColor(this.configService, this.themes, scheme),
             cursor: scheme.cursor,
             cursorAccent: scheme.cursorAccent,
+            // xterm 6 draws the overview ruler's border itself and defaults it
+            // to black, which on a light scheme is a black line down the right
+            // edge. The scrollbar it also now draws needs nothing from us: it
+            // derives the slider from this theme's foreground at 20/40/50%
+            // opacity, which already follows a light or dark scheme correctly.
+            overviewRulerBorder: scheme.background,
         }
 
         for (let i = 0; i < COLOR_NAMES.length; i++) {
