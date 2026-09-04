@@ -105,7 +105,8 @@ export class XTermFrontend extends Frontend {
         this.xterm = new Terminal({
             allowTransparency: true,
             allowProposedApi: true,
-            overviewRulerWidth: 8,
+            // xterm 6 replaced the flat width with an options object.
+            overviewRuler: { width: 8, showTopBorder: false, showBottomBorder: false },
             windowsPty: process.platform === 'win32' ? {
                 backend: this.configService.store.terminal.useConPTY ? 'conpty' : 'winpty',
                 buildNumber: getWindows10Build(),
@@ -217,15 +218,17 @@ export class XTermFrontend extends Frontend {
                     const savedViewportY = this.xterm.buffer.active.viewportY
 
                     this.fitAddon.fit()
-                    this.xtermCore.viewport._refresh()
+                    // xterm 6's viewport is private and rebuilt on VS Code's
+                    // scrollable element; queueSync() replaces _refresh().
+                    this.xtermCore._viewport?.queueSync()
 
                     if (savedPinned) {
-                        this.xtermCore._scrollToBottom()
+                        this.xtermCore._scrollToBottom(true)
                     } else {
                         // Restore the previous scroll position after fit
                         const maxScroll = this.xterm.buffer.active.baseY
                         const targetY = Math.min(savedViewportY, maxScroll)
-                        this.xterm.scrollToLine(targetY)
+                        this.scrollToLineImmediately(targetY)
                     }
 
                     // fitAddon.fit() resizes the renderer's drawing buffer,
@@ -283,6 +286,19 @@ export class XTermFrontend extends Frontend {
             const altBufferActive = this.xterm.buffer.active.type === 'alternate'
             this.alternateScreenActive.next(altBufferActive)
         })
+    }
+
+    /**
+     * Restore a scroll position without animating it. xterm 6 smooth-scrolls
+     * every public scroll, and this runs after each write while the user is
+     * scrolled up — an animation there would fight the next write.
+     */
+    private scrollToLineImmediately (line: number): void {
+        if (this.xtermCore._viewport) {
+            this.xtermCore._viewport.scrollToLine(line, true)
+        } else {
+            this.xterm.scrollToLine(line)
+        }
     }
 
     private isAtBottom (): boolean {
@@ -450,7 +466,7 @@ export class XTermFrontend extends Frontend {
         const savedViewportY = this.xterm.buffer.active.viewportY
         await this.flowControl.write(data)
         if (wasPinned) {
-            this.xtermCore._scrollToBottom()
+            this.xtermCore._scrollToBottom(true)
         } else {
             // Restore scroll position — xterm internally disturbs viewportY
             // during fast output, and the patched-out scrollToBottom no-op
@@ -458,7 +474,7 @@ export class XTermFrontend extends Frontend {
             const maxScroll = this.xterm.buffer.active.baseY
             const targetY = Math.min(savedViewportY, maxScroll)
             if (this.xterm.buffer.active.viewportY !== targetY) {
-                this.xterm.scrollToLine(targetY)
+                this.scrollToLineImmediately(targetY)
             }
         }
     }
@@ -505,7 +521,7 @@ export class XTermFrontend extends Frontend {
 
     scrollToBottom (): void {
         this.pinnedToBottom = true
-        this.xtermCore._scrollToBottom()
+        this.xtermCore._scrollToBottom(true)
     }
 
     private configureColors (scheme: TerminalColorScheme | null): void {
@@ -556,9 +572,15 @@ export class XTermFrontend extends Frontend {
             }
         })
 
-        this.xtermCore.browser.isWindows = this.hostApp.platform === Platform.Windows
-        this.xtermCore.browser.isLinux = this.hostApp.platform === Platform.Linux
-        this.xtermCore.browser.isMac = this.hostApp.platform === Platform.macOS
+        // Replaced wholesale rather than assigned into: `browser` is xterm's
+        // `common/Platform` module namespace, whose properties are read-only
+        // getters, so writing through it throws.
+        this.xtermCore.browser = {
+            ...this.xtermCore.browser,
+            isWindows: this.hostApp.platform === Platform.Windows,
+            isLinux: this.hostApp.platform === Platform.Linux,
+            isMac: this.hostApp.platform === Platform.macOS,
+        }
 
         this.xterm.options.fontFamily = getCSSFontFamily(config)
         this.xterm.options.cursorStyle = {
