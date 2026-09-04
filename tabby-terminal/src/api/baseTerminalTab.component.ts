@@ -369,9 +369,13 @@ export class BaseTerminalTabComponent<P extends BaseTerminalProfile> extends Bas
         }
 
         const cls: new (..._) => Frontend = enable8884Workarround ? XTermFrontend : {
-            xterm: XTermFrontend,
+            // 'xterm' used to mean the canvas renderer, which no longer exists.
+            // Alias it to WebGL rather than dropping such a profile to the DOM
+            // renderer: a saved config keeps working without anyone editing it.
+            xterm: XTermWebGLFrontend,
             'xterm-webgl': XTermWebGLFrontend,
-        }[this.config.store.terminal.frontend] ?? XTermFrontend
+            'xterm-dom': XTermFrontend,
+        }[this.config.store.terminal.frontend] ?? XTermWebGLFrontend
         this.frontend = new cls(this.injector)
 
         this.frontendReady$.pipe(first()).subscribe(() => {

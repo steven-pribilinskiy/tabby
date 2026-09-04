@@ -11,7 +11,6 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import { ImageAddon } from '@xterm/addon-image'
-import { CanvasAddon } from '@xterm/addon-canvas'
 import { BaseTerminalProfile } from '../api/interfaces'
 import { getXtermBackgroundColor } from '../helpers'
 import { generatePalette } from '../generatePalette'
@@ -82,7 +81,6 @@ export class XTermFrontend extends Frontend {
     private serializeAddon = new SerializeAddon()
     private ligaturesAddon?: LigaturesAddon
     private webGLAddon?: WebglAddon
-    private canvasAddon?: CanvasAddon
     private opened = false
     private resizeObserver?: any
     private flowControl: FlowControl
@@ -315,15 +313,12 @@ export class XTermFrontend extends Frontend {
             ).subscribe(() => {
                 this.webGLAddon?.clearTextureAtlas()
             })
-        } else {
-            this.canvasAddon = new CanvasAddon()
-            this.xterm.loadAddon(this.canvasAddon)
-            this.platformService.displayMetricsChanged$.pipe(
-                takeUntil(this.destroyed$),
-            ).subscribe(() => {
-                this.canvasAddon?.clearTextureAtlas()
-            })
         }
+        // No `else` branch: without an accelerated addon xterm draws through
+        // its own DOM renderer, which is slow but always correct. The canvas
+        // addon used to sit here; it is unmaintained upstream and gone in
+        // xterm 6, and its damage-tracked repaint is the mechanism behind the
+        // stale-glyph reports (Eugeny/tabby#11511, #9429).
 
         // Allow an animation frame
         await new Promise(r => setTimeout(r, 100))
@@ -411,7 +406,6 @@ export class XTermFrontend extends Frontend {
     destroy (): void {
         super.destroy()
         this.webGLAddon?.dispose()
-        this.canvasAddon?.dispose()
         this.xterm.dispose()
     }
 
