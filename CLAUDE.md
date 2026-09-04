@@ -566,6 +566,32 @@ Also recorded: `render-process-gone`, `child-process-gone`, per-window
 `loading-plugins`, `bootstrapping-angular`, `ready`) so a stall says what was in
 progress when it hit.
 
+**And `require-failed` — every module that would not load, including the ones
+nothing reports.** `tabby-electron` alone has seven
+`try { var wnr = require(…) } catch { }` blocks, and the plugin loader has its
+own; before this, a module that failed to resolve left no trace and surfaced
+later as something unrecognisable (the documented case: a missing
+`windows-process-tree` presenting as `Cannot read properties of undefined
+(reading 'getRegistryKey')`).
+
+- **`Module._load` is wrapped, so the throw is seen before any of those catches
+  swallow it.** Nothing changes at the seven call sites, third-party plugin code
+  is covered without its cooperation, and the error is always rethrown — this
+  observes, it does not alter what happens next.
+- Deduped by `request|code` and capped at 32 distinct, because a failing
+  `require` is often *intentional*: optional dependencies and platform probes
+  fail by design. One line per distinct thing that could not load, not one per
+  attempt.
+- Records the requesting file, so the answer is "which package asked", and the
+  boot phase, so a load failure lines up against the stall it caused.
+- Verified by reproducing the swallowed shape in a live renderer. It also
+  immediately named a real one nothing had ever reported:
+  `macos-native-processlist`, MODULE_NOT_FOUND, from `tabby-electron/dist/index.js`
+  during `loading-plugins` — harmless on Windows, and previously invisible.
+- **`module` must stay in the renderer webpack `externals`** (it is, beside `fs`),
+  or `require('module')` resolves to a webpack shim, the wrapper never installs,
+  and the whole thing silently does nothing.
+
 **Known offenders it has already named**, both worth fixing at the source:
 
 - `tabby-claude-status`'s `processSpoolDir()` drains `%TEMP%\tabby-claude-status.d`
@@ -667,9 +693,5 @@ rebase surface on an upstream file stays one appended block.
 - **Frame and write latency.** The stall recorder (below) covers the event loop; it
   says nothing about a terminal that renders slowly while the loop stays free. Time
   the xterm write path and frame callbacks so that shows up too.
-- **Plugin-load failures** are still swallowed by bare `catch {}` in several places
-  (see the `wnr` case above). The renderer `error` handler catches what reaches the
-  top; the silent ones need the catches instrumented individually.
-
 - A **Settings page listing upstream commits this fork lacks** — compares
   `local` against `upstream/master` and shows what has not been pulled in.

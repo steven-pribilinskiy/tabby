@@ -503,6 +503,81 @@ function startLongTaskObserver (): void {
  * Start recording. Safe to call more than once; only the first call does
  * anything, so a second window cannot double-wrap `fs`.
  */
+/** Distinct `require` failures already reported, so a retry loop cannot flood. */
+const failedRequires = new Set<string>()
+const MAX_FAILED_REQUIRES = 32
+
+function loadModuleModule (): any {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        return require('module')
+    } catch {
+        return null
+    }
+}
+
+/** The last few path segments — enough to name the package that asked. */
+function shortenPath (filename: unknown): string {
+    if (typeof filename !== 'string' || !filename) {
+        return ''
+    }
+    return filename.split(/[\\/]/).slice(-3).join('/')
+}
+
+/**
+ * Record every `require` that throws.
+ *
+ * This is the only way to see most of them. `tabby-electron` alone has seven
+ * `try { var wnr = require(...) } catch { }` blocks, and the plugin loader has
+ * its own; a module that fails to resolve leaves no trace and surfaces later as
+ * something unrecognisable — the documented case being a missing
+ * `windows-process-tree` presenting as `Cannot read properties of undefined
+ * (reading 'getRegistryKey')`, with nothing about process-tree anywhere.
+ *
+ * Wrapping `Module._load` catches the throw *before* any of those handlers see
+ * it, so nothing needs to change at the seven call sites and third-party plugin
+ * code is covered too. The error is always rethrown — this observes, it does not
+ * alter what happens next.
+ *
+ * A failing `require` is not necessarily a fault: optional dependencies and
+ * feature probes fail by design. Hence the dedupe and the cap — the log wants
+ * one line per distinct thing that could not be loaded, not one per attempt.
+ */
+function instrumentModuleLoads (): void {
+    const Module = loadModuleModule()
+    if (!Module) {
+        return
+    }
+    const original = Module._load
+    if (typeof original !== 'function' || original.__tabbyDiag) {
+        return
+    }
+    const wrapped = function (this: any, request: string, parent: any, ...rest: any[]): any {
+        try {
+            return original.call(this, request, parent, ...rest)
+        } catch (err: any) {
+            const code = err?.code ?? 'Error'
+            const key = `${request}|${code}`
+            if (!failedRequires.has(key) && failedRequires.size < MAX_FAILED_REQUIRES) {
+                failedRequires.add(key)
+                emit({
+                    kind: 'require-failed',
+                    request,
+                    code,
+                    // Just the tail: full paths here are long and the
+                    // interesting part is which package asked.
+                    from: shortenPath(parent?.filename),
+                    message: String(err?.message ?? err).split('\n')[0].slice(0, 200),
+                    phase: lastPhase,
+                })
+            }
+            throw err
+        }
+    }
+    wrapped.__tabbyDiag = true
+    Module._load = wrapped
+}
+
 export function installDiagnostics (which: Role): void {
     if (installed || !envFlag('TABBY_DIAG', true)) {
         return
@@ -529,6 +604,10 @@ export function installDiagnostics (which: Role): void {
             // Not available — nothing to instrument.
         }
     }
+
+    // Cheap enough to leave on with the I/O instrumentation off: this adds a
+    // try/catch around module resolution and costs nothing until one fails.
+    instrumentModuleLoads()
 
     startStallDetector()
     startLongTaskObserver()
