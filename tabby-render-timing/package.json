@@ -1,0 +1,20 @@
+{
+  "name": "tabby-render-timing",
+  "version": "1.0.231-nightly.0",
+  "description": "Times the terminal's write path and frame cadence into diagnostics.log",
+  "keywords": [
+    "tabby-builtin-plugin"
+  ],
+  "main": "dist/index.js",
+  "typings": "typings/index.d.ts",
+  "scripts": {
+    "build": "webpack --progress --color",
+    "watch": "webpack --progress --color --watch"
+  },
+  "files": [
+    "dist",
+    "typings"
+  ],
+  "author": "Steven Prybylynskyi",
+  "license": "MIT"
+}

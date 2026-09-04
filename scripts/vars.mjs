@@ -32,6 +32,7 @@ export const builtinPlugins = [
     'tabby-plugin-manager',
     'tabby-linkifier',
     'tabby-links',
+    'tabby-render-timing',
     'tabby-claude',
     'tabby-builds',
     'tabby-auto-sudo-password',

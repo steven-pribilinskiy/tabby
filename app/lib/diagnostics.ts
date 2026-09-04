@@ -231,6 +231,17 @@ export function mark (phase: string, detail?: unknown): void {
     note(phase, detail)
 }
 
+/**
+ * Emit a standalone record.
+ *
+ * Distinct from `note`, which only leaves a breadcrumb — breadcrumbs are shown
+ * as context when a stall is reported and are invisible otherwise. A summary
+ * that is the finding, rather than context for one, has to go through here.
+ */
+export function report (kind: string, detail: Record<string, unknown>): void {
+    emit({ kind, ...detail, phase: lastPhase })
+}
+
 /** Record something worth seeing next to a stall, without making it a phase. */
 export function note (kind: string, detail?: unknown): void {
     breadcrumbs.push({ at: new Date().toISOString(), kind, detail })
@@ -625,7 +636,7 @@ export function installDiagnostics (which: Role): void {
     // that wants to time itself looks this up and degrades to a no-op when it
     // is absent — which is the honest state under tabby-web, where none of
     // this exists.
-    ;(globalThis as any).__tabbyDiagnostics = { span, mark, note, recordFailure }
+    ;(globalThis as any).__tabbyDiagnostics = { span, mark, note, report, recordFailure }
 
     emit({
         kind: 'session-start',

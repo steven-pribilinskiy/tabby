@@ -603,6 +603,37 @@ later as something unrecognisable (the documented case: a missing
   ×817`, i.e. module loading. Expected to be cheaper from an asar slot than a dev
   build, but it has never been measured before.
 
+## When it isn't the event loop (`tabby-render-timing`)
+
+The stall recorder covers the loop. It says nothing about the other way a
+terminal feels slow: nothing blocks, the loop stays free, and the screen still
+lags — because frames are being dropped, or because xterm is taking a long time
+to parse and lay out what was written to it. `tabby-render-timing` is a builtin
+that times both and writes `render-timing` records into the same log:
+
+```
+render-timing  frames: 327, slowFrames 3, jankFrames 2, worst 150ms, p50 8.3, p95 8.5
+               term1: 7 writes, mean 22.7ms, worst 81ms, 2 slow
+```
+
+- **A `TerminalDecorator`, not an edit to `xtermFrontend.ts`.** Add-only, so it
+  costs nothing at the next rebase, and it reaches any frontend exposing an
+  `xterm` without knowing which. It wraps `xterm.write` and measures call →
+  callback, which is the interval that matters: the caller's `await` returns long
+  before the screen reflects anything.
+- **Tallied, never streamed.** A busy terminal writes thousands of times a
+  second; the finding is a distribution. Same principle as the stall recorder.
+- **The rAF loop only runs while something is writing** and stops two seconds
+  after. A permanent one would keep the compositor awake on an idle window —
+  a poor trade for a diagnostic.
+- **Gaps over 500 ms are not counted as dropped frames.** An idle tab produces
+  one enormous gap, and counting it would make every summary look catastrophic.
+- **`note()` was the wrong API and cost a debugging round.** It only appends a
+  breadcrumb, which is shown as *context when a stall is reported* and is
+  invisible otherwise — so the summaries went nowhere. `report()` was added
+  alongside it for records that are the finding rather than context for one.
+- Reports only when there is something to say: a healthy hour writes no lines.
+
 ## Changed upstream defaults
 
 Kept to a minimum — every one is a line that conflicts on rebase.
@@ -690,8 +721,5 @@ rebase surface on an upstream file stays one appended block.
   So the fix genuinely requires **xterm 6**, where `UnicodeService` delegates
   `charProperties` too — a major bump of the core terminal engine. Renderer-wide,
   its own branch, its own regression pass.
-- **Frame and write latency.** The stall recorder (below) covers the event loop; it
-  says nothing about a terminal that renders slowly while the loop stays free. Time
-  the xterm write path and frame callbacks so that shows up too.
 - A **Settings page listing upstream commits this fork lacks** — compares
   `local` against `upstream/master` and shows what has not been pulled in.
