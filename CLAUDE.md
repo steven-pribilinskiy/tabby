@@ -305,6 +305,74 @@ The parts that cost real time:
   `openExternal('file://' + p)` — that yields `file://C:\foo` on Windows and is
   an existing upstream bug in `tabby-linkifier/src/handlers.ts`.
 
+### The `html` representation
+
+A manifest may carry an `html` key — a complete HTML document, rendered in place
+of the `fields` list, given `window.__data` (every fetch step's JSON, keyed by
+step id) and `window.__uri`, and talking back over
+`chrome.webview.postMessage` with `{height}` (clamped 40–320) or `{open}`.
+`tabby-links/INTEGRATIONS.md` has the contract; `htmlHost.ts` builds the
+document and `stith.json` is the worked example.
+
+This is a **port of the Windows Terminal fork's contract, which that fork cannot
+run**: its WebView2 host is compiled behind `Feature_HyperlinkPreviewHtml` with
+no `WebView2Loader.dll` shipped, so `html` there always falls back to `fields`.
+Both repos previously documented it as "reserved, not implemented in either
+fork", which was wrong and cost a rediscovery.
+
+- **`sandbox="allow-scripts"`, and nothing else, is the entire security story.**
+  Tabby's renderer is `nodeIntegration: true`, `contextIsolation: false`
+  (`app/lib/window.ts:77`) with **no CSP anywhere in the app**, so a plugin page
+  that reached the parent realm would be `require('child_process')`, not XSS.
+  Without `allow-same-origin` the frame is on an opaque origin and can do
+  nothing but post a message. Verified live: `window.origin === 'null'`, no
+  `require`, no `process`, and reading into the frame from the host throws
+  `SecurityError`.
+- **Angular refuses a *bound* `sandbox`** (NG0910) and is right to, so it is
+  written out literally in the template. `HTML_SANDBOX` exists only so a test can
+  assert the two have not drifted.
+- **A CSP is injected ahead of the document** — `default-src 'none'`,
+  `connect-src 'none'` — which the WebView2 host does not do. The page renders
+  data already fetched and cannot call home. `img-src https:` is the one
+  exception, for parity with `iconPath` on a `fields` card.
+- **`srcdoc` is written only when the card's key changes.** Assigning it reloads
+  the page and restarts its script, and the Linkifier re-asks many times a second
+  during output.
+- **A page cannot be verified in the hidden dev build.** Chromium throttles
+  rendering for a cross-origin subframe that is never visible, so the frame's
+  document is never laid out and *every* measurement inside it reads 0 — a
+  `height: 77px` div included. `test/htmlPage.electron.js` gives the page its own
+  window, shown without focus and off-screen, purely so a compositor runs.
+- **Measure `document.body.scrollHeight`, not `documentElement`'s.** The latter is
+  the frame's own viewport, so a page that reports it just asks to stay the size
+  it already is — a silent no-op that looks exactly like a broken channel.
+
+### Fixed in the second pass
+
+Each of these was shipped and wrong; they are listed because the shape recurs.
+
+- **`fileTypeGroup` and `extensions` never matched.** `decorator.ts` passed `''`
+  as the resolved path, and `linkRules.service.ts` requires a real one — so two
+  controls in the rule editor did nothing at all. The rules are now asked twice:
+  once for the show delay, then again once the path is known.
+- **`lookupPath` tested for a colon before a leading slash**, so `/links/self:href`
+  parsed as a step named `/links/self` and the field silently vanished.
+- **`colorPath` vs `color` precedence was inverted** relative to the other fork,
+  which breaks the one thing the format promises. The path wins; the literal is
+  the fallback.
+- **`cacheSeconds: 0` meant "cache for a second"**, not "never cache".
+- **`fields: []` could not be expressed** — unticking the last display field
+  sprang back to the manifest defaults, because empty and absent were the same
+  value. `Integration.fields` is now `string[] | null`.
+- **A `command` step merged stderr into stdout**, so any command that warns
+  before succeeding failed to parse, reporting "produced no usable output" about
+  output that was fine. Now separate, and any credential appearing in stderr is
+  redacted — a failing command usually echoes the command line it was given.
+- **An unconfigured integration lost Open / Copy link**: resolving `CAB-8209` to
+  a URL needs only the matcher, not a credential. Only *previewing* needs one.
+- The **punycode/IDN annotation was missing entirely** — a homograph warning the
+  reference has and this port had silently dropped.
+
 ## Builds page (`tabby-builds`)
 
 Settings → **Builds** lists every Tabby build on this machine: the installed

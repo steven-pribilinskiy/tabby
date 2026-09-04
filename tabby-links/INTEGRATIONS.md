@@ -210,7 +210,8 @@ fatal.
 
 Top-level keys: `id` (required — a manifest without one is invalid), `name`, `icon`, `version`
 (informational), `cacheSeconds`, `settings`, `credentials`, `matchers`, `fetch`, `fields`, and
-`html` (reserved; see below). **Unknown keys are ignored**, which is what lets the format grow.
+`html` (see [HTML representation](#html-representation)). **Unknown keys are ignored**, which is
+what lets the format grow.
 
 #### Settings / credentials fields
 
@@ -253,6 +254,20 @@ Slack's manifest uses `when`/`unless` on a shared step id to choose between
 `conversations.history` and `conversations.replies` depending on whether the link carried a
 `thread_ts`.
 
+Limits every step runs under, whatever the manifest asks for:
+
+| Limit | Value |
+|---|---|
+| Step URL schemes | `http` and `https` only. |
+| Response / output size | 4 MiB, after which the step fails. |
+| Redirects followed | 5. |
+| Default headers | `user-agent: Tabby` (fixed) and `accept: application/json` (a manifest header of the same name replaces it). |
+
+A `command` step's **stdout** is what gets parsed as JSON. Its stderr is captured separately and
+shown only when stdout held nothing usable — plenty of commands write a warning on their way to a
+perfectly good result. Any stored credential appearing verbatim in that stderr is redacted before
+it reaches the card, because a failing command often echoes the command line it was handed.
+
 #### Display fields
 
 | Key | Meaning |
@@ -260,9 +275,9 @@ Slack's manifest uses `when`/`unless` on a shared step id to choose between
 | `key` | Identifies the field for the user's selection list. Defaults to `label`. |
 | `label` | Shown next to the value. |
 | `path` | JSON pointer into a fetch result. See [Paths](#paths). |
-| `kind` | `text`, `title` (bold, no label, up to 3 lines), `subtitle`, `badge` (a coloured pill), `link`, `image`, `multiline` (up to 6 lines). |
+| `kind` | `text`, `title` (bold, no label, up to 3 lines), `subtitle` (dimmed, no label), `badge` (a coloured pill), `link` (clickable, opened the same way the Open button opens one), `image` (the value is a URL and is drawn as a picture), `multiline` (up to 6 lines). A host that cannot draw one of these renders it as plain text — the Windows Terminal fork does exactly that for `subtitle`, `link` and `image`. |
 | `iconPath` | Pointer to a URL for a 16 px icon beside the value. |
-| `colorPath` / `color` | For `badge`. A literal `color` wins over `colorPath`. |
+| `colorPath` / `color` | For `badge`. `colorPath` wins when the response carried a colour; `color` is the fallback for when it didn't. |
 | `format` | `relativeTime` (`3 h ago`) or `date` (`2026-09-03 14:05`, local). |
 | `default` | Shown before the user picks a custom set. |
 
@@ -328,9 +343,10 @@ would refuse Tabby's own defaults.
 
 Each plugin's `cacheSeconds` controls how long a resolved preview is kept per matched link — a
 second hover within that window skips the fetch entirely. Jira and Slack default to 300 seconds,
-stith to 30. Failures are cached for a fixed 30 seconds, so a wrong token doesn't retry on every
-hover but recovers within half a minute once fixed. The cache holds at most 256 entries and is
-cleared whenever settings reload.
+stith to 30, and omitting it means 300. **`cacheSeconds: 0` means never cache**, which is how a
+manifest whose data changes constantly opts out. Failures are cached for a fixed 30 seconds, so a
+wrong token doesn't retry on every hover but recovers within half a minute once fixed. The cache
+holds at most 256 entries and is cleared whenever settings reload.
 
 ## Differences from the Windows Terminal fork
 
@@ -344,10 +360,77 @@ The manifest format is the same. Two things about the surrounding app are not:
   `sendInput` or `command` (a Tabby command id) with `%u` substituted for the hovered link —
   the same substitution that fork applies to `SendInput` and `ExecuteCommandline`.
 
+- **The `html` representation runs here and is switched off there.** See
+  [Availability](#availability). The contract is identical; only whether it draws differs.
+
 `normalize` and `suffix` on a setting field are additive and, per the "unknown keys are ignored"
-rule, harmless to an implementation that has not adopted them yet.
+rule, harmless to an implementation that has not adopted them yet. The same goes for `html`
+itself: a host that has never heard of the key renders the `fields` list, which is why a manifest
+meant for both should carry one.
 
-## HTML representation (reserved)
+Two smaller behaviours are worth stating because they are easy to assume otherwise:
 
-The schema reserves an `html` key for a richer, HTML-rendered card in place of the field list.
-It is not implemented in either fork — a manifest that sets it falls back to `fields`.
+- `hostSetting` guards **link** matchers only. A `text` matcher that carries one is not
+  host-guarded — matching a ticket key like `CAB-8209` has no host to check it against.
+- A user's display-field selection distinguishes "never chose" from "chose nothing". Unticking
+  every box shows no fields, rather than springing back to the manifest's defaults.
+
+## HTML representation
+
+A manifest's `html` key is a full HTML document, given inline as a string — there is no
+file-reference form. When it is set, the card renders that document **instead of** the `fields`
+list. Absent or empty means use `fields`, and so does turning *Let integrations draw their own
+tooltip* off on the Link Tooltip page.
+
+Two things are injected before any of the page's own script runs:
+
+- `window.__data` — an object keyed by fetch step `id`, holding each step's JSON result. The same
+  data that `path` / `iconPath` / `colorPath` pointers resolve against for a `fields` card.
+- `window.__uri` — the URI or text that was hovered.
+
+The page talks back through `chrome.webview.postMessage`:
+
+- `{ "height": <number> }` — resize the card to fit, clamped to **40–320 px**.
+- `{ "open": "https://…" }` — open a link through the terminal's normal link handling, the same
+  path the Open button takes, so the unsafe-scheme prompt still applies.
+
+Because the host applies no palette of its own, an `html` page should declare
+`color-scheme: light dark` in its CSS rather than assuming one theme.
+
+```jsonc
+// integration.json
+"html": "<!doctype html><html><head><meta charset='utf-8'><style>:root{color-scheme:light dark}body{font:12px system-ui;margin:6px}</style></head><body><div id='s'></div><script>const d=window.__data.issue.fields;document.getElementById('s').textContent=d.summary+' — '+d.status.name;function report(){chrome.webview.postMessage({height:document.body.scrollHeight})}window.addEventListener('load',report);new ResizeObserver(report).observe(document.body);document.body.addEventListener('click',e=>{if(e.target.tagName==='A'){e.preventDefault();chrome.webview.postMessage({open:e.target.href})}});</script></body></html>"
+```
+
+`stith.json` ships a worked example. Jira and Slack do not set `html`, so they exercise the
+`fields` path.
+
+### What the page can and cannot do
+
+The document is someone else's code, so it is given as little as will still let it draw a card.
+
+- It runs in an `<iframe sandbox="allow-scripts">` — and **only** `allow-scripts`. Without
+  `allow-same-origin` the frame has an opaque origin: it cannot reach the host page, which
+  matters because Tabby's renderer runs with Node integration enabled. Popups, forms, modals,
+  downloads and top-level navigation are all off by omission.
+- A Content-Security-Policy of `default-src 'none'` is injected ahead of the document, so the
+  page cannot fetch, connect or submit anywhere. It renders data the pipeline already retrieved.
+  `img-src https: data:` is the single exception, for parity with `iconPath` on a `fields` card.
+- Navigating itself away discards the document, so `window.__data` cannot be carried off in a URL.
+- There is no context menu, no dev tools and no zoom.
+
+The Windows Terminal fork hosts the same contract in a WebView2 and switches those off by hand;
+it sets no CSP. **The CSP is a hardening this implementation adds, and the standard should adopt
+it** rather than treat it as a local divergence.
+
+`chrome.webview.postMessage` is a WebView2 name. It is provided here as a shim over
+`parent.postMessage` specifically so that one manifest works, byte for byte, in both — which is
+the whole point of the format.
+
+### Availability
+
+In this fork `html` renders. In the Windows Terminal fork it is compiled in but **disabled**:
+rendering it needs both the `Feature_HyperlinkPreviewHtml` flag and `WebView2Loader.dll` beside
+the app, and neither ships today, so a manifest that sets `html` falls back to its `fields` list
+there. Write a `fields` list as well as an `html` document if the manifest is meant to be useful
+in both.
