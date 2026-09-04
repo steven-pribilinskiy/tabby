@@ -12,19 +12,45 @@
         span.arrow →
         span.path {{model.target}}
 
+    //- Shown only when the link does not resolve to the host it appears to
+    //- name. That is a homograph attack, so it is a warning, not a detail.
+    .link-punycode(*ngIf='model.punycode')
+        i.fas.fa-fw.fa-triangle-exclamation.me-1
+        span(translate) This link actually goes to
+        span.host  {{model.punycode}}
+
     .preview(*ngIf='showPreviewSection')
         .preview-head
             i.fas.fa-fw.fa-circle-notch.fa-spin.spinner(*ngIf='model.loading')
+            img.preview-icon(*ngIf='model.preview?.icon', [src]='model.preview?.icon')
             span.preview-name(*ngIf='model.integrationName') {{model.integrationName}}
 
         .preview-error(*ngIf='model.preview?.error') {{model.preview?.error}}
 
-        .preview-fields(*ngIf='!model.preview?.error')
+        //- The plugin's own document, when it has one.
+        //-
+        //- `sandbox` is written out literally, not bound: Angular refuses a
+        //- bound one outright (NG0910), and it is right to — a sandbox that can
+        //- be changed at runtime is not a sandbox. `HTML_SANDBOX` in
+        //- `htmlHost.ts` carries the same value for the tests to assert on.
+        //-
+        //- `srcdoc` is set from the component rather than bound, because
+        //- Angular sanitizes that attribute and would strip the bootstrap out.
+        iframe.preview-html(
+            *ngIf='showHtml',
+            #htmlFrame,
+            sandbox='allow-scripts',
+            referrerpolicy='no-referrer',
+            (load)='onFrameLoad()',
+        )
+
+        .preview-fields(*ngIf='!model.preview?.error && !showHtml')
             ng-container(*ngFor='let field of model.preview?.fields; trackBy: trackField')
                 .field-title(*ngIf='field.kind === "title"')
                     img.field-icon(*ngIf='field.iconUri', [src]='field.iconUri')
                     span {{field.value}}
-                .field-row(*ngIf='field.kind !== "title"')
+                .field-subtitle(*ngIf='field.kind === "subtitle"') {{field.value}}
+                .field-row(*ngIf='field.kind !== "title" && field.kind !== "subtitle"')
                     .field-label {{field.label}}
                     .field-value
                         img.field-icon(*ngIf='field.iconUri', [src]='field.iconUri')
@@ -32,8 +58,21 @@
                             *ngIf='field.kind === "badge"',
                             [style.background]='badgeBackground(field)',
                         ) {{field.value}}
+                        //- An `image` field is a picture, not the URL of one.
+                        img.field-image(
+                            *ngIf='field.kind === "image"',
+                            [src]='field.value',
+                            [alt]='field.label',
+                        )
+                        //- A `link` field is clickable, and goes through the same
+                        //- open path as the Open button so the scheme is checked.
+                        a.field-text(
+                            *ngIf='field.kind === "link"',
+                            href='javascript:void(0)',
+                            (click)='handlers?.htmlOpen(field.value)',
+                        ) {{field.value}}
                         span.field-text(
-                            *ngIf='field.kind !== "badge"',
+                            *ngIf='field.kind !== "badge" && field.kind !== "image" && field.kind !== "link"',
                             [class.multiline]='field.kind === "multiline"',
                         ) {{field.value}}
 

@@ -81,6 +81,16 @@ h4.mt-4.mb-2(translate) Defaults
 
 .form-line
     .header
+        .title(translate) Let integrations draw their own tooltip
+        .description(translate) Some integrations ship a small page of their own to show a result in, instead of a list of fields. It runs sealed off from Tabby and from the network, but it is still the integration's own code — turn this off to always use the plain field list
+    reset-to-default([proxy]='config.store.linkTooltip', key='allowHtml')
+    toggle(
+        [(ngModel)]='config.store.linkTooltip.allowHtml',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
         .title(translate) URI schemes that open without a warning
         .description(translate) Separate schemes with commas, for example: vscode, ms-settings. Links using any other scheme ask for confirmation first. http, https, ftp and mailto never ask
     input.form-control(

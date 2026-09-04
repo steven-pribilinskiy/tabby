@@ -10,7 +10,7 @@ import { MAX_TEXT_INPUT } from './regexGuard'
 import { IntegrationRuntimeService } from './services/integrationRuntime.service'
 import { LinkActionsService } from './services/linkActions.service'
 import { LinkRulesService } from './services/linkRules.service'
-import { LinkTargetService } from './services/linkTarget.service'
+import { LinkTargetService, punycodeHost } from './services/linkTarget.service'
 
 interface HoveredLink {
     kind: LinkMatchKind
@@ -36,6 +36,11 @@ interface TabState {
     generation: number
     pointerInCard: boolean
     hovered: HoveredLink | null
+    /**
+     * The rule that won for the card on screen, resolved against the link's
+     * real path. Kept so hiding uses the same answer showing did.
+     */
+    settings: ReturnType<LinkRulesService['resolve']> | null
 }
 
 @Injectable()
@@ -105,6 +110,7 @@ export class LinkTooltipDecorator extends TerminalDecorator {
             generation: 0,
             pointerInCard: false,
             hovered: null,
+            settings: null,
         }
         componentRef.instance.handlers = this.cardHandlers(state)
         this.states.set(tab, state)
@@ -323,7 +329,17 @@ export class LinkTooltipDecorator extends TerminalDecorator {
 
     private onLeave (state: TabState): void {
         clearTimeout(state.showTimer)
-        const settings = this.rules.resolve('link', state.hovered?.text ?? '', '', state.hovered?.rule ?? null)
+        // Prefer the answer `show` arrived at: it knew the link's kind and its
+        // resolved path, so a rule keyed on either has already been applied.
+        // Falling back re-resolves without them, which is all that is available
+        // when the pointer leaves before anything was shown.
+        const settings = state.settings
+            ?? this.rules.resolve(
+                state.hovered?.kind ?? 'link',
+                state.hovered?.text ?? '',
+                '',
+                state.hovered?.rule ?? null,
+            )
         clearTimeout(state.hideTimer)
         // Not hidden immediately: the delay is the time available to move the
         // pointer onto the card and use its buttons.
@@ -337,11 +353,12 @@ export class LinkTooltipDecorator extends TerminalDecorator {
     private async show (
         state: TabState,
         link: HoveredLink,
-        settings: ReturnType<LinkRulesService['resolve']>,
+        timing: ReturnType<LinkRulesService['resolve']>,
         key: string,
     ): Promise<void> {
         const generation = ++state.generation
         state.shownKey = key
+        let settings = timing
 
         const handler = link.handlerIndex >= 0 ? this.handlers?.[link.handlerIndex] : undefined
         let converted = link.text
@@ -359,11 +376,27 @@ export class LinkTooltipDecorator extends TerminalDecorator {
             return
         }
 
+        // Now that the link has been resolved to a path, ask the rules again.
+        // `fileTypeGroup` and `extensions` can only be judged against a path,
+        // and resolving one costs a `convert`/`verify` round trip — so the first
+        // pass, the one that decided how long to wait before showing anything,
+        // could not see it. Everything the card actually renders comes from this
+        // second answer; only the show delay is the earlier one's.
+        if (target.filePath) {
+            settings = this.rules.resolve(link.kind, link.text, target.filePath, link.rule)
+        }
+        state.settings = settings
+
         const model = emptyModel()
         model.text = link.text
         model.target = target.display
         model.maxWidth = settings.maxWidth
+        // The card's identity, so the html frame is written once per link
+        // rather than on every re-ask. Same key the hover path dedupes on.
+        model.key = key
+        model.allowHtml = this.config.store.linkTooltip.allowHtml !== false
         model.hint = link.kind === 'text' ? '' : this.followHint()
+        model.punycode = link.kind === 'link' ? punycodeHost(link.text) : ''
         const hasLink = link.kind === 'link' || !!this.runtime.resolveTextLink(link.text, settings.integration)
         model.showOpen = settings.showOpen && hasLink
         model.showCopyLink = settings.showCopyLink && hasLink
@@ -423,6 +456,7 @@ export class LinkTooltipDecorator extends TerminalDecorator {
     private hide (state: TabState): void {
         state.shownKey = ''
         state.hovered = null
+        state.settings = null
         state.generation++
         state.host.style.display = 'none'
     }
@@ -537,6 +571,17 @@ export class LinkTooltipDecorator extends TerminalDecorator {
                 state.pointerInCard = false
                 this.onLeave(state)
             },
+            htmlResized: () => {
+                // The frame grew or shrank, so where the card fits has changed.
+                // Nothing else about it has, so this only re-places it.
+                if (state.hovered) {
+                    this.position(state, state.hovered.range)
+                }
+            },
+            // Down the same path the Open button takes, so the unsafe-scheme
+            // confirmation and the file:// resolution still apply — a plugin's
+            // page does not get a way around them by asking nicely.
+            htmlOpen: (url: string) => void this.actions.open(url, ''),
         }
     }
 

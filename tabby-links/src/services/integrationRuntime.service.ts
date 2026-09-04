@@ -84,12 +84,16 @@ export function lookupPath (path: string | undefined, results: Record<string, an
     if (!path) {
         return null
     }
+    // A leading slash settles it before the colon is even looked for. Checking
+    // the other way round misreads `/links/self:href` — a perfectly ordinary
+    // pointer into a key containing a colon — as a step named `/links/self`,
+    // and the field then silently renders as nothing.
+    if (path.startsWith('/')) {
+        return resolvePointer(last, path)
+    }
     const colon = path.indexOf(':')
     if (colon !== -1) {
         return resolvePointer(results[path.substring(0, colon)], path.substring(colon + 1))
-    }
-    if (path.startsWith('/')) {
-        return resolvePointer(last, path)
     }
     return null
 }
@@ -212,6 +216,22 @@ export function badgeColor (name: string): string {
     return '#808890'
 }
 
+/**
+ * Replace any credential value that appears verbatim in `text`.
+ *
+ * Short values are left alone: a two-character secret would match half the
+ * alphabet and redact text that has nothing to do with it.
+ */
+export function redactSecrets (text: string, credentials: Record<string, string>): string {
+    let out = text
+    for (const value of Object.values(credentials)) {
+        if (value && value.length >= 6) {
+            out = out.split(value).join('••••')
+        }
+    }
+    return out
+}
+
 function errorText (err: any): string {
     const message = err?.message ?? `${err}`
     return String(message).replace(/^Error:\s*/, '')
@@ -241,9 +261,17 @@ export class IntegrationRuntimeService {
         return !!match && !!(match.integration.manifest.fetch ?? []).length
     }
 
-    /** The link a text match resolves to, if an integration recognises it. */
+    /**
+     * The link a text match resolves to, if an integration recognises it.
+     *
+     * Deliberately does not require the integration to be configured. Turning
+     * `CAB-8209` into a link needs nothing but the matcher's own template — it
+     * is *fetching* the issue that needs a credential. Requiring one here meant
+     * an unconfigured Jira left the ticket unclickable, which is the opposite of
+     * what someone who has not set it up yet needs.
+     */
     resolveTextLink (text: string, hint: string): string {
-        const match = this.findMatch('text', text, hint)
+        const match = this.findMatch('text', text, hint, false)
         if (!match?.matcher.link) {
             return ''
         }
@@ -265,7 +293,12 @@ export class IntegrationRuntimeService {
         const seconds = match.integration.manifest.cacheSeconds
         const ttl = preview.error
             ? ERROR_TTL_MS
-            : Math.max(1, seconds === undefined ? 300 : Math.max(0, seconds)) * 1000
+            : Math.max(0, seconds ?? 300) * 1000
+        // `cacheSeconds: 0` means "never cache", not "cache for a moment" —
+        // it is how a manifest whose data changes constantly opts out.
+        if (ttl <= 0) {
+            return preview
+        }
         if (this.cache.size >= MAX_CACHE_ENTRIES) {
             this.cache.clear()
         }
@@ -282,13 +315,22 @@ export class IntegrationRuntimeService {
      * refuses, anything else names one. A text match is additionally only ever
      * eligible because an enabled rule said so — the integration's own text
      * matcher must then also match it in full.
+     *
+     * `mustBeConfigured` is what separates the two uses: showing a preview needs
+     * the settings and credentials a fetch will use, but resolving a link only
+     * needs the matcher.
      */
-    private findMatch (kind: LinkMatchKind, text: string, hint: string): Match | null {
+    private findMatch (
+        kind: LinkMatchKind,
+        text: string,
+        hint: string,
+        mustBeConfigured = true,
+    ): Match | null {
         if (!text || hint === 'none') {
             return null
         }
         const candidates = this.registry.current().filter(x =>
-            x.enabled && x.configured && (!hint || x.id === hint))
+            x.enabled && (!mustBeConfigured || x.configured) && (!hint || x.id === hint))
         for (const integration of candidates) {
             for (const matcher of integration.manifest.matchers ?? []) {
                 if ((matcher.kind ?? 'link') !== kind) {
@@ -359,6 +401,8 @@ export class IntegrationRuntimeService {
             fields: [],
             error: '',
             link: match.matcher.link ? this.expand(match.matcher.link, match, {}, null, false) : '',
+            html: integration.manifest.html ?? '',
+            data: {},
         }
 
         const results: Record<string, any> = {}
@@ -397,6 +441,13 @@ export class IntegrationRuntimeService {
         }
 
         preview.fields = this.buildFields(integration, results, last)
+        // Only a manifest with an `html` document gets the raw step JSON kept —
+        // it is what that page reads as `window.__data`. The field list has
+        // already reduced everything it needs to strings, and these responses
+        // are large and sit in the cache.
+        if (preview.html) {
+            preview.data = results
+        }
         return preview
     }
 
@@ -456,14 +507,28 @@ export class IntegrationRuntimeService {
         if (!commandLine) {
             return { json: null, error: `${name}: the step has no command` }
         }
-        const { stdout } = await runCommand(
+        const { stdout, stderr } = await runCommand(
             commandLine,
             step.stdin ? this.expand(step.stdin, match, results, last, false) : '',
             step.timeoutMs && step.timeoutMs > 0 ? step.timeoutMs : DEFAULT_TIMEOUT_MS,
         )
         const json = parseJson(stdout)
         if (json === null) {
-            return { json: null, error: `${name}: the command produced no usable output` }
+            // Only now is stderr worth showing: a command that produced usable
+            // JSON has succeeded whatever it wrote there. Trimmed to one line,
+            // because this lands in a hover card — and with any credential
+            // scrubbed out of it, since a failing command very often echoes the
+            // command line it was given, and that is where the token was.
+            const detail = redactSecrets(
+                stderr.trim().split('\n')[0].slice(0, 200),
+                match.integration.credentials,
+            )
+            return {
+                json: null,
+                error: detail
+                    ? `${name}: ${detail}`
+                    : `${name}: the command produced no usable output`,
+            }
         }
         return { json, error: '' }
     }
@@ -559,7 +624,12 @@ export class IntegrationRuntimeService {
                 value: formatValue(raw, field.format),
                 kind: field.kind ?? 'text',
                 iconUri: valueToString(lookupPath(field.iconPath, results, last)),
-                color: field.color ? field.color : valueToString(lookupPath(field.colorPath, results, last)),
+                // `colorPath` first, `color` as the fallback. A manifest setting
+                // both means "the status colour this issue actually has, or this
+                // one if the response didn't carry it" — and the other fork
+                // resolves it that way, so a manifest that sets both has to
+                // render the same in each.
+                color: valueToString(lookupPath(field.colorPath, results, last)) || (field.color ?? ''),
             })
         }
         return out

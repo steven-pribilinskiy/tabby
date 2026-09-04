@@ -12,6 +12,14 @@ export class LinksConfigProvider extends ConfigProvider {
             showDelay: 250,
             hideDelay: 400,
             showButtons: true,
+            /**
+             * Whether a plugin's own `html` document is rendered. It runs in a
+             * sandboxed frame with an opaque origin and a CSP that blocks the
+             * network, so it can reach neither Tabby nor the outside — but it is
+             * still someone else's script, so there is a switch. Off falls back
+             * to the plain field list.
+             */
+            allowHtml: true,
             /** Extra URI schemes that open without a confirmation dialog. */
             safeSchemes: [],
             rules: [],

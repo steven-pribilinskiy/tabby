@@ -217,7 +217,16 @@ export interface IntegrationManifest {
     matchers?: IntegrationMatcher[]
     fetch?: IntegrationFetchStep[]
     fields?: IntegrationDisplayField[]
-    /** Reserved for a richer card representation; ignored, in both forks. */
+    /**
+     * A complete HTML document, rendered in place of `fields`. Given inline —
+     * there is no file-reference form. See INTEGRATIONS.md; the page is handed
+     * `window.__data` and `window.__uri` and talks back over
+     * `chrome.webview.postMessage`.
+     *
+     * The Windows Terminal fork hosts this in a WebView2 that ships disabled
+     * (`Feature_HyperlinkPreviewHtml`), so a manifest setting it falls back to
+     * `fields` there. Here it renders.
+     */
     html?: string
 }
 
@@ -232,8 +241,12 @@ export interface Integration {
     settings: Record<string, string>
     /** Credential values, resolved once per rebuild — never re-read on a hover. */
     credentials: Record<string, string>
-    /** Display field keys the user chose, in manifest order; empty = manifest defaults. */
-    fields: string[]
+    /**
+     * Display field keys the user chose, in manifest order. `null` means they
+     * never chose — an empty array means they chose nothing, which is a
+     * different and equally valid answer.
+     */
+    fields: string[] | null
     configured: boolean
 }
 
@@ -255,4 +268,13 @@ export interface LinkPreview {
     error: string
     /** For a text match, the URL the integration resolved it to. */
     link: string
+    /** The manifest's `html` document, when it has one and the feature is on. */
+    html: string
+    /**
+     * Every fetch step's JSON, keyed by step id — what an `html` page reads as
+     * `window.__data`. Populated *only* when the manifest sets `html`, so the
+     * field-list path never pays to retain a response it has already reduced to
+     * strings.
+     */
+    data: Record<string, any>
 }
