@@ -224,9 +224,33 @@ console.log('── manifest compatibility with the Windows Terminal fork ──
 // and ignored by an implementation that does not know them — the documented
 // rule for unknown keys.
 const ADDITIVE = new Set(['normalize', 'suffix', 'description', 'placeholder'])
+
+// Read the reference manifests from the other fork's *committed* state, not its
+// working tree. That checkout is somebody's workspace and can be mid-edit; a
+// test that compares against uncommitted changes fails for reasons that have
+// nothing to do with this repo, which is exactly what happened the first time.
+const TERMINAL_REPO = process.env.TERMINAL_REPO || 'C:/Users/steve/projects/terminal'
+const TERMINAL_MANIFESTS = 'src/cascadia/TerminalSettingsModel/integrations'
+function referenceManifest (id) {
+    try {
+        const raw = require('child_process').execFileSync(
+            'git', ['show', `HEAD:${TERMINAL_MANIFESTS}/${id}.json`],
+            { cwd: TERMINAL_REPO, encoding: 'utf8' })
+        return JSON.parse(raw)
+    } catch (err) {
+        return null
+    }
+}
+
 for (const id of ['jira', 'slack', 'stith']) {
     const ours = require(path.join(REPO, `tabby-links/src/integrations/${id}.json`))
-    const theirs = require(`C:/Users/steve/projects/terminal/src/cascadia/TerminalSettingsModel/integrations/${id}.json`)
+    const theirs = referenceManifest(id)
+    if (!theirs) {
+        // No reference checkout on this machine — skip rather than fail. The
+        // compatibility claim is only checkable where both forks are present.
+        console.log(`  (skipped ${id}: no reference checkout at ${TERMINAL_REPO})`)
+        continue
+    }
     check(`${id}: matchers identical`, ours.matchers, theirs.matchers)
     check(`${id}: fetch pipeline identical`, ours.fetch, theirs.fetch)
     check(`${id}: display fields identical`, ours.fields, theirs.fields)

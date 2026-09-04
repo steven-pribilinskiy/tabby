@@ -634,6 +634,34 @@ render-timing  frames: 327, slowFrames 3, jankFrames 2, worst 150ms, p50 8.3, p9
   alongside it for records that are the finding rather than context for one.
 - Reports only when there is something to say: a healthy hour writes no lines.
 
+## What upstream has that we don't (`tabby-upstream`)
+
+Settings → **Upstream** compares this checkout against the project the fork
+tracks: how many commits have landed there that are not here, the patch series
+carried on top, and where each commit is on the web. It is the "should I sync?"
+question, answered without leaving the app.
+
+- **It never fetches on its own.** Network I/O when a settings page opens is how
+  a page earns a reputation for being slow; fetching is a button. Which makes
+  the *staleness* the thing that has to be visible, so the last-fetch time is
+  shown, warned about past a week, and the page says outright that it is
+  reporting what was last fetched rather than what upstream has now. "0 behind"
+  from a month-old fetch looks identical to a fresh one otherwise.
+- **`FETCH_HEAD`'s mtime is when the fetch happened**; the ref's own mtime is
+  when it last *moved*, which is a different question and usually much older.
+- **Only a source build has a checkout to find**, by walking up from
+  `process.execPath` — a packaged build genuinely has none, since
+  `app/dist/build-info.json` records the commit but not where it was built. That
+  case is reported plainly, with a setting to point at a checkout anyway, rather
+  than guessed at.
+- Fields are split on `%x1f`/`%x1e` rather than a delimiter that could appear in
+  a commit message.
+- A missing `upstream` remote is the ordinary case for a fresh clone, so it is a
+  message with the command to fix it, not an error.
+- Verified against `git rev-list` on this checkout: behind and ahead counts,
+  branch, the newest local subject, and the resolved GitHub URL all match, and
+  the Fetch button moves `FETCH_HEAD` in ~1.5s.
+
 ## Changed upstream defaults
 
 Kept to a minimum — every one is a line that conflicts on rebase.
@@ -721,5 +749,5 @@ rebase surface on an upstream file stays one appended block.
   So the fix genuinely requires **xterm 6**, where `UnicodeService` delegates
   `charProperties` too — a major bump of the core terminal engine. Renderer-wide,
   its own branch, its own regression pass.
-- A **Settings page listing upstream commits this fork lacks** — compares
-  `local` against `upstream/master` and shows what has not been pulled in.
+*(Nothing else outstanding. The emoji-width item above is the only one left, and
+it is deliberately parked.)*

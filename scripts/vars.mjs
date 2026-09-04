@@ -33,6 +33,7 @@ export const builtinPlugins = [
     'tabby-linkifier',
     'tabby-links',
     'tabby-render-timing',
+    'tabby-upstream',
     'tabby-claude',
     'tabby-builds',
     'tabby-auto-sudo-password',

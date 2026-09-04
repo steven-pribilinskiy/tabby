@@ -1,0 +1,118 @@
+h3.mb-3(translate) Upstream
+
+.text-muted.mb-3(translate) What the project this fork tracks has landed that is not here yet, and the patch series carried on top of it.
+
+.alert.alert-info(*ngIf='loading')
+    i.fas.fa-fw.fa-circle-notch.fa-spin.me-2
+    span(translate) Reading the repository…
+
+.alert.alert-danger(*ngIf='error') {{error}}
+
+//- Nothing to report, and why.
+.alert.alert-warning(*ngIf='!loading && status?.problem === "no-repository"')
+    div(translate) No checkout found for this build.
+    .text-muted.mt-1(translate) Only a build run from source has one. Set the path below to point at a checkout.
+
+.alert.alert-warning(*ngIf='!loading && status?.problem === "no-upstream-ref"')
+    div
+        span(translate) This checkout has no
+        span.mx-1 &nbsp;
+        code {{status?.upstreamRef}}
+    .text-muted.mt-1
+        span(translate) Add the remote and fetch it, for example:
+        code.ms-1 git remote add upstream https://github.com/Eugeny/tabby.git
+
+ng-container(*ngIf='!loading && status && !status.problem')
+    .summary.mb-3
+        .counts
+            .count
+                .value.text-warning {{behindCount}}
+                .label(translate) not pulled in
+            .count
+                .value {{aheadCount}}
+                .label(translate) local patches
+        .actions
+            button.btn.btn-primary((click)='fetch()', [disabled]='fetching')
+                i.fas.fa-fw.fa-circle-notch.fa-spin.me-1(*ngIf='fetching')
+                i.fas.fa-fw.fa-rotate.me-1(*ngIf='!fetching')
+                span(translate) Fetch
+            button.btn.btn-secondary.ms-2((click)='openCompare()', *ngIf='status.upstreamUrl')
+                i.fas.fa-fw.fa-arrow-up-right-from-square.me-1
+                span(translate) Compare on the web
+            button.btn.btn-secondary.ms-2((click)='copyShas()', *ngIf='behindCount')
+                i.fas.fa-fw.fa-copy.me-1
+                span(translate) Copy list
+
+    .meta.mb-3
+        .row-line
+            span.key(translate) Checkout
+            span.value {{status.repository}}
+        .row-line
+            span.key(translate) Branch
+            span.value {{status.branch}} → {{status.upstreamRef}}
+        .row-line
+            span.key(translate) Last fetched
+            span.value(*ngIf='fetchedAgo', [class.text-warning]='fetchIsStale') {{fetchedAgo}}
+            span.value.text-warning(*ngIf='!fetchedAgo', translate) never
+        //- Said plainly, because a stale answer here looks exactly like a
+        //- fresh one that happens to say "nothing new".
+        .text-muted.small.mt-1(*ngIf='fetchIsStale', translate) This is what was last fetched, not what upstream has now. Fetch to be sure.
+
+    h4.mt-4.mb-2
+        span(translate) Not pulled in yet
+        span.text-muted.ms-2(*ngIf='behindCount') ({{behindCount}})
+
+    .text-muted(*ngIf='!behindCount', translate) Nothing — this fork is level with what was last fetched.
+
+    .commits(*ngIf='behindCount')
+        .commit(
+            *ngFor='let commit of status.behind; trackBy: trackCommit',
+            (click)='openCommit(commit)',
+            [class.clickable]='status.upstreamUrl',
+        )
+            span.sha {{commit.shortSha}}
+            span.subject {{commit.subject}}
+            span.author {{commit.author}}
+            span.date {{shortDate(commit.date)}}
+
+    h4.mt-4.mb-2
+        a.toggle((click)='showAhead = !showAhead')
+            i.fas.fa-fw.me-1([class.fa-chevron-right]='!showAhead', [class.fa-chevron-down]='showAhead')
+            span(translate) Carried on top
+            span.text-muted.ms-2 ({{aheadCount}})
+
+    .commits(*ngIf='showAhead')
+        .commit(*ngFor='let commit of status.ahead; trackBy: trackCommit')
+            span.sha {{commit.shortSha}}
+            span.subject {{commit.subject}}
+            span.author {{commit.author}}
+            span.date {{shortDate(commit.date)}}
+
+h4.mt-4.mb-2(translate) Options
+
+.form-line
+    .header
+        .title(translate) Checkout
+        .description(translate) Leave empty to use the checkout this build was run from. A packaged build has none, so set it here to track one anyway
+    input.form-control(
+        type='text',
+        placeholder='C:\\Users\\you\\projects\\tabby',
+        [(ngModel)]='config.store.upstream.repositoryPath',
+        (change)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Remote and branch
+        .description(translate) The remote holding the project this fork tracks, and the branch on it that is mirrored here
+    .d-flex
+        input.form-control(
+            type='text',
+            [(ngModel)]='config.store.upstream.remote',
+            (change)='saveConfiguration()',
+        )
+        input.form-control.ms-2(
+            type='text',
+            [(ngModel)]='config.store.upstream.branch',
+            (change)='saveConfiguration()',
+        )

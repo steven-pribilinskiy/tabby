@@ -1,0 +1,101 @@
+.summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.counts {
+    display: flex;
+    gap: 24px;
+}
+
+.count {
+    .value {
+        font-size: 26px;
+        font-weight: 300;
+        line-height: 1.1;
+    }
+
+    .label {
+        font-size: 11px;
+        opacity: .6;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+    }
+}
+
+.meta {
+    .row-line {
+        display: flex;
+        gap: 10px;
+        padding: 1px 0;
+    }
+
+    .key {
+        min-width: 110px;
+        opacity: .6;
+    }
+
+    .value {
+        word-break: break-all;
+    }
+}
+
+.toggle {
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+}
+
+.commits {
+    border: 1px solid rgba(127, 127, 127, .25);
+    border-radius: 4px;
+    overflow: hidden;
+    // Long enough to scan, short enough not to own the page.
+    max-height: 460px;
+    overflow-y: auto;
+}
+
+.commit {
+    display: grid;
+    grid-template-columns: 74px 1fr auto 88px;
+    gap: 10px;
+    align-items: baseline;
+    padding: 4px 10px;
+
+    &:nth-child(odd) {
+        background: rgba(127, 127, 127, .06);
+    }
+
+    &.clickable {
+        cursor: pointer;
+
+        &:hover {
+            background: rgba(127, 127, 127, .16);
+        }
+    }
+
+    .sha {
+        font-family: monospace;
+        opacity: .7;
+    }
+
+    .subject {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .author,
+    .date {
+        font-size: 11px;
+        opacity: .55;
+        white-space: nowrap;
+    }
+
+    .date {
+        text-align: right;
+    }
+}
