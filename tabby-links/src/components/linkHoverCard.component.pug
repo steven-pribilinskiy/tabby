@@ -1,6 +1,8 @@
+//- The width is a placement concern, so the decorator owns it: it sets
+//- `--link-card-max-width` to the lesser of `linkTooltip.maxWidth` and what the
+//- hovered pane can actually show, immediately before it measures this card.
 .link-card(
     #root,
-    [style.max-width.px]='model.maxWidth > 0 ? model.maxWidth : null',
     (mouseenter)='handlers?.pointerEnter()',
     (mouseleave)='handlers?.pointerLeave()',
 )

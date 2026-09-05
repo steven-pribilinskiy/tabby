@@ -12,7 +12,13 @@
     font-family: var(--bs-body-font-family);
     font-size: 12px;
     line-height: 1.45;
-    min-width: 220px;
+    // `--link-card-max-width` is written by the decorator, to the lesser of
+    // `linkTooltip.maxWidth` and the hovered pane's own width. The minimum has
+    // to bow to it or a pane narrower than 220px gets a card that hangs over
+    // the pane next door however the placement clamp works out — a minimum wins
+    // over a maximum in CSS, so the cap has to be spelled into both.
+    max-width: var(--link-card-max-width, none);
+    min-width: min(220px, var(--link-card-max-width, 100vw));
     // The whole card is a fixed-position island: it must never inherit the
     // terminal's letter spacing or line height.
     letter-spacing: normal;
@@ -310,8 +316,9 @@ code.md-code {
     width: 100%;
     // 240px matches the WebView2 host's MinWidth, so a document laid out for one
     // fork is not reflowed by the other. The height is set from the page's own
-    // measurement and clamped in `htmlHost.ts`.
-    min-width: 240px;
+    // measurement and clamped in `htmlHost.ts`. Capped for the same reason the
+    // card's own minimum is: in a pane too narrow for it, fitting wins.
+    min-width: min(240px, var(--link-card-max-width, 100vw));
     border: 0;
     // The page paints its own background against `color-scheme: light dark`;
     // anything behind it would show through as a band while it loads.

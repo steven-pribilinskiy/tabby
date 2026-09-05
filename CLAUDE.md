@@ -286,6 +286,15 @@ The parts that cost real time:
   block is not always the window (`app-root` has `will-change: transform`, a
   maximized split has `backdrop-filter`), so it is placed by measuring its own
   origin at `translate(0,0)` and then translating.
+- **The card is bounded by the pane, not the window, and the cap comes before
+  the measurement.** Clamping where an edge lands does nothing once the card is
+  already wider than the pane it sits in — `linkTooltip.maxWidth` defaults to
+  640px and knows nothing about how the window is split — so `position()` writes
+  `--link-card-max-width`, the lesser of that setting and the hovered
+  `.xterm-screen`'s own width, *before* it reads the card's size. The setting is
+  an upper bound, never the width. CSS applies `min-width` after `max-width`, so
+  the cap has to be spelled into both or `.link-card`'s 220px minimum quietly
+  wins back the overflow in a narrow split.
 - **Everything runs outside `NgZone`** — xterm's listeners are raw DOM. The card
   is created with `createComponent` + `ApplicationRef.attachView` (no
   `ViewContainerRef` exists in a decorator) and updated inside `zone.run`.

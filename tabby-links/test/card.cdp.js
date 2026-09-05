@@ -195,6 +195,126 @@ async function main () {
     `)
     check('repeat hovers of the same link do not rebuild the card', stability.rebuilds, 0)
 
+    // The card was only ever guaranteed to stay inside the *window*. In a split
+    // it could still cover the pane next door, because `linkTooltip.maxWidth`
+    // (640px) knows nothing about how the window is divided — so a card wider
+    // than its pane overflowed however the placement clamp worked out. Every
+    // check here is measured against `.xterm-screen`, the hovered pane's own
+    // grid, and each one reports what the old window-bounded placement would
+    // have done with the same numbers: that is the part that used to fail.
+    console.log('\n── a narrow split pane confines the card, on both axes ──')
+    const split = await evaluate(`
+        const { root, tab, core } = window.__T
+        const parent = root.app.tabs.find(t => t.getAllTabs && t.getAllTabs().includes(tab))
+        if (!parent || !parent.splitTab) { return { skipped: 'the terminal is not in a split host' } }
+
+        // A pane on two inner edges: neither its right edge nor its bottom edge
+        // is the window's, which is the whole point.
+        const right = await parent.splitTab(tab, 'r')
+        const below = await parent.splitTab(tab, 'b')
+        window.__T.spawned = [right, below].filter(x => x)
+        // Half a window is still wider than a 640px card here, so squeeze it.
+        const vertical = parent.getParentOf(tab)
+        const horizontal = vertical ? parent.getParentOf(vertical) : null
+        if (vertical) { vertical.ratios = [0.42, 0.58] }
+        if (horizontal) { horizontal.ratios = [0.26, 0.74] }
+        parent.layout()
+        await new Promise(r => setTimeout(r, 1500))
+        window.ng.applyChanges(root)
+
+        // Hover a long URI written at \`mode\` and report where the card landed,
+        // beside where the pre-change placement would have put it.
+        window.__T.probe = async (marker, mode) => {
+            const { xterm, core } = window.__T
+            const uri = 'https://example.com/' + marker + '/' + 'segment/'.repeat(12) + 'tail'
+            const pad = mode === 'right' ? Math.max(0, xterm.cols - 6) : 0
+            const lead = mode === 'bottom' ? '\\r\\n'.repeat(xterm.rows) : '\\r\\n'
+            xterm.write(lead + ' '.repeat(pad) + uri + '\\r\\n')
+            await new Promise(r => setTimeout(r, 400))
+            const buffer = xterm.buffer.active
+            let row = -1
+            for (let i = buffer.length - 1; i >= 0; i--) {
+                const line = buffer.getLine(i)
+                if (line && line.translateToString(true).includes(marker)) { row = i; break }
+            }
+            if (row === -1) { return { error: 'not written: ' + marker } }
+            const ours = core._linkProviderService.linkProviders[1]
+            const links = await new Promise(resolve => ours.provideLinks(row + 1, resolve))
+            const link = (links || []).find(l => l.text.includes(marker))
+            if (!link) { return { error: 'not detected: ' + marker } }
+            link.hover()
+            await new Promise(r => setTimeout(r, 900))
+
+            const el = core.screenElement.querySelector('link-hover-card')
+            const box = el.getBoundingClientRect()
+            const pane = core.screenElement.getBoundingClientRect()
+
+            // What the old code produced: no width cap, and both clamps taken
+            // against the window. Measured, not assumed — the card is widened
+            // back to the configured 640px to find the size it would have been.
+            const capped = el.style.getPropertyValue('--link-card-max-width')
+            el.style.setProperty('--link-card-max-width', '640px')
+            const uncapped = el.getBoundingClientRect()
+            el.style.setProperty('--link-card-max-width', capped)
+
+            const cell = core._renderService.dimensions.css.cell
+            const cellLeft = pane.left + (link.range.start.x - 1) * cell.width
+            const viewportY = xterm.buffer.active.viewportY || 0
+            const cellTop = pane.top + (link.range.start.y - 1 - viewportY) * cell.height
+            const m = 6
+            const oldMaxX = Math.max(m, window.innerWidth - uncapped.width - m)
+            const oldMaxY = Math.max(m, window.innerHeight - uncapped.height - m)
+            let oldX = cellLeft
+            let oldY = cellTop + cell.height + 2
+            if (oldY > oldMaxY) { oldY = cellTop - uncapped.height - 2 }
+            if (oldX > oldMaxX) { oldX = cellLeft + cell.width - uncapped.width }
+            oldX = Math.min(Math.max(oldX, m), oldMaxX)
+            oldY = Math.min(Math.max(oldY, m), oldMaxY)
+
+            const r = n => Math.round(n)
+            return {
+                card: { left: r(box.left), top: r(box.top), right: r(box.right), bottom: r(box.bottom), width: r(box.width) },
+                pane: { left: r(pane.left), top: r(pane.top), right: r(pane.right), bottom: r(pane.bottom), width: r(pane.width) },
+                insidePane: box.left >= pane.left - 1 && box.right <= pane.right + 1
+                    && box.top >= pane.top - 1 && box.bottom <= pane.bottom + 1,
+                wasInsidePane: oldX >= pane.left - 1 && oldX + uncapped.width <= pane.right + 1
+                    && oldY >= pane.top - 1 && oldY + uncapped.height <= pane.bottom + 1,
+                oldOverflowRight: r(Math.max(0, oldX + uncapped.width - pane.right)),
+                oldOverflowBottom: r(Math.max(0, oldY + uncapped.height - pane.bottom)),
+                oldWidth: r(uncapped.width),
+            }
+        }
+        const pane = core.screenElement.getBoundingClientRect()
+        return { paneWidth: Math.round(pane.width), paneHeight: Math.round(pane.height), windowWidth: window.innerWidth }
+    `)
+    if (split.skipped) {
+        note(`skipped: ${split.skipped}`)
+    } else {
+        note(`pane ${split.paneWidth}x${split.paneHeight} in a ${split.windowWidth}px window`)
+        check('the pane is narrower than the configured max width, so this is the case that overflowed',
+            split.paneWidth < 640, true)
+
+        for (const [marker, mode] of [['right-edge', 'right'], ['left-edge', 'left'], ['bottom-edge', 'bottom']]) {
+            const probe = await evaluate(`return window.__T.probe('${marker}', '${mode}')`)
+            if (probe.error) {
+                console.log(`  FAIL ${marker}: ${probe.error}`)
+                failed++
+                continue
+            }
+            check(`${marker}: the card stays inside the pane`, probe.insidePane, true)
+            check(`${marker}: the old window-bounded placement did not`, probe.wasInsidePane, false)
+            note(`card ${JSON.stringify(probe.card)} in pane ${JSON.stringify(probe.pane)}`)
+            note(`old: ${probe.oldWidth}px wide, ${probe.oldOverflowRight}px past the right edge, ${probe.oldOverflowBottom}px past the bottom`)
+        }
+    }
+
+    // Put the tab back the way it was found: this profile is reused.
+    await evaluate(`
+        for (const t of window.__T.spawned || []) { t.destroy() }
+        await new Promise(r => setTimeout(r, 500))
+        window.ng.applyChanges(window.__T.root)
+    `)
+
     await close()
     console.log(`\n${passed} passed, ${failed} failed`)
     process.exit(failed ? 1 : 0)

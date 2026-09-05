@@ -18,7 +18,6 @@ export interface CardModel {
      * resolves. Empty for every ordinary link.
      */
     punycode: string
-    maxWidth: number
     showOpen: boolean
     showCopyLink: boolean
     showCopyPath: boolean
@@ -61,7 +60,6 @@ export function emptyModel (): CardModel {
         target: '',
         hint: '',
         punycode: '',
-        maxWidth: 640,
         showOpen: false,
         showCopyLink: false,
         showCopyPath: false,

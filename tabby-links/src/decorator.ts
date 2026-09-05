@@ -13,6 +13,26 @@ import { LinkActionsService } from './services/linkActions.service'
 import { LinkRulesService } from './services/linkRules.service'
 import { LinkTargetService, punycodeHost } from './services/linkTarget.service'
 
+/** Gap kept between the card and every edge of the pane it belongs to. */
+const CARD_MARGIN = 6
+
+/**
+ * Where the card is allowed to be: the pane, not the window.
+ *
+ * `.xterm-screen` is the character grid itself, so its rect is the strictest
+ * honest answer — a card that fits inside it cannot reach the pane next door.
+ * Intersected with the window, which is what used to bound this on its own, so
+ * a pane mid-resize or scrolled out of view cannot hand back an off-screen box.
+ */
+function paneBounds (screen: DOMRect): { left: number, top: number, right: number, bottom: number } {
+    return {
+        left: Math.max(screen.left, 0),
+        top: Math.max(screen.top, 0),
+        right: Math.min(screen.right, window.innerWidth),
+        bottom: Math.min(screen.bottom, window.innerHeight),
+    }
+}
+
 interface HoveredLink {
     kind: LinkMatchKind
     text: string
@@ -433,7 +453,6 @@ export class LinkTooltipDecorator extends TerminalDecorator {
         const model = emptyModel()
         model.text = link.text
         model.target = target.display
-        model.maxWidth = settings.maxWidth
         // The card's identity, so the html frame is written once per link
         // rather than on every re-ask. Same key the hover path dedupes on.
         model.key = key
@@ -508,7 +527,7 @@ export class LinkTooltipDecorator extends TerminalDecorator {
 
     /**
      * Anchor the card under the hovered cell, flipping and clamping so it stays
-     * on screen.
+     * inside the pane the link is in.
      *
      * The card is `position: fixed` because `.content` — the element xterm is
      * mounted in — is `overflow: hidden`, and an absolutely positioned card
@@ -520,9 +539,22 @@ export class LinkTooltipDecorator extends TerminalDecorator {
      */
     private position (state: TabState, range: BufferRange): void {
         const host = state.host
+        // Measured once, before anything writes a style: the cap below would
+        // otherwise cost a second layout to read the same box back.
+        const screen = state.screen.getBoundingClientRect()
+        const bounds = paneBounds(screen)
+
+        // Cap the card before it is measured. Clamping where an edge lands does
+        // nothing once the card is already wider than the pane — `maxWidth`
+        // defaults to 640px and knows nothing about how the window is split —
+        // so the cap has to come first and the measurement has to see it.
+        const configured = state.settings?.maxWidth ?? this.config.store.linkTooltip.maxWidth
+        const available = Math.max(0, bounds.right - bounds.left - CARD_MARGIN * 2)
+        const cap = configured > 0 ? Math.min(configured, available) : available
+        host.style.setProperty('--link-card-max-width', `${Math.round(cap)}px`)
+
         host.style.transform = 'translate(0px, 0px)'
         const origin = host.getBoundingClientRect()
-        const screen = state.screen.getBoundingClientRect()
         const cell = this.cellSize(state)
         const viewportY = state.xterm.buffer.active.viewportY ?? 0
         const row = range.start.y - 1 - viewportY
@@ -532,9 +564,10 @@ export class LinkTooltipDecorator extends TerminalDecorator {
         const cellTop = screen.top + row * cell.height
         const cellBottom = cellTop + cell.height
 
-        const margin = 6
-        const maxX = Math.max(margin, window.innerWidth - origin.width - margin)
-        const maxY = Math.max(margin, window.innerHeight - origin.height - margin)
+        const minX = bounds.left + CARD_MARGIN
+        const minY = bounds.top + CARD_MARGIN
+        const maxX = Math.max(minX, bounds.right - origin.width - CARD_MARGIN)
+        const maxY = Math.max(minY, bounds.bottom - origin.height - CARD_MARGIN)
 
         let x = cellLeft
         let y = cellBottom + 2
@@ -543,10 +576,12 @@ export class LinkTooltipDecorator extends TerminalDecorator {
             y = cellTop - origin.height - 2
         }
         if (x > maxX) {
+            // No room to the right — grow leftwards from the cell instead.
             x = cellLeft + cell.width - origin.width
         }
-        x = Math.min(Math.max(x, margin), maxX)
-        y = Math.min(Math.max(y, margin), maxY)
+        // Whichever way the two flips went, neither edge may leave the pane.
+        x = Math.min(Math.max(x, minX), maxX)
+        y = Math.min(Math.max(y, minY), maxY)
 
         host.style.transform = `translate(${Math.round(x - origin.left)}px, ${Math.round(y - origin.top)}px)`
     }
