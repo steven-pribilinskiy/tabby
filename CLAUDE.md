@@ -427,6 +427,50 @@ Each of these was shipped and wrong; they are listed because the shape recurs.
 - The **punycode/IDN annotation was missing entirely** — a homograph warning the
   reference has and this port had silently dropped.
 
+### WSL paths: the translation was right and unreachable
+
+The `\\wsl.localhost\<distro>\…` translation was correct in isolation and never
+ran, so a path printed by anything inside WSL had no Copy path, no Show in
+folder, and a click that did nothing at all.
+
+- **The order was backwards.** `decorator.ts` gated the whole thing on
+  `handler.verify()`, which is `fs.access` on the string as written
+  (`tabby-linkifier/src/handlers.ts:61`, and it ignores the tab it is handed).
+  For `/home/you/notes.md` that asks Windows about `C:\home\you\notes.md`, which
+  is false, so `resolve()` bailed before it could translate anything. Existence
+  is now asked once, of the path that would actually be opened.
+- **`verify` is not consulted at all any more**, rather than being fixed — it is
+  upstream code, and every line changed there is rebase surface. Nothing is lost:
+  it *is* the existence check, and it was being run on the wrong string.
+- **What replaces it as the "is this a path" test is rootedness**, not existence.
+  A text rule matches things like an issue key, and `fs.access('CAB-8209')` is
+  answered against the app's own working directory, where it could plausibly
+  exist. Anything not rooted is not asked about — which also drops the
+  `fs.access` that every hovered `http` URL used to cost.
+- **An OSC 8 `file://` link arrives with no handler**, so `isFileLike` was
+  false and the `file://` branch of `resolve()` was dead code. That is the form
+  Claude Code emits, and the one that carries a fragment.
+- **`#L6-L7` is a fragment, not part of the name** (RFC 3986 §3.5), and it was
+  carried into both the existence check and the share path. Stripped *before*
+  percent-decoding, so a `#` genuinely in a filename — which has to arrive as
+  `%23` — survives. Reference commit `c15aae37a`; GH#14116 has asked upstream
+  for it since 2022.
+- **The reference's UTF-8 escape handling has no analogue here.**
+  `PathCreateFromUrlW` unescapes `%XX` a byte at a time and widens each byte
+  alone, so `caf%C3%A9.md` arrives mojibaked; `decodeURIComponent` is already
+  correct. It throws on a stray `%`, though, and that throw was reaching an
+  unawaited `show()`.
+- **`file://<authority>/…` is a UNC path**, which is how an editor writes a WSL
+  link that already names its own distro. `/mnt/<letter>/` becomes the drive,
+  since the share would answer for a file sitting on the local disk.
+- **Clicking takes the new route only when translation changed the path.** A
+  Windows path and an `http` link still go through the handler exactly as they
+  did; asserted both ways in `tabby-links/test/wslPath.cdp.js`.
+- Still wrong, and left alone: `~/notes` in a WSL tab is untildified to the
+  *Windows* home by `BaseFileHandler.convert`, so it resolves to the wrong file
+  if that path happens to exist. Fixing it needs the distro's home, which costs
+  a `wsl.exe` spawn on a hover.
+
 ## Builds page (`tabby-builds`)
 
 Settings → **Builds** lists every Tabby build on this machine: the installed

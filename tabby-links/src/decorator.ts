@@ -362,16 +362,20 @@ export class LinkTooltipDecorator extends TerminalDecorator {
 
         const handler = link.handlerIndex >= 0 ? this.handlers?.[link.handlerIndex] : undefined
         let converted = link.text
-        let isFileLike = false
         if (handler) {
             try {
                 converted = await handler.convert(link.text, state.tab)
-                isFileLike = await handler.verify(converted, state.tab)
             } catch {
                 converted = link.text
             }
         }
-        const target = await this.targets.resolve(link.text, converted, isFileLike, state.tab)
+        // Not gated on `handler.verify()` any more: it tests the path as
+        // written, which for a WSL tab is a path Windows cannot see, so the
+        // translation that would have made it real never ran. `resolve` decides
+        // what the link points at and then asks whether *that* exists. It also
+        // means an OSC 8 `file://` link, which arrives with no handler at all,
+        // now resolves like any other path.
+        const target = await this.targets.resolve(link.text, converted, state.tab)
         if (generation !== state.generation) {
             return
         }
@@ -650,6 +654,15 @@ export class LinkTooltipDecorator extends TerminalDecorator {
         }
         void (async () => {
             const converted = await handler.convert(link.text, state.tab)
+            const target = await this.targets.resolve(link.text, converted, state.tab)
+            if (target.filePath && target.filePath !== converted) {
+                // Translation changed the path, so the handler's own `verify`
+                // would refuse it and `handle` would hand the shell a path it
+                // cannot open — a WSL path being the whole case. Open what the
+                // card said it would open, by the same route its button takes.
+                void this.actions.open('', target.filePath)
+                return
+            }
             if (!await handler.verify(converted, state.tab)) {
                 return
             }

@@ -335,6 +335,83 @@ check('userinfo does not defeat it either',
 check('not a url', target.punycodeHost('just some text'), '')
 check('a file path', target.punycodeHost('C:\\Windows\\notepad.exe'), '')
 
+// What a matched link points at, before anything asks whether it exists.
+// `distro` is a name, '' for a WSL tab whose distro could not be named, or null
+// for a tab that is not WSL; the third argument is "the host is Windows".
+console.log('\n── file paths, WSL and fragments ──')
+const fsPath = target.filesystemPath
+
+check('a WSL path becomes the distro share',
+    fsPath('/home/stevenp/projects', 'Ubuntu', true),
+    '\\\\wsl.localhost\\Ubuntu\\home\\stevenp\\projects')
+check('a POSIX path in a tab that is not WSL is left alone',
+    fsPath('/home/stevenp/projects', null, true), '/home/stevenp/projects')
+check('a WSL tab whose distro could not be named guesses no share',
+    fsPath('/home/stevenp/projects', '', true), '/home/stevenp/projects')
+check('on Linux a POSIX path is already the path',
+    fsPath('/home/stevenp/projects', 'Ubuntu', false), '/home/stevenp/projects')
+
+check('a file:// URI resolves like the path it carries',
+    fsPath('file:///home/stevenp/notes.md', 'Ubuntu', true),
+    '\\\\wsl.localhost\\Ubuntu\\home\\stevenp\\notes.md')
+check('a fragment is not part of the file name',
+    fsPath('file:///home/stevenp/notes.md#L10-L12', 'Ubuntu', true),
+    '\\\\wsl.localhost\\Ubuntu\\home\\stevenp\\notes.md')
+// The fragment is stripped before decoding, so the escape a real '#' has to
+// arrive as is not mistaken for the delimiter it was escaped to avoid.
+check('an escaped hash is part of the name',
+    fsPath('file:///home/me/a%23b.md', 'Ubuntu', true),
+    '\\\\wsl.localhost\\Ubuntu\\home\\me\\a#b.md')
+check('percent escapes are decoded',
+    fsPath('file:///home/me/my%20notes.md', 'Ubuntu', true),
+    '\\\\wsl.localhost\\Ubuntu\\home\\me\\my notes.md')
+check('a multi-byte escape decodes as UTF-8',
+    fsPath('file:///home/me/caf%C3%A9.md', 'Ubuntu', true),
+    '\\\\wsl.localhost\\Ubuntu\\home\\me\\café.md')
+check('a malformed escape costs the decode, not the link',
+    fsPath('file:///home/me/100%.md', 'Ubuntu', true),
+    '\\\\wsl.localhost\\Ubuntu\\home\\me\\100%.md')
+check('the scheme is case-insensitive',
+    fsPath('FILE:///home/me/x', 'Ubuntu', true),
+    '\\\\wsl.localhost\\Ubuntu\\home\\me\\x')
+
+// An authority in a file: URI is a UNC path, which is how an editor writes a
+// WSL link that already names its own distro — no tab needed to read it.
+check('an authority is a UNC host',
+    fsPath('file://wsl.localhost/Debian/etc/hosts', null, true),
+    '\\\\wsl.localhost\\Debian\\etc\\hosts')
+check('localhost is the empty authority spelled out',
+    fsPath('file://localhost/c:/Users/steve/x.txt', null, true), 'c:\\Users\\steve\\x.txt')
+check('a drive letter drops the empty authority slash',
+    fsPath('file:///c:/Users/steve/x.txt', null, true), 'c:\\Users\\steve\\x.txt')
+
+// A Windows drive mounted into the distro is reachable as itself.
+check('a /mnt drive is a drive',
+    fsPath('/mnt/c/Users/steve', 'Ubuntu', true), 'C:\\Users\\steve')
+check('a bare /mnt drive keeps its root',
+    fsPath('/mnt/c', 'Ubuntu', true), 'C:\\')
+check('a directory called mnt is not a drive',
+    fsPath('/mnt/certificates/ca.pem', 'Ubuntu', true),
+    '\\\\wsl.localhost\\Ubuntu\\mnt\\certificates\\ca.pem')
+check('/mnt outside a WSL tab is not translated either',
+    fsPath('/mnt/c/Users/steve', null, true), '/mnt/c/Users/steve')
+
+check('a Windows path is already a path',
+    fsPath('C:\\Windows\\notepad.exe', 'Ubuntu', true), 'C:\\Windows\\notepad.exe')
+check('a UNC path is already a path',
+    fsPath('\\\\server\\share\\x', 'Ubuntu', true), '\\\\server\\share\\x')
+// Rooted or nothing: a text rule matches things like an issue key, and asking
+// the filesystem about a relative name answers against the app's own directory.
+check('a url is not a path', fsPath('https://example.com/x', 'Ubuntu', true), '')
+check('an issue key is not a path', fsPath('CAB-8209', 'Ubuntu', true), '')
+check('a relative path is not asked about', fsPath('./notes.md', 'Ubuntu', true), '')
+
+check('a fragment is everything after the first hash',
+    target.stripFragment('file:///a/b#c#d'), 'file:///a/b')
+check('no fragment, no change', target.stripFragment('file:///a/b'), 'file:///a/b')
+check('an escaped hash is not a fragment',
+    target.stripFragment('file:///a%23b'), 'file:///a%23b')
+
 console.log('\n── rich integrations ──')
 const rt2 = rt
 const rich = loadSource('tabby-links/src/richText.ts')
