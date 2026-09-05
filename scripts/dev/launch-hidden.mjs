@@ -2,6 +2,7 @@
 // Launch the dev build hidden, with an isolated profile, for CDP-driven tests.
 //
 //   node scripts/dev/launch-hidden.mjs --frontend xterm --port 9238 [--keep]
+//   node scripts/dev/launch-hidden.mjs --enable builds --port 9239
 //
 // Never touches the installed Tabby: the dev build is electron.exe, the
 // installed app is Tabby.exe. The Tabby.exe process count is recorded before
@@ -59,9 +60,20 @@ const fontWeightBold = arg('font-weight-bold', '700')
 const contrast = arg('contrast', '1')
 const scrollback = arg('scrollback', '500')
 
+// Plugins that would draw over the terminal or grab a global resource. A test
+// that needs one of them back asks for it: --enable builds,links.
+const enabled = new Set(arg('enable', '').split(',').map(x => x.trim()).filter(x => x))
+const BLACKLIST = ['links', 'linkifier', 'claude', 'builds', 'mcp-server', 'claude-status']
+    .filter(x => !enabled.has(x))
+
 fs.writeFileSync(path.join(profile, 'config.yaml'), [
     'version: 8',
     'terminal:',
+    // Plain cmd, not the default CMD (clink): clink injects itself into the
+    // console, and when that fails the session dies three seconds in and takes
+    // the instance with it — a hidden run then looks like a launch that never
+    // opened its debugging port.
+    '  profile: local:cmd',
     `  frontend: ${frontend}`,
     '  cursorBlink: false',
     '  ligatures: false',
@@ -80,12 +92,7 @@ fs.writeFileSync(path.join(profile, 'config.yaml'), [
     'enableAutomaticUpdates: false',
     'recoverTabs: false',
     'pluginBlacklist:',
-    '  - links',
-    '  - linkifier',
-    '  - claude',
-    '  - builds',
-    '  - mcp-server',
-    '  - claude-status',
+    ...BLACKLIST.map(x => `  - ${x}`),
     '',
 ].join('\n'))
 
