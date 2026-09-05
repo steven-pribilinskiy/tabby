@@ -868,6 +868,26 @@ Kept to a minimum — every one is a line that conflicts on rebase.
   identical output at 1 and at 4, while 6 still escalates it, so raising the
   setting for accessibility keeps working.
 
+## The accent colour
+
+`appearance.accentColor` (Settings → **Window**) colours every `<code>` in the
+app — paths, commits, identifiers, the build tooltip. Null follows the colour
+scheme.
+
+- **What it replaces is Bootstrap's `$code-color`, a pink (`#d63384`) belonging
+  to no scheme here.** `theme.vars.scss` overrode it to orange, but nothing
+  imports that file any more — `theme.new.scss` imports Bootstrap with its own
+  defaults — so the pink was live and was the only hardcoded accent left in the
+  UI.
+- **The configured value is parsed before it is used.** `applyThemeVariables`
+  runs on every keystroke in the settings box, and a half-typed `#ab` thrown out
+  of `Color()` would take every other variable in that pass with it.
+- It goes through the same contrast floor as the rest of the chrome, so a pale
+  pick is darkened against the window background rather than left illegible.
+- The build tooltip now follows the theme (`--bs-tooltip-bg`) instead of being
+  Bootstrap's near-black, which is what keeps the accent inside it legible —
+  it is contrasted against the window, not against black.
+
 ## The splash screen
 
 Follows the OS scheme now. The window's backing colour already did

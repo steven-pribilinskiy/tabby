@@ -11,6 +11,32 @@ h3.mb-3(translate) Window
 
 .form-line
     .header
+        .title(translate) Accent color
+        .description(translate) Colors code, paths and identifiers throughout the app
+    .input-group.w-auto
+        input.form-control.form-control-color(
+            type='color',
+            [ngModel]='accentColor',
+            (ngModelChange)='setAccentColor($event)',
+            [title]='"Accent color"|translate',
+        )
+        input.form-control(
+            type='text',
+            spellcheck='false',
+            style='max-width: 8rem',
+            [ngModel]='config.store.appearance.accentColor',
+            (ngModelChange)='setAccentColor($event)',
+            [placeholder]='accentColor',
+        )
+        button.btn.btn-secondary(
+            (click)='setAccentColor(null)',
+            [disabled]='!config.store.appearance.accentColor',
+            [ngbTooltip]='"Follow the color scheme"|translate',
+        )
+            i.fas.fa-fw.fa-rotate-left
+
+.form-line
+    .header
         .title(translate) Spaciness
         .description(translate) Controls the amount of space between elements
     // `change`, not `mouseup`: a range input commits on release *and* on every

@@ -95,6 +95,10 @@ body {
     --bs-border-color: var(--theme-bg-more-2);
     --bs-form-control-bg: var(--theme-bg-more-2);
     --bs-emphasis-color: var(--theme-fg-less-2);
+    // Every <code> in the app: paths, commits, identifiers. Bootstrap's own
+    // value is a pink belonging to no scheme here; ThemesService derives this
+    // one from the color scheme, or from the accent the user chose.
+    --bs-code-color: var(--theme-accent, var(--bs-primary));
 }
 
 .list-group {
@@ -470,10 +474,22 @@ window-controls {
 // Rich build tooltip. ngbTooltip renders a TemplateRef, so this is real markup
 // rather than innerHTML — escaped by Angular and styleable. The tooltip is
 // attached to <body>, hence a global rule rather than a component-scoped one.
-.build-hint-tooltip .tooltip-inner {
-    max-width: none;
-    text-align: left;
-    padding: 8px 10px;
+.build-hint-tooltip {
+    // A Bootstrap tooltip is near-black whatever the theme. This one sits
+    // against the tab bar and carries structured content, so it follows the
+    // theme like the tab hover cards do — which is also what keeps the accent
+    // inside it legible, since that is contrasted against the window, not
+    // against black.
+    --bs-tooltip-bg: var(--theme-bg-more-2, #1d272d);
+    --bs-tooltip-color: var(--theme-fg, #fff);
+    --bs-tooltip-opacity: 1;
+
+    .tooltip-inner {
+        max-width: none;
+        text-align: left;
+        padding: 8px 10px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+    }
 }
 
 .build-tooltip {
@@ -502,7 +518,7 @@ window-controls {
             padding: 0 5px;
             border-radius: 3px;
             font-size: 11px;
-            background: rgba(255, 255, 255, 0.15);
+            background: var(--theme-bg-less, rgba(127, 127, 127, 0.2));
         }
 
         .abs {
@@ -532,7 +548,7 @@ window-controls {
     .build-tooltip-hint {
         margin-top: 4px;
         padding-top: 4px;
-        border-top: 1px solid rgba(255, 255, 255, 0.15);
+        border-top: 1px solid var(--theme-bg-less, rgba(127, 127, 127, 0.2));
         opacity: 0.6;
         font-size: 11px;
     }

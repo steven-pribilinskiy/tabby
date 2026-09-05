@@ -14,6 +14,9 @@ appearance:
   tabsInFullscreen: false
   cycleTabs: true
   theme: Follow the color scheme
+  # Colour for code, paths and identifiers in the UI — Bootstrap's own pink
+  # otherwise, which belongs to no scheme here. null follows the color scheme.
+  accentColor: null
   frame: thin
   css: '/* * { color: blue !important; } */'
   opacity: 1.0

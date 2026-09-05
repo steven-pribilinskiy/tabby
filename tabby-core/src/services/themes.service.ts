@@ -202,6 +202,19 @@ export class ThemesService {
             vars['--bs-form-switch-bg'] = `url("data:image/svg+xml,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%27-4 -4 8 8%27%3e%3ccircle r=%273%27 fill=%27${switchBackground}%27/%3e%3c/svg%3e")`
         }
 
+        // Bootstrap paints <code> in its own pink, which belongs to no scheme in
+        // this app and was the one hardcoded accent left in the UI — it shows up
+        // wherever a path, a commit or an identifier is rendered. It follows the
+        // color scheme instead, unless the user picked a colour.
+        //
+        // Parsed before it is used: this runs on every keystroke in the settings
+        // box, so a half-typed `#ab` would otherwise throw out of Color() and
+        // take every other variable in this pass with it.
+        vars['--theme-accent'] = this.parseColor(
+            this.getConfigStoreOrDefaults().appearance.accentColor,
+        ) ?? theme.colors[accentIndex]
+        contrastPairs.push(['--body-bg', '--theme-accent'])
+
         vars['--spaciness'] = this.getConfigStoreOrDefaults().appearance.spaciness
 
         for (const [bg, fg] of contrastPairs) {
@@ -218,6 +231,18 @@ export class ThemesService {
         }
 
         document.body.classList.toggle('no-animations', !this.getConfigStoreOrDefaults().accessibility.animations)
+    }
+
+    /** A colour string, or null if it is not one — a half-typed value included. */
+    private parseColor (value: string | null | undefined): string | null {
+        if (!value) {
+            return null
+        }
+        try {
+            return Color(value).string()
+        } catch {
+            return null
+        }
     }
 
     private uiMinimumContrastRatio (): number {
