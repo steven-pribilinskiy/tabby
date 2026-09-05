@@ -25,7 +25,7 @@ h3.mb-3(translate) Builds
     button.btn.btn-sm.btn-secondary.ms-3(
         (click)='rescan()',
         [disabled]='scanning',
-        [title]='"Rescan"|translate'
+        [ngbTooltip]='"Rescan"|translate'
     )
         i.fas.fa-fw.fa-arrows-rotate([class.fa-spin]='scanning')
 
@@ -75,20 +75,20 @@ ng-template(#buildList)
             button.btn.btn-secondary(
                 [class.active]='view === "cards"',
                 (click)='setView("cards")',
-                [title]='"Cards"|translate'
+                [ngbTooltip]='"Cards"|translate'
             )
                 i.fas.fa-fw.fa-layer-group
             button.btn.btn-secondary(
                 [class.active]='view === "table"',
                 (click)='setView("table")',
-                [title]='"Table"|translate'
+                [ngbTooltip]='"Table"|translate'
             )
                 i.fas.fa-fw.fa-table-list
 
     // Skeletons rather than an empty page: the first scan walks three
     // directory trees and spawns a subprocess, and a page showing "0 builds"
     // for two seconds reads as broken rather than busy.
-    .builds(*ngIf='scanning && !visible.length')
+    .builds(*ngIf='scanning && !visible.length && view === "cards"')
         .build-card.skeleton(*ngFor='let n of [1, 2, 3]')
             .build-head
                 .skeleton-line.w-badge
@@ -113,7 +113,7 @@ ng-template(#buildList)
                 .build-version(*ngIf='build.version') {{build.version}}
                 .badge.text-bg-primary(
                     *ngIf='build.isActive',
-                    [title]='(taskbarSupported ? "The taskbar pin launches this build" : "The build you use")|translate'
+                    [ngbTooltip]='(taskbarSupported ? "The taskbar pin launches this build" : "The build you use")|translate'
                 )
                     i.fas.fa-thumbtack.me-1
                     span(translate) active
@@ -123,24 +123,24 @@ ng-template(#buildList)
                     span(translate) will not start
                 .badge.text-bg-warning(
                     *ngIf='isStale(build)',
-                    [title]='"The checkout has moved on since this was compiled"|translate',
+                    [ngbTooltip]='"The checkout has moved on since this was compiled"|translate',
                     translate
                 ) stale
                 .flex-fill
                 button.btn.btn-sm.btn-link(
                     *ngIf='build.executable',
                     (click)='launch(build)',
-                    [title]='"Launch"|translate'
+                    [ngbTooltip]='"Launch"|translate'
                 )
                     i.fas.fa-fw.fa-play
                 button.btn.btn-sm.btn-link(
                     (click)='reveal(build)',
-                    [title]='"Reveal in file manager"|translate'
+                    [ngbTooltip]='"Reveal in file manager"|translate'
                 )
                     i.fas.fa-fw.fa-folder-open
                 button.btn.btn-sm.btn-link(
                     (click)='menu(build, $event)',
-                    [title]='"More"|translate'
+                    [ngbTooltip]='"More"|translate'
                 )
                     i.fas.fa-fw.fa-ellipsis-vertical
 
@@ -160,7 +160,7 @@ ng-template(#buildList)
                     .finding-title {{finding.title}}
                     .finding-items(*ngIf='finding.items?.length')
                         code.finding-chip(*ngFor='let item of finding.items') {{item}}
-                    .finding-path(*ngIf='finding.location', [title]='finding.location') {{shortPath(finding.location, 70)}}
+                    .finding-path(*ngIf='finding.location', [ngbTooltip]='finding.location') {{shortPath(finding.location, 70)}}
                     .finding-detail {{finding.detail}}
                     .finding-hint(*ngIf='finding.hint') {{finding.hint}}
                 button.btn.btn-sm.btn-outline-secondary.flex-shrink-0(
@@ -171,7 +171,7 @@ ng-template(#buildList)
             .facts
                 .fact
                     .fact-label(translate) Processes
-                    .fact-value(*ngIf='build.processes.length', [title]='pidList(build)')
+                    .fact-value(*ngIf='build.processes.length', [ngbTooltip]='pidList(build)')
                         span.live-dot.me-1
                         | {{build.processes.length}}
                     .fact-value.muted(*ngIf='!build.processes.length', translate) not running
@@ -183,7 +183,7 @@ ng-template(#buildList)
                     .fact-value {{humanDuration(uptimeOf(build))}}
                 .fact
                     .fact-label(translate) Built
-                    .fact-value([title]='absoluteTime(build.builtAt)') {{humanAgo(build.builtAt)}}
+                    .fact-value([ngbTooltip]='absoluteTime(build.builtAt)') {{humanAgo(build.builtAt)}}
                 .fact
                     .fact-label(translate) Size
                     .fact-value(*ngIf='build.size') {{humanBytes(build.size.bytes)}}
@@ -205,8 +205,13 @@ ng-template(#buildList)
                     .fact-label(translate) Upstream base
                     .fact-value.mono {{build.upstreamBase}}
 
-            .build-path([title]='build.root', (click)='copyPath(build)') {{shortPath(build.root, 90)}}
-            .build-path.muted(*ngIf='build.configPath', [title]='build.configPath')
+            .build-path(
+                [ngbTooltip]='pathTooltip(build)',
+                tooltipClass='builds-path-tooltip',
+                container='body',
+                (click)='openPath(build)'
+            ) {{shortPath(build.root, 90)}}
+            .build-path.muted(*ngIf='build.configPath', [ngbTooltip]='build.configPath')
                 | {{'Config'|translate}}: {{shortPath(build.configPath, 80)}}
 
             .build-actions
@@ -219,14 +224,14 @@ ng-template(#buildList)
                 button.btn.btn-sm.btn-outline-secondary(
                     *ngIf='canDiagnose(build)',
                     (click)='diagnose(build)',
-                    [title]='"Re-run the health check"|translate'
+                    [ngbTooltip]='"Re-run the health check"|translate'
                 )
                     i.fas.fa-fw.fa-stethoscope.me-1
                     span(translate) Diagnose
                 button.btn.btn-sm.btn-outline-primary(
                     *ngIf='build.executable && !build.isActive',
                     (click)='makeActive(build)',
-                    [title]='(taskbarSupported ? "Point the taskbar pin at this build" : "Use this build")|translate'
+                    [ngbTooltip]='(taskbarSupported ? "Point the taskbar pin at this build" : "Use this build")|translate'
                 )
                     i.fas.fa-fw.fa-thumbtack.me-1
                     span(translate) Make active
@@ -239,7 +244,7 @@ ng-template(#buildList)
                 button.btn.btn-sm.btn-outline-danger(
                     (click)='delete(build)',
                     [disabled]='!!deleteBlockedReason(build)',
-                    [title]='deleteBlockedReason(build) || ""'
+                    [ngbTooltip]='deleteBlockedReason(build) || ""'
                 )
                     i.fas.fa-fw.fa-trash-can.me-1
                     span {{deleteLabel(build)}}
@@ -286,6 +291,10 @@ ng-template(#buildList)
                         i.fas.ms-1([class]='sortIcon("path")')
                     th
             tbody
+                ng-container(*ngIf='scanning && !visible.length')
+                    tr.skeleton-row(*ngFor='let n of [1, 2, 3]')
+                        td(*ngFor='let c of skeletonCells')
+                            .skeleton-line([style.width.%]='c')
                 tr(
                     *ngFor='let build of visible; trackBy: trackBuild',
                     [class.current]='build.isCurrent'
@@ -302,48 +311,59 @@ ng-template(#buildList)
                             .badge.text-bg-success.ms-2(*ngIf='build.isCurrent', translate) this window
                             .badge.text-bg-warning.ms-2(*ngIf='isStale(build)', translate) stale
                     td.mono {{build.version || '—'}}
-                    td.num([title]='pidList(build)') {{build.processes.length || '—'}}
+                    td.num([ngbTooltip]='pidList(build)', container='body') {{build.processes.length || '—'}}
                     td.num {{build.processes.length ? humanBytes(memoryOf(build)) : '—'}}
                     td.num
                         span(*ngIf='build.size') {{humanBytes(build.size.bytes)}}
                         span.measuring(*ngIf='!build.size && build.sizeState === "computing"') …
                         span.muted(*ngIf='!build.size && build.sizeState !== "computing"') —
                     td.num {{build.size ? build.size.files : '—'}}
-                    td.no-wrap([title]='absoluteTime(build.builtAt)') {{humanAgo(build.builtAt)}}
+                    td.no-wrap([ngbTooltip]='absoluteTime(build.builtAt)', container='body') {{humanAgo(build.builtAt)}}
                     td {{build.arch || '—'}}
                     td.mono {{build.git?.branch || '—'}}
                     td.mono.no-wrap
                         span(*ngIf='build.git?.builtFrom') {{build.git.builtFrom}}
                         span.muted.ms-1(*ngIf='isStale(build)') → {{build.git.head}}
                         span.muted(*ngIf='!build.git?.builtFrom') —
-                    td.path-cell([title]='build.root', (click)='copyPath(build)') {{build.root}}
+                    td.path-cell(
+                        [ngbTooltip]='pathTooltip(build)',
+                        tooltipClass='builds-path-tooltip',
+                        container='body',
+                        (click)='openPath(build)'
+                    )
+                        span.path-text {{build.root}}
                     td.text-end.no-wrap
                         button.btn.btn-sm.btn-link(
                             *ngIf='build.executable',
                             (click)='launch(build)',
-                            [title]='"Launch"|translate'
+                            [ngbTooltip]='"Launch"|translate',
+                            container='body'
                         )
                             i.fas.fa-fw.fa-play
                         button.btn.btn-sm.btn-link(
                             *ngIf='build.executable && !build.isActive',
                             (click)='makeActive(build)',
-                            [title]='"Make active"|translate'
+                            [ngbTooltip]='"Make active"|translate',
+                            container='body'
                         )
                             i.fas.fa-fw.fa-thumbtack
                         button.btn.btn-sm.btn-link(
                             (click)='reveal(build)',
-                            [title]='"Reveal in file manager"|translate'
+                            [ngbTooltip]='"Reveal in file manager"|translate',
+                            container='body'
                         )
                             i.fas.fa-fw.fa-folder-open
                         button.btn.btn-sm.btn-link.text-danger(
                             (click)='delete(build)',
                             [disabled]='!!deleteBlockedReason(build)',
-                            [title]='deleteBlockedReason(build) || deleteLabel(build)'
+                            [ngbTooltip]='deleteBlockedReason(build) || deleteLabel(build)',
+                            container='body'
                         )
                             i.fas.fa-fw.fa-trash-can
                         button.btn.btn-sm.btn-link(
                             (click)='menu(build, $event)',
-                            [title]='"More"|translate'
+                            [ngbTooltip]='"More"|translate',
+                            container='body'
                         )
                             i.fas.fa-fw.fa-ellipsis-vertical
 

@@ -364,14 +364,20 @@ hotkey-input-modal {
     fill-opacity: 0.75;
 }
 
+// Both dimensions: `width` alone leaves a horizontal scrollbar at the browser
+// default height, which is where the chunky grey bar under a wide table came
+// from. And both colours come from the theme — a thumb at 25% white is
+// invisible on a light scheme, so the bar reads as a stray element rather
+// than as something you can drag.
 *::-webkit-scrollbar {
-    background: rgba(0, 0, 0, .125);
+    background: var(--theme-bg-more-2, rgba(0, 0, 0, .125));
     width: 10px;
-    margin: 5px;
+    height: 10px;
 }
 
 *::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, .25);
+    background: var(--theme-fg-more-2, rgba(255, 255, 255, .25));
+    border-radius: 5px;
 }
 
 *::-webkit-scrollbar-corner,

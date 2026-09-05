@@ -1,5 +1,5 @@
 import { Component } from '@angular/core'
-import { BaseComponent, ConfigService, PlatformService } from 'tabby-core'
+import { BaseComponent, ConfigService, PlatformService, TranslateService } from 'tabby-core'
 
 import { BuildKind, BuildsView, HealthFinding, TabbyBuild } from '../api'
 import { absoluteTime, humanAgo, humanBytes, humanDuration, shortPath } from '../format'
@@ -106,6 +106,14 @@ export class BuildsSettingsTabComponent extends BaseComponent {
     private rescanTimer: ReturnType<typeof setInterval> | null = null
     private clock: ReturnType<typeof setInterval> | null = null
 
+    /**
+     * Widths for a skeleton table row, as percentages of each cell. A field
+     * that is always short — arch, a process count — should not be given a
+     * bar as wide as a path, or the placeholder reads as a different table
+     * from the one that arrives.
+     */
+    readonly skeletonCells = [70, 90, 80, 40, 60, 55, 45, 65, 50, 55, 60, 95, 0]
+
     constructor (
         public config: ConfigService,
         private actions: BuildActionsService,
@@ -115,6 +123,7 @@ export class BuildsSettingsTabComponent extends BaseComponent {
         private scanner: BuildScannerService,
         private sizes: BuildSizeService,
         private taskbar: TaskbarService,
+        private translate: TranslateService,
         private watcher: NewBuildWatcherService,
     ) {
         super()
@@ -514,6 +523,20 @@ export class BuildsSettingsTabComponent extends BaseComponent {
 
     copyPath (build: TabbyBuild): void {
         this.platform.setClipboard({ text: build.root })
+    }
+
+    /**
+     * A path reads as a link, so it does what a link that looks like that
+     * should do: open the folder. Copying it is still on the kebab menu.
+     */
+    openPath (build: TabbyBuild): void {
+        this.actions.reveal(build)
+    }
+
+    /** Both halves of what a hovered path has to say: where, and what a click does. */
+    pathTooltip (build: TabbyBuild): string {
+        return `${build.root}
+${this.translate.instant('Click to open this folder')}`
     }
 
     menu (build: TabbyBuild, event: MouseEvent): void {

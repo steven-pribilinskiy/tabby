@@ -120,6 +120,16 @@
     &.w-path { width: 320px; margin-top: 8px; }
 }
 
+// The table's own placeholder. Card skeletons above a table read as content
+// that failed to load *and* a header for something else.
+.skeleton-row {
+    pointer-events: none;
+
+    .skeleton-line {
+        min-width: 12px;
+    }
+}
+
 @keyframes skeleton-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.45; }
@@ -329,6 +339,18 @@
 
         &:hover {
             opacity: 0.95;
+            text-decoration: underline;
+        }
+
+        // On the inner span, not the cell: a max-width on a <td> is a
+        // suggestion the automatic table layout is free to ignore, and it
+        // does. Without this a deep checkout path makes the table wider than
+        // the page and its horizontal scrollbar is permanent.
+        .path-text {
+            display: block;
+            max-width: 30ch;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
     }
 
@@ -367,4 +389,14 @@
 
 .no-wrap {
     white-space: nowrap;
+}
+
+// The path tooltip carries two things — where it points, and what clicking
+// does — so it needs its line break. It is rendered into <body>, outside
+// this component's emulated encapsulation, which is what ::ng-deep is for;
+// the class is specific enough that leaking it costs nothing.
+::ng-deep .builds-path-tooltip .tooltip-inner {
+    max-width: none;
+    white-space: pre-line;
+    text-align: left;
 }
