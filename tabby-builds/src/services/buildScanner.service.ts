@@ -1,4 +1,4 @@
-import * as fs from 'fs/promises'
+import type { FileHandle } from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
 import { execFile } from 'child_process'
@@ -6,6 +6,7 @@ import { Injectable } from '@angular/core'
 import { ConfigService } from 'tabby-core'
 
 import { BuildGitInfo, BuildKind, TabbyBuild } from '../api'
+import { fs } from '../nodeFs'
 import { normalize } from './buildProcesses.service'
 
 /** Directory names never worth descending into while looking for checkouts. */
@@ -602,7 +603,7 @@ export class BuildScannerService {
         if (process.platform !== 'win32' || !file.toLowerCase().endsWith('.exe')) {
             return fromName ? fromName[1].toLowerCase() : null
         }
-        let handle: fs.FileHandle | null = null
+        let handle: FileHandle | null = null
         try {
             handle = await fs.open(file, 'r')
             const head = Buffer.alloc(4)

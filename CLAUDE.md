@@ -450,6 +450,27 @@ The bits that cost real time:
   the size walk skips it and `fs.rm` unlinks it rather than following it —
   verified on a decoy, and confirmed by arithmetic (the slots differ by 52 files,
   not by the plugin directory's 289).
+- **Every `fs` call here goes through `original-fs`** (`tabby-builds/src/nodeFs.ts`),
+  because Electron's patched `fs` mounts an `.asar` as a directory *and the first
+  patched call on one opens the archive and keeps the handle for the life of the
+  process*. Sizing a build is such a call — `lstat` on `resources\app.asar` — so
+  every packaged build the page listed was pinned by the renderer itself, and
+  Delete then died on the archive it had pinned:
+
+  ```
+  EBUSY: resource busy or locked, rmdir '…\resources\app.asar'
+  ```
+
+  `rmdir` because the patched `lstat` calls the archive a directory; `EBUSY`
+  because the handle is ours. Nothing could clear it — not `maxRetries`, not
+  `process.noAsar` set afterwards, not `original-fs` at the delete site: measured,
+  a *single* `lstat`, `stat`, `access` or `readdir` through the patched `fs` is
+  enough, and only a process that never touched the archive can remove it. So the
+  fix is upstream of the delete: nothing in this plugin may open an archive at
+  all. `tabby-builds/test/asarDelete.cdp.js` asserts both halves — the patched
+  `fs` still failing exactly that way on a control fixture, which is also what
+  proves the fixture is an archive Electron recognises, and the real services
+  sizing and deleting an untouched one.
 - **Versions come from the executable's own version resource**, not from
   `resources/builtin-plugins/tabby-core/package.json` — that stamp goes stale
   (the installed 1.0.230 here still carries a 1.0.197 plugin stamp).

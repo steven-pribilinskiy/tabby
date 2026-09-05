@@ -1,8 +1,8 @@
-import * as fs from 'fs/promises'
 import * as path from 'path'
 import { Injectable } from '@angular/core'
 
 import { BuildSize, TabbyBuild } from '../api'
+import { fs } from '../nodeFs'
 
 /** Guard against a walk that has clearly wandered somewhere it should not be. */
 const MAX_FILES = 200000

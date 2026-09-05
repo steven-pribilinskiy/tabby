@@ -1,5 +1,4 @@
 import * as crypto from 'crypto'
-import * as fs from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
 import { execFile, spawn } from 'child_process'
@@ -7,6 +6,7 @@ import { Injectable } from '@angular/core'
 import { ConfigService, MenuItemOptions, NotificationsService, PlatformService, TranslateService } from 'tabby-core'
 
 import { TabbyBuild } from '../api'
+import { fs } from '../nodeFs'
 import { humanBytes } from '../format'
 import { BuildDoctorService } from './buildDoctor.service'
 import { BuildProcessesService } from './buildProcesses.service'
@@ -486,7 +486,11 @@ export class BuildActionsService {
 
         try {
             for (const target of targets) {
-                await fs.rm(target, { recursive: true, force: true })
+                // The retries are for a file something else has open for a
+                // moment — a scanner, the indexer, Explorer. The lock that
+                // used to make this fail *forever*, on `app.asar`, is gone
+                // with `nodeFs`: nothing here opens an archive any more.
+                await fs.rm(target, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
             }
             build.exists = false
             this.sizes.invalidate(build)

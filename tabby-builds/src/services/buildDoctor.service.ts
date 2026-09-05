@@ -1,10 +1,10 @@
-import * as fs from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
 import { Injectable } from '@angular/core'
 import { ConfigService } from 'tabby-core'
 
 import { BuildHealth, HealthFinding, TabbyBuild } from '../api'
+import { fs } from '../nodeFs'
 
 /**
  * Builtin plugins without which the renderer cannot finish starting.

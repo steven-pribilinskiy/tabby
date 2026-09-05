@@ -1,10 +1,10 @@
-import * as fs from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
 import { execFile } from 'child_process'
 import { Injectable } from '@angular/core'
 
 import { BuildProcess } from '../api'
+import { fs } from '../nodeFs'
 
 /** A process, before it has been attributed to a build. */
 export interface RunningProcess extends BuildProcess {
