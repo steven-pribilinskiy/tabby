@@ -50,6 +50,10 @@ export class TerminalConfigProvider extends ConfigProvider {
             customColorSchemes: [],
             warnOnMultilinePaste: true,
             searchRegexAlwaysEnabled: false,
+            // Where "Search the web for ..." sends the selection. {{query}} is
+            // the selection, percent-encoded; searched as ordinary terms rather
+            // than forced into an exact phrase.
+            webSearchQueryURL: 'https://www.google.com/search?q={{query}}',
             searchOptions: {
                 regex: false,
                 wholeWord: false,

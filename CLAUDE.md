@@ -1072,6 +1072,38 @@ Reading the canvases directly rather than screenshotting is deliberate: the
 result then does not depend on the window being composited, which is what makes
 it usable on a `--hidden` instance.
 
+## Searching the selection (`tabby-terminal/src/webSearch.ts`)
+
+Right-clicking a selection offers **Search the web for "…"**, which opens
+`terminal.webSearchQueryURL` — `https://www.google.com/search?q={{query}}` by
+default — through `platform.openExternal()`. Upstream has no web-search action
+anywhere; Windows Terminal's `searchWeb` is the model, and its Bing default
+wrapped the selection in `%22…%22`, which this deliberately does not: the
+selection searches as ordinary terms.
+
+- **`{{query}}`, not Windows Terminal's `%s`.** `{{name}}` is already how every
+  URL built from matched text is written here — the `tabby-links` integration
+  manifests use `{{match}}` and friends — so there is one templating convention
+  in the repo rather than two.
+- **The template is parsed twice and the origins compared.** The selection is
+  text a remote host printed; `encodeURIComponent` alone already stops it
+  becoming a second parameter or a fragment, but a template is also probed with
+  an inert stand-in and the result refused unless the scheme is http(s) and the
+  final URL's origin is identical to the probe's. So a template can never be
+  turned into a different host by what was selected, and a malformed or
+  `javascript:`/`file:` template opens nothing and says why instead.
+- **`&` in a menu label is a mnemonic on Windows and Linux**, so a selection of
+  `foo & bar` would show as `foo _bar`. It is doubled for those platforms and
+  left alone on macOS, where Electron takes labels verbatim. Truncation happens
+  *before* the doubling, or a cut could split a `&&`.
+- **ICU MessageFormat passes `{{query}}` through as an argument.** The "must be
+  an http(s) URL containing {{query}}" notification would be a compile error if
+  the braces were in the pattern, so the token rides in as `{token}`;
+  `webSearch.cdp.js` asserts the rendered string.
+- Selections are capped at 512 characters and whitespace runs collapse to single
+  spaces — a terminal selection can be megabytes, and a multi-line one has to
+  search, and label, as one line.
+
 ## Changed upstream defaults
 
 Kept to a minimum — every one is a line that conflicts on rebase.

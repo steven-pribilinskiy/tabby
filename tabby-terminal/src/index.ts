@@ -30,6 +30,7 @@ import { ZModemDecorator } from './features/zmodem'
 import { TerminalConfigProvider } from './config'
 import { TerminalHotkeyProvider } from './hotkeys'
 import { CopyPasteContextMenu, MiscContextMenu, LegacyContextMenu, ReconnectContextMenu, SaveAsProfileContextMenu } from './tabContextMenu'
+import { WebSearchContextMenu } from './webSearch'
 
 import { Frontend } from './frontends/frontend'
 import { XTermFrontend, XTermWebGLFrontend } from './frontends/xtermFrontend'
@@ -57,6 +58,7 @@ import { DefaultColorSchemes } from './colorSchemes'
         { provide: TerminalDecorator, useClass: DebugDecorator, multi: true },
 
         { provide: TabContextMenuItemProvider, useClass: CopyPasteContextMenu, multi: true },
+        { provide: TabContextMenuItemProvider, useClass: WebSearchContextMenu, multi: true },
         { provide: TabContextMenuItemProvider, useClass: MiscContextMenu, multi: true },
         { provide: TabContextMenuItemProvider, useClass: LegacyContextMenu, multi: true },
         { provide: TabContextMenuItemProvider, useClass: ReconnectContextMenu, multi: true },
