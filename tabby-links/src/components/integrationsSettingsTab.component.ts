@@ -8,6 +8,13 @@ import {
 import { IntegrationCredentialsService } from '../services/integrationCredentials.service'
 import { IntegrationRegistryService, isSecretField, normalizeSettingValue } from '../services/integrationRegistry.service'
 
+/** A manifest field group, resolved to the fields it actually claims. */
+interface FieldGroup {
+    key: string
+    label: string
+    fields: IntegrationDisplayField[]
+}
+
 interface CredentialRow {
     field: IntegrationField
     secret: boolean
@@ -27,6 +34,20 @@ export class IntegrationsSettingsTabComponent {
     integrations: Integration[] = []
     current: Integration | null = null
     credentialRows: CredentialRow[] = []
+    /**
+     * The selected integration's groups and suggested matchers, derived once
+     * per selection.
+     *
+     * They are fields rather than the methods below being called from the
+     * template, because both build fresh objects and `*ngFor` tracks by
+     * identity: a new array each pass means every checkbox in the group is
+     * destroyed and re-created, and each new `ngModel` queues the microtask
+     * that writes its value — which schedules another change detection pass,
+     * which builds the array again. That is an unbreakable loop, and it froze
+     * the whole window the moment an integration was clicked.
+     */
+    currentGroups: FieldGroup[] = []
+    currentMatchers: IntegrationMatcher[] = []
     userDirectory = ''
     encryptionAvailable = true
     addedRuleName = ''
@@ -44,6 +65,7 @@ export class IntegrationsSettingsTabComponent {
             this.integrations = list
             if (this.current) {
                 this.current = list.find(x => x.id === this.current!.id) ?? null
+                this.deriveCurrent()
                 void this.loadCredentialRows()
             }
         })
@@ -55,7 +77,14 @@ export class IntegrationsSettingsTabComponent {
     async select (integration: Integration | null): Promise<void> {
         this.current = integration
         this.addedRuleName = ''
+        this.deriveCurrent()
         await this.loadCredentialRows()
+    }
+
+    /** Everything about the selection the template iterates over. */
+    private deriveCurrent (): void {
+        this.currentGroups = this.current ? this.fieldGroups(this.current) : []
+        this.currentMatchers = this.current ? this.suggestedMatchers(this.current) : []
     }
 
     setEnabled (integration: Integration, enabled: boolean): void {
@@ -166,7 +195,7 @@ export class IntegrationsSettingsTabComponent {
      * an implicit unlabelled group for anything no group claims, so every field
      * is reachable however the manifest is written.
      */
-    fieldGroups (integration: Integration): { key: string, label: string, fields: IntegrationDisplayField[] }[] {
+    private fieldGroups (integration: Integration): FieldGroup[] {
         const all = integration.manifest.fields ?? []
         const declared = integration.manifest.fieldGroups ?? []
         if (!declared.length) {
@@ -197,10 +226,7 @@ export class IntegrationsSettingsTabComponent {
      * state is what stops the header checkbox from lying about a group where
      * only some fields are shown.
      */
-    groupState (
-        integration: Integration,
-        group: { fields: IntegrationDisplayField[] },
-    ): boolean | 'partial' {
+    groupState (integration: Integration, group: FieldGroup): boolean | 'partial' {
         const visible = this.registry.visibleFieldKeys(integration)
         const keys = group.fields.map(f => f.key ?? f.label ?? '')
         const on = keys.filter(k => visible.includes(k)).length
@@ -210,11 +236,7 @@ export class IntegrationsSettingsTabComponent {
         return on === keys.length ? true : 'partial'
     }
 
-    setGroupVisible (
-        integration: Integration,
-        group: { fields: IntegrationDisplayField[] },
-        visible: boolean,
-    ): void {
+    setGroupVisible (integration: Integration, group: FieldGroup, visible: boolean): void {
         for (const field of group.fields) {
             this.registry.setFieldVisible(integration.id, field.key ?? field.label ?? '', visible)
         }
@@ -222,7 +244,7 @@ export class IntegrationsSettingsTabComponent {
 
     // ── suggested text matchers ──────────────────────────────────────────────
 
-    suggestedMatchers (integration: Integration): IntegrationMatcher[] {
+    private suggestedMatchers (integration: Integration): IntegrationMatcher[] {
         return (integration.manifest.matchers ?? []).filter(m =>
             m.kind === 'text' && m.suggested && m.pattern)
     }

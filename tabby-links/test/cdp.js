@@ -2,9 +2,13 @@
 const http = require('http')
 const WebSocket = require(require('path').join(__dirname, '../../node_modules', 'ws'))
 
+// 9238 by default, so every existing invocation keeps working; a test that
+// needs its own instance passes CDP_PORT.
+const PORT = parseInt(process.env.CDP_PORT ?? '9238', 10)
+
 function get (path) {
     return new Promise((resolve, reject) => {
-        http.get({ host: '127.0.0.1', port: 9238, path }, res => {
+        http.get({ host: '127.0.0.1', port: PORT, path }, res => {
             let body = ''
             res.on('data', c => body += c)
             res.on('end', () => resolve(JSON.parse(body)))
@@ -49,7 +53,7 @@ async function connect () {
         }
         return result.result?.result?.value
     }
-    return { evaluate, close: () => ws.close() }
+    return { evaluate, send, close: () => ws.close() }
 }
 
 module.exports = { connect }

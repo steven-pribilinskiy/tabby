@@ -112,7 +112,7 @@ div(*ngIf='current')
     //- Grouped when the manifest says so, with a header that selects or clears
     //- the whole group — a manifest with twenty-odd fields is unusable as one
     //- flat list.
-    ng-container(*ngFor='let group of fieldGroups(current)')
+    ng-container(*ngFor='let group of currentGroups')
         .group-head(*ngIf='group.label')
             checkbox(
                 [ngModel]='groupState(current, group) === true',
@@ -160,11 +160,11 @@ div(*ngIf='current')
         .header
             .description.code {{pattern}}
 
-    h5.mt-4.mb-2(*ngIf='suggestedMatchers(current).length', translate) Detect in output
+    h5.mt-4.mb-2(*ngIf='currentMatchers.length', translate) Detect in output
 
-    .text-muted.mb-2(*ngIf='suggestedMatchers(current).length', translate) Patterns this integration can recognize in plain terminal output. Adding one creates a rule on the Link Tooltip page, which you can edit or remove later.
+    .text-muted.mb-2(*ngIf='currentMatchers.length', translate) Patterns this integration can recognize in plain terminal output. Adding one creates a rule on the Link Tooltip page, which you can edit or remove later.
 
-    .matcher-card(*ngFor='let matcher of suggestedMatchers(current)')
+    .matcher-card(*ngFor='let matcher of currentMatchers')
         .header
             .title {{matcher.description || matcher.pattern}}
             .description.code {{matcher.pattern}}

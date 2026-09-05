@@ -275,6 +275,16 @@ The parts that cost real time:
 - **Everything runs outside `NgZone`** — xterm's listeners are raw DOM. The card
   is created with `createComponent` + `ApplicationRef.attachView` (no
   `ViewContainerRef` exists in a decorator) and updated inside `zone.run`.
+- **An `*ngFor` over a method that builds objects is an unbreakable freeze.**
+  Clicking an integration wedged the whole window: the Integrations detail view
+  iterated `fieldGroups(current)`, `*ngFor` tracks by identity, so every pass
+  destroyed and re-created each `checkbox`, and every new `ngModel` queues the
+  microtask that writes its value — which schedules the next pass. Measured at a
+  full core and 500 MB and climbing, and **the inspector cannot interrupt it**:
+  `Debugger.enable` gets no reply, exactly like the unicode-graphemes hang, so
+  the stack has to be reasoned out rather than read. The derived arrays are now
+  built once per selection. The hover card was only ever safe because its
+  `*ngFor`s carry `trackBy: trackItem`, which returns the *index*.
 - **The card is keyed on `(text, range)` and never rebuilt while it is open.**
   The Linkifier re-asks on every rendered-viewport change touching the hovered
   row, so during output that fires many times a second; rebuilding would strobe
