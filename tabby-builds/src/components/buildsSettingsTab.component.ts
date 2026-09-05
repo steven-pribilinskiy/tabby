@@ -1,5 +1,5 @@
 import { Component } from '@angular/core'
-import { BaseComponent, ConfigService, PlatformService, TranslateService } from 'tabby-core'
+import { BaseComponent, ConfigService, NotificationsService, PlatformService, TranslateService } from 'tabby-core'
 
 import { BuildKind, BuildsView, HealthFinding, TabbyBuild } from '../api'
 import { absoluteTime, humanAgo, humanBytes, humanDuration, shortPath } from '../format'
@@ -87,6 +87,10 @@ export class BuildsSettingsTabComponent extends BaseComponent {
     lastPoll: number | null = null
     /** What the Windows taskbar pin currently launches; null when not pinned. */
     pinTarget: string | null = null
+    /** What the Start menu entry launches; null when there is not one yet. */
+    startMenuTarget: string | null = null
+    /** The .lnk itself, for Show in Explorer. */
+    startMenuShortcut = ''
 
     /**
      * Reference instant for every relative timestamp on screen, held as a field
@@ -118,6 +122,7 @@ export class BuildsSettingsTabComponent extends BaseComponent {
         public config: ConfigService,
         private actions: BuildActionsService,
         private doctor: BuildDoctorService,
+        private notifications: NotificationsService,
         private platform: PlatformService,
         private processes: BuildProcessesService,
         private scanner: BuildScannerService,
@@ -285,6 +290,7 @@ export class BuildsSettingsTabComponent extends BaseComponent {
             build.isActive = build === active
         }
         this.pinTarget = (await this.taskbar.read())?.target ?? null
+        this.startMenuTarget = (await this.taskbar.readStartMenuShortcut())?.target ?? null
 
         const resolved = active ? active.executable ?? '' : ''
         if (resolved !== this.config.store.builds.activeExecutable) {
@@ -519,6 +525,35 @@ export class BuildsSettingsTabComponent extends BaseComponent {
 
     reveal (build: TabbyBuild): void {
         this.actions.reveal(build)
+    }
+
+    /**
+     * Put the fork in the Start menu, aimed at the active build.
+     *
+     * This is the only half of pinning that can be automated: Windows
+     * removed the pin verb from automation in 1809, but a Start menu entry
+     * is what makes *Pin to Start* and *Pin to taskbar* appear on a
+     * right-click at all — a shortcut kept anywhere else offers neither.
+     */
+    async createStartMenuShortcut (): Promise<void> {
+        const build = this.builds.find(b => b.isActive) ?? this.builds.find(b => b.isCurrent)
+        if (!build) {
+            this.notifications.error(this.translate.instant('No active build to point a shortcut at'))
+            return
+        }
+        try {
+            const shortcut = await this.actions.writeStartMenuShortcut(build)
+            this.startMenuTarget = build.executable
+            this.notifications.info(this.translate.instant(
+                'Added to the Start menu. Search for Tabby-fork, then right-click it to pin it.'))
+            this.startMenuShortcut = shortcut
+        } catch (err) {
+            this.notifications.error(String(err))
+        }
+    }
+
+    revealStartMenuShortcut (): void {
+        this.platform.showItemInFolder(this.startMenuShortcut || this.taskbar.startMenuShortcut())
     }
 
     copyPath (build: TabbyBuild): void {

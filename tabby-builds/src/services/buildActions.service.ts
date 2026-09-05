@@ -306,6 +306,14 @@ export class BuildActionsService {
         this.config.store.builds.activeExecutable = build.executable
         this.config.save()
 
+        // The Start menu entry follows the active build, but only once it
+        // exists: creating one unasked would put an app in someone's Start
+        // menu because they clicked "make active". The Options tab has the
+        // button that creates it.
+        if (this.taskbar.isSupported() && await this.taskbar.readStartMenuShortcut()) {
+            await this.writeStartMenuShortcut(build, spec).catch(() => null)
+        }
+
         if (this.config.store.builds.pinToTaskbar && this.taskbar.isSupported()) {
             try {
                 await this.taskbar.repoint({
@@ -326,6 +334,28 @@ export class BuildActionsService {
             this.notifications.info(this.translate.instant('{name} is now the active build', { name: build.name }))
         }
         onChanged()
+    }
+
+    /**
+     * Put the fork in the Start menu, pointed at a build.
+     *
+     * Windows has offered no way to create a taskbar pin since 1809, but it
+     * has never stopped anyone writing a Start menu shortcut — and a Start
+     * menu entry is the thing you can right-click to pin, to either place.
+     * Without one, a shortcut kept anywhere else offers no pin verbs at all.
+     */
+    async writeStartMenuShortcut (build: TabbyBuild, spec?: LaunchSpec): Promise<string> {
+        const launch = spec ?? this.launchSpec(build)
+        if (!launch) {
+            throw new Error(this.translate.instant('{name} cannot be launched, so it cannot be a shortcut', { name: build.name }))
+        }
+        return this.taskbar.writeStartMenuShortcut({
+            target: launch.target,
+            args: launch.args,
+            cwd: launch.cwd,
+            icon: await this.pinIcon(build, launch.target),
+            description: build.name === 'Tabby' ? 'Tabby' : `Tabby — ${build.name}`,
+        })
     }
 
     /**

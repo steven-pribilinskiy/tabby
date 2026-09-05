@@ -432,6 +432,22 @@ ng-template(#options)
         button.btn.btn-secondary((click)='rescan()')
             span(translate) Recheck
 
+    .form-line(*ngIf='taskbarSupported')
+        .header
+            .title(translate) Start menu shortcut
+            .description(*ngIf='startMenuTarget') {{'Points at'|translate}} {{startMenuTarget}}
+            .description(*ngIf='!startMenuTarget', translate) Windows only offers Pin to Start and Pin to taskbar for Start menu entries, so this creates one. It follows the active build from then on
+        .d-flex.gap-2
+            button.btn.btn-secondary((click)='createStartMenuShortcut()')
+                span(*ngIf='!startMenuTarget', translate) Create
+                span(*ngIf='startMenuTarget', translate) Update
+            button.btn.btn-secondary(
+                *ngIf='startMenuTarget',
+                (click)='revealStartMenuShortcut()',
+                [ngbTooltip]='"Show in Explorer, where it can be pinned"|translate',
+            )
+                i.fas.fa-fw.fa-folder-open
+
     h4.mt-4.mb-2(translate) New builds
 
     .form-line

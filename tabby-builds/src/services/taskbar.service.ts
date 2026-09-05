@@ -127,6 +127,78 @@ Write-Output $json
         }
     }
 
+    // ── The Start menu ───────────────────────────────────────
+
+    /**
+     * The fork's own Start menu entry.
+     *
+     * This is what makes pinning possible at all. Windows offers *Pin to
+     * Start* and *Pin to taskbar* for things it considers Start menu apps;
+     * a shortcut anywhere else — `~\Tabby\Tabby-fork.lnk`, say — is found by
+     * search but offers only Run as administrator and Open file location.
+     * Unlike a taskbar pin, this shortcut is ours to create.
+     *
+     * One stable name, never the build's: pinning copies the shortcut, and
+     * a name that changed with the active build would strand every pin ever
+     * made from it.
+     */
+    startMenuShortcut (): string {
+        return path.join(
+            process.env.APPDATA ?? '',
+            'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Tabby-fork.lnk',
+        )
+    }
+
+    /** What the Start menu entry launches, or null when there is none. */
+    async readStartMenuShortcut (): Promise<TaskbarPin | null> {
+        if (!this.isSupported()) {
+            return null
+        }
+        const script = `
+$ErrorActionPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+if (-not (Test-Path -LiteralPath ${psString(this.startMenuShortcut())})) { Write-Output ''; exit }
+$link = (New-Object -ComObject WScript.Shell).CreateShortcut(${psString(this.startMenuShortcut())})
+[pscustomobject]@{
+    shortcut = ${psString(this.startMenuShortcut())}
+    target = $link.TargetPath
+    arguments = $link.Arguments
+    workingDirectory = $link.WorkingDirectory
+} | ConvertTo-Json -Compress
+`
+        try {
+            const out = (await runPowerShell(script)).trim()
+            return out ? JSON.parse(out) : null
+        } catch {
+            return null
+        }
+    }
+
+    /**
+     * Create the Start menu entry, or aim an existing one at another build.
+     *
+     * Creating it is not the same as pinning it: Windows still requires the
+     * pin itself to be made by hand, and this is the thing there is finally
+     * something to right-click.
+     */
+    async writeStartMenuShortcut (spec: PinSpec): Promise<string> {
+        if (!this.isSupported()) {
+            throw new Error('Start menu shortcuts are a Windows feature')
+        }
+        const shortcut = this.startMenuShortcut()
+        await runPowerShell(`
+$ErrorActionPreference = 'Stop'
+$link = (New-Object -ComObject WScript.Shell).CreateShortcut(${psString(shortcut)})
+$link.TargetPath = ${psString(spec.target)}
+$link.Arguments = ${psString(spec.args.join(' '))}
+$link.WorkingDirectory = ${psString(spec.cwd)}
+$link.IconLocation = ${psString(`${spec.icon},0`)}
+$link.Description = ${psString(spec.description)}
+$link.Save()
+`)
+        return shortcut
+    }
+
     async isPinned (): Promise<boolean> {
         return (await this.pins()).length > 0
     }

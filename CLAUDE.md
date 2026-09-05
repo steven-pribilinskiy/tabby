@@ -589,6 +589,20 @@ one.
   `%APPDATA%\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar`, and
   rewriting its target is allowed. So: pin Tabby by hand once, and the page
   keeps that single pin aimed at the active build.
+- **What you pin is a Start menu entry, and that part *can* be created.**
+  Windows offers *Pin to Start* and *Pin to taskbar* only for things it
+  considers Start menu apps: `~\Tabby\Tabby-fork.lnk` was found by Start search
+  but its context menu had nothing but Run as administrator and Open file
+  location, which is what "I can't pin my fork" turned out to be. Builds →
+  Options writes
+  `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Tabby-fork.lnk`; pinning it
+  is still a right-click, and the pin that results is a copy this page then
+  keeps retargeted.
+- **One stable shortcut name, never the build's.** Pinning copies the file, so
+  a name that changed with the active build would strand every pin made from
+  it. `setActive` and `make-slot --activate` both retarget it — but only when
+  it already exists: putting an app in someone's Start menu because they
+  clicked "make active" is not the page's call.
 - **On first run the page adopts whatever the pin already points at**, rather
   than nominating a build and overruling the desktop.
 - **A source build can be pinned because of `--dev`.** A `.lnk` cannot carry

@@ -146,8 +146,11 @@ function stop (code) {
         execFileSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
     } catch { /* already gone */ }
     const after = tabbyCount()
-    if (before !== after) {
-        console.error(`REFUSING TO PASS: Tabby.exe count changed ${before} -> ${after}`)
+    // Only a *drop* is ours to answer for. The count going up is the user
+    // opening a window, and failing the run for that made a long session
+    // unusable — the instance was killed and the test reported a false alarm.
+    if (after < before) {
+        console.error(`REFUSING TO PASS: Tabby.exe count fell ${before} -> ${after}`)
         process.exit(3)
     }
     process.exit(code ?? 0)

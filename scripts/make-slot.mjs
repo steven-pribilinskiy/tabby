@@ -334,6 +334,12 @@ if (activate) {
     const exe = path.join(target, 'Tabby.exe')
     const shortcuts = [
         path.join(os.homedir(), 'Tabby', 'Tabby-fork.lnk'),
+        // The Start menu entry, which is the one Windows will let you pin:
+        // *Pin to Start* and *Pin to taskbar* appear for Start menu apps and
+        // for nothing else. Created from the Builds page; updated here so an
+        // --activate does not leave it aimed at the previous slot.
+        path.join(process.env.APPDATA ?? '', 'Microsoft', 'Windows', 'Start Menu',
+            'Programs', 'Tabby-fork.lnk'),
         path.join(process.env.APPDATA ?? '', 'Microsoft', 'Internet Explorer',
             'Quick Launch', 'User Pinned', 'TaskBar', 'Tabby.lnk'),
     ].filter(p => fs.existsSync(p))
