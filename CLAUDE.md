@@ -504,25 +504,48 @@ The bits that cost real time:
 
 ### Cutting a slot
 
-`node scripts/make-slot.mjs [--activate] [--dry-run] [--skip-build]` builds a
-frozen, self-contained copy into `~\Tabby\builds\` and, with `--activate`,
-points `Tabby-fork.lnk` and the taskbar pin at it.
+There are exactly **two** slots, after the model this machine's Windows Terminal
+fork uses for `wtd` / `wtt` — and they are not two equivalent scratch installs:
 
-- Named **`<version>-<MMDD>-<HHmm>-<sha>`**. The timestamp comes before the hash
-  deliberately: a Start-menu search result truncates the *tail*, so a trailing
-  date was the part you could never read, and the hash alone told you nothing
-  about which slot was newer.
+| Slot | Directory | What it is |
+|---|---|---|
+| **canary** | `~\Tabby\builds\canary` | Disposable. Every build replaces it. The only slot the script will overwrite on its own. |
+| **dev** | `~\Tabby\builds\dev` | Production — the Tabby you work in. Changes exactly one way: canary is promoted into it. |
+
+```bash
+node scripts/make-slot.mjs                 # build and install canary
+node scripts/make-slot.mjs --promote       # copy canary into dev
+node scripts/make-slot.mjs --dry-run --skip-build --seed-from <dir>
+```
+
+- **Two fixed names, not `<version>-<MMDD>-<HHmm>-<sha>` directories.** The old
+  scheme accumulated one per build until somebody noticed the disk; worse, every
+  slot on this machine at the time was stale enough to hang, so what piled up was
+  three copies of a trap. Fixed names also retire the whole business of
+  retargeting shortcuts — a slot's path never changes now, so a pin made once
+  stays correct for ever, and `--activate` is gone with it.
+- **Promotion copies the canary that was built and tried, never a fresh
+  compile.** Otherwise "promote what I verified" would quietly mean "build
+  something new and call it verified". `dev`'s `BUILD-INFO.txt` is canary's,
+  with a `Promoted:` line — so dev can never claim a commit that was not in its
+  binaries.
+- **A slot that is running is never replaced.** The check is on that slot's own
+  path, not "any Tabby" — the point of two slots is that the other one keeps
+  running while you rebuild this one.
+- **Rebuilding a slot keeps its `data\`.** Only application files are replaced,
+  which is what makes settings survive a rebuild and is most of why the old
+  seeding logic could go. A genuinely new slot seeds from the *other* slot —
+  a new canary from dev, a new dev from the canary being promoted — and from
+  `%APPDATA%\tabby` only when there is no other slot at all. Printed as `seed:`
+  (in `--dry-run` too); `--seed-from <dir>` overrides it.
+- **Anything under `~\Tabby\builds\` that is neither is pruned on every run**,
+  unless it is running, in which case it is reported and left. That is what
+  makes "only ever two" structural rather than a habit.
 - `--dir` only — a slot is an unpacked directory, never an installer.
-- **The profile is seeded from the build the taskbar pin launches**, not from
-  `%APPDATA%\tabby`. A slot is portable, so its settings live in its own
-  `data\`, and once you are running slots that is where every change you make
-  goes — seeding from the installed app hands a new slot a profile from
-  whenever you last used the installed app. That is how "switched to the new
-  build and lost all my settings" happens, with the settings in fact still
-  sitting in the slot that was then deleted. The pin is asked first because
-  "newest config wins" is a coin flip while two instances are running, which is
-  the normal state here. The choice is printed (`seed:`, in `--dry-run` too) and
-  `--seed-from <dir>` overrides it.
+- **`cpSync` carries the read-only bit**, so promoting a *frozen* canary lands
+  frozen files in dev and the very next write — `BUILD-INFO.txt` — fails
+  `EPERM`. The attributes are cleared after the copy as well as before it;
+  `freeze()` puts them back.
 - The Builds page now reads every portable build's own `data\config.yaml`, not
   just the running one's, so **Delete says that the settings go with it**.
 - The seeded profile drops `hotkeys.toggle-window` and blacklists `mcp-server`,
@@ -600,9 +623,15 @@ one.
   keeps retargeted.
 - **One stable shortcut name, never the build's.** Pinning copies the file, so
   a name that changed with the active build would strand every pin made from
-  it. `setActive` and `make-slot --activate` both retarget it — but only when
-  it already exists: putting an app in someone's Start menu because they
-  clicked "make active" is not the page's call.
+  it. `setActive` retargets it — but only when it already exists: putting an
+  app in someone's Start menu because they clicked "make active" is not the
+  page's call.
+- **Two slots means two shortcuts, and neither is ever retargeted.**
+  `Tabby-fork-canary.lnk` and `Tabby-fork-dev.lnk` (in `~\Tabby\` and in the
+  Start menu) point at fixed paths, so `make-slot.mjs` writes them once and a
+  pin made from either stays correct across every rebuild. The older
+  `Tabby-fork.lnk` is kept, aimed at dev, because a Start pin made from it is a
+  copy that would otherwise break.
 - **On first run the page adopts whatever the pin already points at**, rather
   than nominating a build and overruling the desktop.
 - **A source build can be pinned because of `--dev`.** A `.lnk` cannot carry

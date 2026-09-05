@@ -1,19 +1,32 @@
 #!/usr/bin/env node
-// Cut an immutable build slot from the current checkout.
+// Cut a build slot from the current checkout.
 //
 // A slot is a frozen, self-contained copy of the app that keeps its own
-// profile, so several of them run side by side and none of them changes under
-// you. That is the point: the checkout moves on, a slot does not.
+// profile, so both of them run side by side and neither changes under you.
+// That is the point: the checkout moves on, a slot does not.
 //
-//   node scripts/make-slot.mjs                 build and install a slot
-//   node scripts/make-slot.mjs --activate      ...and point the shortcuts at it
+// There are exactly two, after the model the Windows Terminal fork uses for
+// `wtd` / `wtt`, and they are not two equivalent scratch installs:
+//
+//   canary   disposable. Every build replaces it. Yours to break, and the
+//            only one this script will ever overwrite on its own.
+//   dev      production — the Tabby you actually work in. It changes exactly
+//            one way: you promote canary into it. Never built into directly.
+//
+//   node scripts/make-slot.mjs                 build and install canary
+//   node scripts/make-slot.mjs --promote       copy canary into dev
 //   node scripts/make-slot.mjs --dry-run       print what would happen
-//   node scripts/make-slot.mjs --skip-build    package what is already in dist/
+//   node scripts/make-slot.mjs --skip-build    install what is already in dist/
 //   node scripts/make-slot.mjs --seed-from D   take the starting profile from D
 //
-// Slots are named `<version>-<MMDD>-<HHmm>-<sha>`: the timestamp comes before
-// the hash because that is the part you can actually read in a Start-menu
-// search result, where the tail of a long name is what gets cut off.
+// Two fixed names, rather than `<version>-<MMDD>-<HHmm>-<sha>` directories that
+// accumulate one per build until the disk notices. It also retires the whole
+// business of retargeting shortcuts: a slot's path never changes now, so a pin
+// made once stays correct for ever, and `--activate` is gone with it.
+//
+// What a slot *is* still gets recorded, in its own BUILD-INFO.txt and in the
+// Builds settings page — the name says which slot, the sidecar says which
+// commit.
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -31,11 +44,17 @@ const argv = process.argv.slice(2)
 const args = new Set(argv)
 const seedFrom = argv.includes('--seed-from') ? argv[argv.indexOf('--seed-from') + 1] : null
 const dryRun = args.has('--dry-run')
-const activate = args.has('--activate')
+const promote = args.has('--promote')
 const skipBuild = args.has('--skip-build')
 
 const SLOTS_ROOT = path.join(os.homedir(), 'Tabby', 'builds')
 const USER_DATA = path.join(os.homedir(), 'AppData', 'Roaming', 'tabby')
+
+/** The only two slot directories that may exist. */
+const SLOTS = {
+    canary: { dir: 'canary', label: 'canary', shortcut: 'Tabby-fork-canary.lnk' },
+    dev: { dir: 'dev', label: 'dev', shortcut: 'Tabby-fork-dev.lnk' },
+}
 
 const git = (cmd, fallback = 'unknown') => {
     try {
@@ -47,7 +66,14 @@ const git = (cmd, fallback = 'unknown') => {
 
 const pad = n => String(n).padStart(2, '0')
 
-function slotName (now, sha) {
+/**
+ * What the directory name used to carry.
+ *
+ * A slot's name is fixed now, so the version, the moment it was cut and the
+ * commit go in BUILD-INFO.txt instead — which is where the Builds page reads
+ * them from anyway, in preference to the executable's version resource.
+ */
+function buildStamp (now, sha) {
     const stamp = `${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`
     return `${version}-${stamp}-${sha}`
 }
@@ -57,13 +83,16 @@ function slotName (now, sha) {
  * which prefers it to the executable's version resource — a slot binary
  * reports 1.0.0, because electron-builder stamps it from app/package.json.
  */
-function buildInfo (slot, sha, head, branch, upstream, now) {
+function buildInfo (role, stamp, sha, head, branch, upstream, now) {
     const commits = git(`log --oneline ${upstream.base}..${head}`, '')
     return [
-        'Tabby fork - immutable build slot',
-        '================================',
+        'Tabby fork - build slot',
+        '=======================',
         '',
-        `Slot:          ${slot}`,
+        `Slot:          ${role}   (${role === 'dev'
+            ? 'production - the Tabby you work in; changes only when canary is promoted'
+            : 'disposable - replaced by every build'})`,
+        `Build:         ${stamp}`,
         `Built:         ${now.toISOString()}`,
         `Repo:          ${repo}   (branch: ${branch})`,
         `Commit:        ${head}`,
@@ -82,14 +111,15 @@ function buildInfo (slot, sha, head, branch, upstream, now) {
         'Runtime layout',
         '--------------',
         'data\\             portable userData (app/lib/portable.ts redirects here)',
-        'data\\config.yaml  seeded from %APPDATA%\\tabby\\config.yaml at build time',
+        'data\\config.yaml  this slot\'s own settings; kept across rebuilds of it',
         'data\\plugins      junction -> %APPDATA%\\tabby\\plugins (shared, live)',
         '',
         'Notes',
         '-----',
         '- App files are read-only; data\\ stays writable.',
-        '- To retire: close ONLY this instance (match on path *\\Tabby\\builds\\*)',
-        '  and delete the slot directory. The Builds settings page does both.',
+        '- There are only ever two slots, canary and dev, so neither the',
+        '  directories nor the shortcuts pointing at them ever go stale.',
+        '- Rebuilding a slot keeps its data\\ - settings survive, binaries do not.',
         '',
     ].join('\n')
 }
@@ -116,85 +146,69 @@ function upstreamBase () {
 }
 
 /**
- * The config directory of the build a shortcut launches.
+ * Where a slot's settings come from, when it does not already have some.
  *
- * A portable build keeps its profile in `data\` beside the binary; anything
- * else reads %APPDATA%\tabby.
+ * Fixed slot names make this the simple question it always should have been.
+ * Rebuilding a slot *keeps its own* `data\`, so the usual answer is "nowhere,
+ * it already has settings" — which is the whole of what the old pin-hunting
+ * was trying to approximate, and got wrong whenever two instances were running.
+ *
+ * A genuinely new slot starts from the other slot's profile — a new canary from
+ * dev, because dev is the Tabby you actually use, and a new dev from the canary
+ * being promoted into it — and from the installed app only when there is no
+ * other slot at all. Printed either way, and `--seed-from` overrides it.
  */
-function configOf (exe) {
-    const portable = path.join(path.dirname(exe), 'data', 'config.yaml')
-    return fs.existsSync(portable) ? portable : path.join(USER_DATA, 'config.yaml')
+function seedSource () {
+    if (seedFrom) {
+        return path.join(seedFrom, 'config.yaml')
+    }
+    const other = path.join(SLOTS_ROOT, promote ? SLOTS.canary.dir : SLOTS.dev.dir,
+        'data', 'config.yaml')
+    return fs.existsSync(other) ? other : path.join(USER_DATA, 'config.yaml')
 }
 
-/** What the taskbar pin and the fork shortcut point at, in that order. */
-function pinnedTargets () {
-    const pinDir = path.join(process.env.APPDATA ?? '', 'Microsoft', 'Internet Explorer',
-        'Quick Launch', 'User Pinned', 'TaskBar')
-    const forkLink = path.join(os.homedir(), 'Tabby', 'Tabby-fork.lnk')
-    const script = [
-        "$ErrorActionPreference = 'SilentlyContinue'",
-        '$shell = New-Object -ComObject WScript.Shell',
-        `$links = @(Get-ChildItem -LiteralPath '${pinDir}' -Filter *.lnk) + @(Get-Item -LiteralPath '${forkLink}')`,
-        'foreach ($f in $links) { $shell.CreateShortcut($f.FullName).TargetPath }',
-    ].join('; ')
+/** Any process currently running from `dir`, so a slot in use is never replaced. */
+function runningIn (dir) {
+    if (process.platform !== 'win32') {
+        return []
+    }
     try {
-        return execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script],
-            { encoding: 'utf-8', windowsHide: true, timeout: 20000 })
-            .split(/\r?\n/).map(x => x.trim())
-            .filter(x => /tabby\.exe$|electron\.exe$/i.test(x) && fs.existsSync(x))
+        const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+            "Get-Process -Name Tabby -ErrorAction SilentlyContinue | ForEach-Object { \"$($_.Id)|$($_.Path)\" }"],
+        { encoding: 'utf-8', windowsHide: true, timeout: 20000 })
+        return out.split(/\r?\n/).map(x => x.trim()).filter(Boolean)
+            .map(line => { const [pid, exe] = line.split('|'); return { pid: Number(pid), exe } })
+            .filter(p => p.exe && p.exe.toLowerCase().startsWith(dir.toLowerCase() + path.sep))
     } catch {
         return []
     }
 }
 
 /**
- * Where the new slot's settings come from.
+ * Delete a slot, junction first.
  *
- * Not `%APPDATA%\tabby` unconditionally: a slot is portable, so its settings
- * live in its own `data\`, and once you are running slots that is where every
- * change you make goes. Seeding from the installed app then hands the new slot
- * a profile from whenever you last used the installed app — which is how
- * "switched to the new build and lost all my settings" happens, with the
- * settings in fact still sitting in the slot that was deleted.
- *
- * So: whatever the taskbar pin launches, which is the Builds page's definition
- * of the build you use. Failing that, the most recently written config among
- * the installed app and every slot — with both instances running, which is
- * common here, that is a coin flip, which is why the pin is asked first.
- * Printed either way, and `--seed-from` overrides it.
+ * `data\plugins` is a junction into %APPDATA%\tabby\plugins, which is shared
+ * and live. Node reports it as a symlink, so `fs.rm` unlinks it rather than
+ * descending into it — but it is removed explicitly first anyway, because the
+ * cost of being wrong about that is everyone's plugins. The read-only bit that
+ * `freeze()` set has to come off first or the delete fails on Windows.
  */
-function seedSource () {
-    if (seedFrom) {
-        return path.join(seedFrom, 'config.yaml')
+function removeSlot (dir) {
+    if (!fs.existsSync(dir)) {
+        return
     }
-    for (const target of pinnedTargets()) {
-        const config = configOf(target)
-        if (fs.existsSync(config)) {
-            return config
-        }
+    const plugins = path.join(dir, 'data', 'plugins')
+    if (fs.existsSync(plugins) && fs.lstatSync(plugins).isSymbolicLink()) {
+        fs.rmdirSync(plugins)
     }
-    const candidates = [path.join(USER_DATA, 'config.yaml')]
-    try {
-        for (const entry of fs.readdirSync(SLOTS_ROOT, { withFileTypes: true })) {
-            if (entry.isDirectory()) {
-                candidates.push(path.join(SLOTS_ROOT, entry.name, 'data', 'config.yaml'))
-            }
-        }
-    } catch {
-        // No slots yet; the installed app is the only candidate.
-    }
-    let best = null
-    for (const candidate of candidates) {
+    if (process.platform === 'win32') {
         try {
-            const at = fs.statSync(candidate).mtimeMs
-            if (!best || at > best.at) {
-                best = { candidate, at }
-            }
+            execFileSync('attrib', ['-R', path.join(dir, '*'), '/S', '/D'], { stdio: 'ignore' })
         } catch {
-            // Not there.
+            // Nothing was read-only.
         }
     }
-    return best?.candidate ?? path.join(USER_DATA, 'config.yaml')
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3 })
 }
 /**
  * The profile a slot starts with: yours, minus the two settings that would
@@ -278,27 +292,46 @@ const head = git('rev-parse HEAD')
 const sha = head.slice(0, 8)
 const branch = git('rev-parse --abbrev-ref HEAD')
 const upstream = upstreamBase()
-const slot = slotName(now, sha)
-const target = path.join(SLOTS_ROOT, slot)
+const stamp = buildStamp(now, sha)
+const slot = promote ? SLOTS.dev : SLOTS.canary
+const target = path.join(SLOTS_ROOT, slot.dir)
+const canary = path.join(SLOTS_ROOT, SLOTS.canary.dir)
 const unpacked = path.join(repo, 'dist', 'win-unpacked')
+// Promotion moves the canary that was already built and tried, not a fresh
+// compile of whatever the tree happens to say now — otherwise "promote what I
+// verified" would silently mean "build something new and call it verified".
+const source = promote ? canary : unpacked
 const seed = seedSource()
+const keepsSettings = fs.existsSync(path.join(target, 'data', 'config.yaml'))
 
-console.log(`slot:   ${slot}`)
+console.log(`slot:   ${slot.label}${promote ? '  (promoting canary)' : ''}`)
+console.log(`build:  ${stamp}`)
 console.log(`from:   ${branch} @ ${sha} (upstream base ${upstream.base})`)
 console.log(`target: ${target}`)
-console.log(`seed:   ${seed}`)
+console.log(`seed:   ${keepsSettings ? `${target}\\data\\config.yaml (kept)` : seed}`)
 
-if (git('status --porcelain', '')) {
+if (!promote && git('status --porcelain', '')) {
     console.log('\nWARNING: the working tree is dirty. The slot will record the current')
     console.log('commit, but the bundle is compiled from the tree — those differ.\n')
 }
 
-if (fs.existsSync(target)) {
-    console.error(`\nA slot already exists at ${target}. Nothing to do.`)
+if (promote && !fs.existsSync(path.join(canary, 'Tabby.exe'))) {
+    console.error(`\nNothing to promote: there is no canary at ${canary}.`)
     process.exit(1)
 }
 
-if (!skipBuild) {
+// Never replace a slot that is open. dev especially: it is where the live
+// sessions are, and swapping its binaries out from under it is how you lose
+// them. The check is on this slot's own path, not "any Tabby" — the whole
+// point of two slots is that the other one keeps running.
+const busy = runningIn(target)
+if (busy.length && !dryRun) {
+    console.error(`\n${slot.label} is running (PID ${busy.map(p => p.pid).join(', ')}).`)
+    console.error('Close that window first — replacing it underneath would take it down with it.')
+    process.exit(1)
+}
+
+if (!promote && !skipBuild) {
     console.log('\nbuilding')
     run('yarn', ['run', 'build'])
     run('node', ['scripts/prepackage-plugins.mjs'])
@@ -306,17 +339,49 @@ if (!skipBuild) {
     run('npx', ['electron-builder', '--win', '--dir'])
 }
 
-if (!dryRun && !fs.existsSync(unpacked)) {
-    console.error(`\nNo build output at ${unpacked}. Run without --skip-build.`)
+if (!dryRun && !fs.existsSync(source)) {
+    console.error(`\nNo build output at ${source}. Run without --skip-build.`)
     process.exit(1)
 }
 
-console.log('\ninstalling the slot')
+console.log(`\ninstalling ${slot.label}`)
 if (!dryRun) {
+    // Application files only: `data\` is this slot's settings and survives
+    // being rebuilt. Replacing them in place also means the slot's path, and
+    // so every shortcut and pin aimed at it, stays valid.
     fs.mkdirSync(target, { recursive: true })
-    fs.cpSync(unpacked, target, { recursive: true })
+    if (process.platform === 'win32') {
+        try {
+            execFileSync('attrib', ['-R', path.join(target, '*'), '/S', '/D'], { stdio: 'ignore' })
+        } catch {
+            // Nothing was frozen yet.
+        }
+    }
+    for (const entry of fs.readdirSync(target)) {
+        if (entry !== 'data') {
+            fs.rmSync(path.join(target, entry), { recursive: true, force: true, maxRetries: 3 })
+        }
+    }
+    for (const entry of fs.readdirSync(source)) {
+        if (entry !== 'data') {
+            fs.cpSync(path.join(source, entry), path.join(target, entry), { recursive: true })
+        }
+    }
+    // Again, after the copy: promoting copies a *frozen* canary, and cpSync
+    // brings the read-only bit with it — so BUILD-INFO.txt would arrive
+    // read-only and the write below would fail EPERM. freeze() puts it back.
+    if (process.platform === 'win32') {
+        try {
+            execFileSync('attrib', ['-R', path.join(target, '*'), '/S', '/D'], { stdio: 'ignore' })
+        } catch {
+            // Nothing was read-only.
+        }
+    }
+
     fs.mkdirSync(path.join(target, 'data'), { recursive: true })
-    seedConfig(path.join(target, 'data', 'config.yaml'), seed)
+    if (!keepsSettings) {
+        seedConfig(path.join(target, 'data', 'config.yaml'), seed)
+    }
     // A junction rather than a copy: plugins stay shared and live, and the
     // Builds page knows not to follow it when sizing or deleting a slot.
     const plugins = path.join(target, 'data', 'plugins')
@@ -324,41 +389,68 @@ if (!dryRun) {
     if (fs.existsSync(shared) && !fs.existsSync(plugins)) {
         execFileSync('cmd', ['/c', 'mklink', '/J', plugins, shared], { stdio: 'ignore' })
     }
-    fs.writeFileSync(path.join(target, 'BUILD-INFO.txt'), buildInfo(slot, sha, head, branch, upstream, now))
+    // Promotion records what canary recorded. The point of promoting is that
+    // dev runs the thing you already tried, so re-deriving this from HEAD
+    // would let dev claim a commit that was never in the binaries.
+    fs.writeFileSync(path.join(target, 'BUILD-INFO.txt'), promote
+        ? fs.readFileSync(path.join(canary, 'BUILD-INFO.txt'), 'utf-8')
+            .replace(/^Slot:.*$/m, 'Slot:          dev   (production - promoted from canary)')
+            + `Promoted:      ${now.toISOString()}\n`
+        : buildInfo(slot.dir, stamp, sha, head, branch, upstream, now))
     freeze(target)
     assertProfileWritable(target)
 }
 
-if (activate) {
-    console.log('\npointing the shortcuts at this slot')
-    const exe = path.join(target, 'Tabby.exe')
-    const shortcuts = [
-        path.join(os.homedir(), 'Tabby', 'Tabby-fork.lnk'),
-        // The Start menu entry, which is the one Windows will let you pin:
-        // *Pin to Start* and *Pin to taskbar* appear for Start menu apps and
-        // for nothing else. Created from the Builds page; updated here so an
-        // --activate does not leave it aimed at the previous slot.
-        path.join(process.env.APPDATA ?? '', 'Microsoft', 'Windows', 'Start Menu',
-            'Programs', 'Tabby-fork.lnk'),
-        path.join(process.env.APPDATA ?? '', 'Microsoft', 'Internet Explorer',
-            'Quick Launch', 'User Pinned', 'TaskBar', 'Tabby.lnk'),
-    ].filter(p => fs.existsSync(p))
-    for (const lnk of shortcuts) {
-        console.log(`  ${lnk}`)
-        if (dryRun) {
+// One shortcut per slot, created once and never retargeted: the paths are
+// fixed, so a pin made from either of these stays correct for ever. That is
+// the whole reason the timestamped directory names went.
+console.log('\nshortcuts')
+const exe = path.join(target, 'Tabby.exe')
+for (const lnk of [
+    path.join(os.homedir(), 'Tabby', slot.shortcut),
+    // The Start menu entry is the one Windows will let you pin: *Pin to Start*
+    // and *Pin to taskbar* appear for Start menu apps and for nothing else.
+    path.join(process.env.APPDATA ?? '', 'Microsoft', 'Windows', 'Start Menu',
+        'Programs', slot.shortcut),
+]) {
+    console.log(`  ${lnk}`)
+    if (dryRun) {
+        continue
+    }
+    fs.mkdirSync(path.dirname(lnk), { recursive: true })
+    const ps = [
+        '$s = New-Object -ComObject WScript.Shell',
+        `$l = $s.CreateShortcut('${lnk.replace(/'/g, '\'\'')}')`,
+        `$l.TargetPath = '${exe.replace(/'/g, '\'\'')}'`,
+        `$l.WorkingDirectory = '${target.replace(/'/g, '\'\'')}'`,
+        `$l.IconLocation = '${exe.replace(/'/g, '\'\'')},0'`,
+        `$l.Description = 'Tabby fork (local) - ${slot.label} slot'`,
+        '$l.Save()',
+    ].join('; ')
+    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { stdio: 'ignore' })
+}
+
+// There are two slots. Anything else under the root is a leftover from the
+// timestamped scheme, and left alone it is exactly the pile-up this replaced.
+const strays = (fs.existsSync(SLOTS_ROOT) ? fs.readdirSync(SLOTS_ROOT, { withFileTypes: true }) : [])
+    .filter(e => e.isDirectory() && ![SLOTS.canary.dir, SLOTS.dev.dir].includes(e.name))
+if (strays.length) {
+    console.log('\npruning slots that are neither canary nor dev')
+    for (const stray of strays) {
+        const dir = path.join(SLOTS_ROOT, stray.name)
+        const open = runningIn(dir)
+        if (open.length) {
+            console.log(`  ${stray.name} — still running (PID ${open.map(p => p.pid).join(', ')}), left alone`)
             continue
         }
-        const ps = [
-            '$s = New-Object -ComObject WScript.Shell',
-            `$l = $s.CreateShortcut('${lnk.replace(/'/g, '\'\'')}')`,
-            `$l.TargetPath = '${exe.replace(/'/g, '\'\'')}'`,
-            `$l.WorkingDirectory = '${target.replace(/'/g, '\'\'')}'`,
-            `$l.IconLocation = '${exe.replace(/'/g, '\'\'')},0'`,
-            `$l.Description = 'Tabby fork (local) - portable slot ${slot}'`,
-            '$l.Save()',
-        ].join('; ')
-        execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { stdio: 'ignore' })
+        console.log(`  ${stray.name} — removed`)
+        if (!dryRun) {
+            removeSlot(dir)
+        }
     }
 }
 
-console.log(`\n${dryRun ? 'would have created' : 'created'} ${slot}`)
+console.log(`\n${dryRun ? 'would have installed' : 'installed'} ${slot.label} (${stamp})`)
+if (!promote) {
+    console.log('promote it with:  node scripts/make-slot.mjs --promote')
+}
