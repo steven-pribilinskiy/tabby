@@ -31,6 +31,20 @@ the new one, and asserts that upstream's `BaseFileHandler.verify` is still the
 bare `fs.access` that comparison assumes. Skips with a message where there is no
 WSL. Nothing is started: the distro share is only read.
 
+## `delimitedLinks.test.js` — the `<uri|label>` pattern, and its ReDoS budget
+
+```bash
+node tabby-links/test/delimitedLinks.test.js
+```
+
+Plain node again. Which spans match, what URI comes out of one, and the premise
+the whole feature rests on: that the construct *strictly encloses* the bare-URI
+match nested inside it, which is what makes "prefer the delimited match" a
+well-defined thing to do with a priority. The pattern runs on a mousemove
+handler against text a remote host printed, so it is also timed on adversarial
+input — and its growth measured, not just its absolute cost, because an
+exponential pattern is cheap at 1000 characters and ruinous at 8000.
+
 ## `*.cdp.js` — the real UI, over CDP
 
 Launch the dev build **hidden**, so nothing takes focus:
@@ -52,7 +66,15 @@ TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/preview.cdp.js      # the fetc
 TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/credentials.cdp.js  # safeStorage, and what reaches config.yaml
 TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/html.cdp.js         # the sandboxed html frame
 CDP_PORT=9241 node tabby-links/test/wslPath.cdp.js                    # WSL paths: service, card, click
+CDP_PORT=9242 node tabby-links/test/delimitedLinks.cdp.js             # <uri|label>, column by column
 ```
+
+`delimitedLinks.cdp.js` also needs the handlers, so launch it the same way as
+`wslPath.cdp.js`. It writes each sample on a fresh row of a real xterm and asks
+the real provider for that row, then looks every column up through the ranges it
+got back — which is the only way to exercise the line window, the string-index →
+buffer-position mapping and the priority arbitration against every `LinkHandler`
+at once.
 
 `wslPath.cdp.js` needs the link handlers, so launch it with
 `--enable links,linkifier`. It fakes a tab's profile rather than opening a WSL

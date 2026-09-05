@@ -265,6 +265,20 @@ The parts that cost real time:
   (alphabetical, so `linkifier` < `links`), and relying on that would have left
   `WebLinksAddon` shadowing us. Returning `[]` when the feature is off falls
   through to it cleanly, which is what makes the setting live with no re-attach.
+- **Slack's `<uri|label>` is one match at a priority above every handler**
+  (`delimitedLinks.ts`), not a change to any handler's regex. The Windows
+  Terminal port this comes from (`c2dd09a42`) describes a bug that *does not
+  exist here*: there `|` is inside the bare-URI character class, so the opener
+  was handed `…/9962|repo#9962`; Tabby's `URLHandler` has no `|` in any of its
+  classes and already stops at the pipe. What was actually missing is that the
+  brackets and the label belonged to no link at all — measured before the fix,
+  columns 0 and 33..43 of the construct resolved to `null`. So the delimited
+  match has to *enclose* the bare one and take its cells, which is what
+  `consider()`'s priority does; it ties with the text-rule tier deliberately, so
+  a rule the user wrote for something in the label still wins. The URI is still
+  shown in full — collapsing it to the label would mean the renderer showing
+  text the buffer does not hold, which selection, copy, search and reflow all
+  depend on.
 - **The card is `position: fixed` but a DOM child of `.xterm-screen`.** It has to
   be a descendant or xterm's `xterm-hover` guard never applies and `mouseleave`
   clears the link the instant the pointer reaches the card; it has to be fixed or

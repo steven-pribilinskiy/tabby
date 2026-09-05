@@ -5,6 +5,7 @@ import { BaseTerminalTabComponent, TerminalDecorator, XTermFrontend } from 'tabb
 
 import { LinkMatchKind, LinkPreview, LinkTooltipAction, LinkTooltipRule } from './api'
 import { CardModel, CardHandlers, LinkHoverCardComponent, emptyModel } from './components/linkHoverCard.component'
+import { DELIMITED_LINK_PRIORITY, findDelimitedLinks } from './delimitedLinks'
 import { BufferRange, getLineWindow, rangeFor } from './linkComputer'
 import { MAX_TEXT_INPUT } from './regexGuard'
 import { IntegrationRuntimeService } from './services/integrationRuntime.service'
@@ -188,20 +189,23 @@ export class LinkTooltipDecorator extends TerminalDecorator {
         const found: HoveredLink[] = []
         const claimed: { start: number, end: number, priority: number }[] = []
 
+        // `length` is how many characters the match covers, which is not always
+        // the length of the link's own text: a `<uri|label>` claims — and
+        // underlines — the whole construct while pointing at the URI inside it.
         const consider = (
             index: number,
-            text: string,
+            length: number,
             priority: number,
             make: (range: BufferRange) => HoveredLink,
         ) => {
-            const end = index + text.length
+            const end = index + length
             // A higher-priority handler already owning these cells wins; that is
             // what `LinkHandler.priority` is for, and the combined regex the
             // linkifier builds could never honour it.
             if (claimed.some(c => index < c.end && end > c.start && c.priority >= priority)) {
                 return
             }
-            const range = rangeFor(state.xterm, window.startLineIndex, index, text.length)
+            const range = rangeFor(state.xterm, window.startLineIndex, index, length)
             if (!range) {
                 return
             }
@@ -216,10 +220,21 @@ export class LinkTooltipDecorator extends TerminalDecorator {
                 continue
             }
             for (const match of search.execAll(window.text.substring(0, MAX_TEXT_INPUT))) {
-                consider(match.index, match[0], 100, range => ({
+                consider(match.index, match[0].length, 100, range => ({
                     kind: 'text', text: match[0], range, handlerIndex: -1, rule,
                 }))
             }
+        }
+
+        // Then `<uri|label>`, before the handlers and above all of them, so the
+        // bare-URI match nested inside loses its cells to this one. Only this
+        // match knows where the URI stops and the label begins, and only it
+        // covers the label — which is the part you actually aim at.
+        for (const link of findDelimitedLinks(window.text)) {
+            const handlerIndex = this.handlerFor(link.uri)
+            consider(link.index, link.text.length, DELIMITED_LINK_PRIORITY, range => ({
+                kind: 'link', text: link.uri, range, handlerIndex, rule: null,
+            }))
         }
 
         // Then each link handler separately, so we know which one matched and
@@ -243,7 +258,7 @@ export class LinkTooltipDecorator extends TerminalDecorator {
                 }
                 const text = match[0]
                 const index = match.index
-                consider(index, text, handler.priority, range => ({
+                consider(index, text.length, handler.priority, range => ({
                     kind: 'link', text, range, handlerIndex: i, rule: null,
                 }))
                 match = regex.exec(window.text)
@@ -263,6 +278,30 @@ export class LinkTooltipDecorator extends TerminalDecorator {
             leave: () => this.onLeave(state),
             dispose: () => { /* nothing per-link to release */ },
         }))
+    }
+
+    /**
+     * The handler a URI would have been given had it been written bare, so a
+     * `<uri|label>` converts, verifies and opens by exactly the same route as
+     * the URI inside it — and `-1`, meaning "just open it", when none claims it.
+     *
+     * Highest priority wins and ties go to registration order, which is the
+     * order of preference `consider` already applies to overlapping matches.
+     */
+    private handlerFor (uri: string): number {
+        const handlers = this.handlers ?? []
+        let best = -1
+        for (let i = 0; i < handlers.length; i++) {
+            if (best >= 0 && handlers[i].priority <= handlers[best].priority) {
+                continue
+            }
+            try {
+                if (handlers[i].fullMatchRegex.test(uri)) {
+                    best = i
+                }
+            } catch { /* a handler whose regex will not compile simply does not apply */ }
+        }
+        return best
     }
 
     /**
