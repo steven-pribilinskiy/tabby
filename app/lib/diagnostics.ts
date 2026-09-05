@@ -202,6 +202,27 @@ function emit (record: Record<string, unknown>): void {
     }, 1000)
 }
 
+/**
+ * Write everything buffered, synchronously.
+ *
+ * The opposite of what the rest of this module does, and only for one case: a
+ * process on its way out. `app.exit()` runs no timers, so the record that
+ * explains why it exited would be the one record guaranteed never to be
+ * written. Blocking the loop is free when there is no next tick.
+ */
+export function flushDiagnostics (): void {
+    const batch = pending
+    pending = []
+    if (!logFile || !batch.length) {
+        return
+    }
+    try {
+        fs.appendFileSync(logFile, `${batch.join('\n')}\n`)
+    } catch {
+        // Nothing useful left to do about it.
+    }
+}
+
 /** Roll the log if it has grown past the cap. Runs once, at install. */
 function rotate (file: string): void {
     fs.stat(file, (err, stat) => {

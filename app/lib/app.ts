@@ -8,10 +8,12 @@ import * as fs from 'fs'
 import { Subject, throttleTime } from 'rxjs'
 
 import { saveConfig } from './config'
+import { recordFailure } from './diagnostics'
 import { Window, WindowOptions } from './window'
 import { pluginManager } from './pluginManager'
 import { PTYManager } from './pty'
 import { initSecrets } from './secrets'
+import { armNoWindowWatchdog, noteWindowReady, watchWindows } from './watchdog'
 
 /* eslint-disable block-scoped-var */
 
@@ -82,6 +84,11 @@ export class Application {
             app.disableHardwareAcceleration()
         }
 
+        // Before anything can create one: the watchdog assumes windows exist
+        // until it is told how to count them, which is the assumption that
+        // makes it do nothing.
+        watchWindows(() => this.windows.filter(x => !x.isDestroyed()).length)
+
         this.userPluginsPath = path.join(
             app.getPath('userData'),
             'plugins',
@@ -117,8 +124,24 @@ export class Application {
     }
 
     async newWindow (options?: WindowOptions): Promise<Window> {
-        const window = new Window(this, this.configStore, options)
+        // eslint-disable-next-line @typescript-eslint/init-declarations
+        let window: Window
+        try {
+            window = new Window(this, this.configStore, options)
+        } catch (err) {
+            // Every other caller of this method — `activate`, the
+            // `app:new-window` IPC, `handleSecondInstance` — calls it without a
+            // catch, so a failure here vanishes and leaves the process running
+            // with nothing to show and the single-instance lock still held.
+            recordFailure('window-create-failed', err)
+            armNoWindowWatchdog('window-create-failed')
+            throw err
+        }
         this.windows.push(window)
+        // The watchdog's disarm signal. Taken from the promise rather than from
+        // the `await` below, because every path that fails to boot is a path
+        // where that `await` never returns.
+        window.ready.then(() => noteWindowReady(), () => { /* never rejects */ })
         if (this.windows.length === 1) {
             window.makeMain()
         }
@@ -289,6 +312,11 @@ export class Application {
     }
 
     async handleSecondInstance (argv: string[], cwd: string): Promise<void> {
+        // Someone launched Tabby and the single-instance lock gave it to us. If
+        // we still have no window once that settles, we are no use to them and
+        // must get out of the way — armed before the await, because a window
+        // that never boots never lets this method return.
+        armNoWindowWatchdog('second-instance')
         if (!this.windows.length) {
             await this.newWindow()
         }

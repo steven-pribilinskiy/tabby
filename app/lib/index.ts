@@ -40,6 +40,7 @@ import { parseArgs } from './cli'
 import { Application } from './app'
 import electronDebug from 'electron-debug'
 import { loadConfig } from './config'
+import { armBootWatchdog } from './watchdog'
 
 const argv = parseArgs(process.argv, process.cwd())
 
@@ -103,8 +104,10 @@ app.on('open-url', async (event, url) => {
     }
 })
 
-app.on('second-instance', async (_event, newArgv, cwd) => {
-    application.handleSecondInstance(newArgv, cwd)
+app.on('second-instance', (_event, newArgv, cwd) => {
+    application.handleSecondInstance(newArgv, cwd).catch(err => {
+        recordFailure('second-instance-failed', err)
+    })
 })
 
 if (!app.requestSingleInstanceLock()) {
@@ -127,6 +130,11 @@ app.on('ready', async () => {
     try {
         mark('app-ready')
         application.init()
+
+        // Before the window, because the window is what it waits for. From here
+        // this process holds the single-instance lock, so if it cannot produce
+        // a working window it has to quit rather than swallow every relaunch.
+        armBootWatchdog()
 
         const window = await application.newWindow({ hidden: argv.hidden })
         mark('window-created')

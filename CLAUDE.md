@@ -725,6 +725,80 @@ there is no console to see it in.
   the asar test, it also asserts the *old* ordering still fails — otherwise a
   green run on a clean machine would prove nothing.
 
+## A useless process must not hold the lock (`app/lib/watchdog.ts`)
+
+The fix above stops one *cause*. The trap it produced was the single-instance
+lock: exactly one process answers for the app, so once that process cannot show
+a window, every later launch is handed to it and silently swallowed — no
+window, no error, no crash, indefinitely. Six hours of it, measured. Nothing
+anywhere checked that the lock holder had ever produced a **working** window.
+
+**`app:ready` is the only line that matters.** It is sent from
+`appRoot.ngOnInit` once `config.ready$` resolves, so it means an Angular root
+exists in that renderer — and everything that can open a tab or spawn a PTY
+lives at or after that point. A process in which *no* window has ever emitted
+it has never run a session and holds nothing to lose. The first one disarms the
+watchdog permanently, for the life of the process. That single rule is what
+makes code that can call `app.exit()` safe to ship.
+
+Two failure shapes, and they need different tests:
+
+- **No window at all** — a creation that threw, or a handoff that produced
+  nothing. `activate`, the `app:new-window` IPC and `handleSecondInstance` all
+  call `newWindow()` with no catch, so the failure vanishes and the process
+  carries on with nothing to show. Ported from the reference fork's
+  `_armNoWindowWatchdog` (`c353d92a1` in the Windows Terminal fork): five
+  seconds, and it returns early whenever a window exists.
+- **A window that never booted** — the one that actually bit, and the half a
+  zero-window check cannot see. `newWindow()` pushes the window onto its list
+  *before* awaiting `window.ready`, so the window exists, the renderer is alive,
+  and from outside nothing looks wrong. Armed once at `app-ready`; sixty
+  seconds; fires only on "no window has ever reached `app:ready`".
+
+- **The boot budget is spent in ticks of a live event loop, not wall clock.** A
+  main process blocked for 19.7s during `main-start` is measured here on every
+  cold launch — it has not given the renderer that time, and burning the budget
+  on it would quit a build that was only slow. Measured margin: a healthy dev
+  build reaches `app:ready` **1.3–3.8s** after the watchdog arms.
+- **`app.exit()`, never `app.quit()`.** `Window`'s own `close` handler calls
+  `preventDefault()` and asks the renderer to confirm; a renderer that never
+  booted never answers, so quitting politely would hang in exactly the place we
+  are escaping.
+- **It writes to both logs before exiting.** `diagnostics.log` batches behind a
+  one-second timer and `app.exit()` runs no timers, so `flushDiagnostics()`
+  writes synchronously — otherwise the one record explaining the exit is the one
+  record guaranteed to be lost. The reason also goes to
+  `main-process-errors.log`, which is where someone asking "why did Tabby quit
+  on me?" actually looks.
+- A `window-ready` record is now written on every successful boot, with how long
+  it took. The boot phase marks are breadcrumbs, which are invisible unless
+  something stalls — so this was previously unanswerable from outside.
+- `TABBY_WATCHDOG=0` disables it; `TABBY_WATCHDOG_BOOT_MS` and
+  `TABBY_WATCHDOG_NO_WINDOW_MS` retune it without a rebuild.
+
+`app/test/watchdog.test.js` launches three real dev builds against throwaway
+profiles. **The poisoned `NODE_PATH` no longer reproduces the fault** — the fix
+above works, and a dev build launched with the installed app's plugin
+directories on `NODE_PATH` now boots in under two seconds. The lever is
+blacklisting `core` instead: the same fault class the doctor covers (a builtin
+the app cannot start without is unavailable), landing in the same state —
+bootstrap fails, safe mode fails behind it, the renderer sits on the splash
+screen at 0% CPU and the window is still there. Like the module-lookup test it
+also runs the fault with `TABBY_WATCHDOG=0` and asserts it *still* hangs,
+because otherwise a fixture that quietly stopped reproducing would turn the
+whole run green.
+
+**Two things it cannot cover, both worth knowing:**
+
+- The zero-window half is not reachable end-to-end on Windows. Induce a window
+  construction that throws (a `window.json` with non-numeric bounds does it, at
+  `window.ts:98`) and `index.ts`'s own handler catches it first —
+  `dialog.showErrorBox` is a **blocking** modal, so the main loop stops there
+  and no timer of ours can run. That is its own hostage shape: alive, holding
+  the lock, zero windows, and on an unattended launch nobody sees the box.
+- A wedged *main* process is beyond all of this, by construction. The watchdog
+  runs on that loop.
+
 ## Why it froze (`diagnostics.log`)
 
 `app/lib/diagnostics.ts` records what blocks an event loop, in both the main
