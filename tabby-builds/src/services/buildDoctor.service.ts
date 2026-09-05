@@ -206,12 +206,16 @@ export class BuildDoctorService {
         const shadowing = present.filter(x => NEVER_USER_PLUGINS.includes(x))
         return shadowing.length ? [{
             id: 'shadowed-builtins',
-            severity: 'warning',
+            // An error, not a warning: this is measured to stop a build
+            // starting. The stale copy wins module resolution, the build loads
+            // a second Angular, and boot ends on the splash screen with the
+            // process idle and nothing further in the log.
+            severity: 'error',
             title: `${shadowing.length} builtin plugin${shadowing.length > 1 ? 's are' : ' is'} shadowed by a user copy`,
             items: shadowing,
             location: modules,
-            detail: 'A second copy on the module path loads a second Angular and breaks dependency injection.',
-            hint: 'They usually arrive as dependencies of a third-party plugin. Removing them is safe.',
+            detail: 'A second copy on the module path loads a second Angular and breaks dependency injection, which can stop the app starting at all.',
+            hint: 'They arrive as dependencies of a third-party plugin that lists a builtin under dependencies rather than peerDependencies. Removing them is safe.',
             fix: 'revealUserPlugins',
         }] : []
     }

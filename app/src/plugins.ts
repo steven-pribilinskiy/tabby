@@ -66,6 +66,22 @@ nodeModule.prototype.require = function (query: string) {
 
 export type ProgressCallback = (current: number, total: number) => void
 
+/**
+ * A builtin, from this build's own copy of it.
+ *
+ * By absolute path rather than by name, so that nothing on the module path —
+ * an inherited NODE_PATH, a stale copy in the user plugin directory — can
+ * answer for `tabby-core` instead. Falls back to the bare name for anything
+ * this build does not ship.
+ */
+function requireBuiltin (name: string): any {
+    try {
+        return nodeRequire(path.join(builtinPluginsPath, name))
+    } catch {
+        return nodeRequire(name)
+    }
+}
+
 export function initModuleLookup (userPluginsPath: string): void {
     global['module'].paths.map((x: string) => nodeModule.globalPaths.push(normalizePath(x)))
 
@@ -83,12 +99,25 @@ export function initModuleLookup (userPluginsPath: string): void {
         process.env.TABBY_PLUGINS.split(':').map(x => paths.push(normalizePath(x)))
     }
 
-    process.env.NODE_PATH += path.delimiter + paths.join(path.delimiter)
+    // This build's own paths first, whatever was inherited after.
+    //
+    // A Tabby exports NODE_PATH to the shells it starts — its builtin-plugins,
+    // its app.asar and the user plugin directory — so a Tabby launched from a
+    // terminal inside another Tabby used to resolve `tabby-core` to the *other*
+    // build's copy. Two Angulars, and a boot that stops dead on the splash
+    // screen with the process idle and nothing in the log. The same happens
+    // with a stale copy of a builtin in the user plugin directory, which
+    // arrives whenever a third-party plugin lists one as a dependency instead
+    // of a peer dependency.
+    //
+    // `+=` on an unset NODE_PATH also produced a literal "undefined" entry.
+    const inherited = (process.env.NODE_PATH ?? '').split(path.delimiter)
+    process.env.NODE_PATH = [...paths, ...inherited].filter(x => x && x !== 'undefined').join(path.delimiter)
     nodeModule._initPaths()
 
     builtinModules.forEach(m => {
         if (!cachedBuiltinModules[m]) {
-            cachedBuiltinModules[m] = nodeRequire(m)
+            cachedBuiltinModules[m] = requireBuiltin(m)
         }
     })
 }

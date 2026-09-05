@@ -616,6 +616,42 @@ one.
   `build/windows/icon.ico` in the checkout — the target there is `electron.exe`,
   whose icon is Electron's.
 
+## A build must load its own plugins
+
+**A Tabby exports `NODE_PATH` to every shell it starts** — its own
+`builtin-plugins`, its `app.asar\node_modules`, and `%APPDATA%\tabby\plugins\node_modules`
+— and `initModuleLookup()` used to *append* its own paths to whatever it
+inherited. So a Tabby started from a terminal inside another Tabby resolved
+`tabby-core` to the **other build's** copy: two Angulars, and a boot that stops
+dead on the splash screen. This is the dev-build gotcha in *Launching* above,
+except it bites a packaged slot exactly as hard, and there it is invisible —
+there is no console to see it in.
+
+- **The symptom is an idle process, not a busy one.** Measured on the real
+  failure: the renderer sat at 94 MB and 0% CPU for five hours, window titled
+  `Tabby`, nothing in the app log after `renderer-start`. `diagnostics.log` had
+  the answer in one line — `require-failed`, `tabby-local`, MODULE_NOT_FOUND —
+  and a sampled 203 ms `readFileSync` of
+  `%APPDATA%\tabby\plugins\node_modules\tabby-core\dist\index.js`, which is a
+  path no healthy build should ever read.
+- **A stale copy of a builtin in the user plugin directory does the same.**
+  Three of them were there, at 1.0.197, pulled in by `tabby-backslash-newline`
+  listing `tabby-core`/`tabby-settings`/`tabby-terminal` under `dependencies`
+  rather than `peerDependencies`. `findPlugins()` already skips such copies for
+  *discovery*; nothing stopped `require` finding them first.
+- **The fix is ordering plus absolute paths**: this build's paths go ahead of
+  anything inherited, and the four builtins are required from
+  `builtinPluginsPath` by absolute path rather than by name. (`+=` on an unset
+  `NODE_PATH` also left a literal `"undefined"` entry, for years.)
+- **Relaunching does not clear it.** The single-instance lock hands the launch
+  to the poisoned process, which opens another window that never boots either —
+  which is what "it's still hanging" turned out to mean. That instance has to
+  be closed first.
+- `app/test/moduleLookup.test.js` resolves the four builtins under each
+  poisoned environment and asserts they all come from the build itself. Like
+  the asar test, it also asserts the *old* ordering still fails — otherwise a
+  green run on a clean machine would prove nothing.
+
 ## Why it froze (`diagnostics.log`)
 
 `app/lib/diagnostics.ts` records what blocks an event loop, in both the main
