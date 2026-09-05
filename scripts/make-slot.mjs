@@ -9,6 +9,7 @@
 //   node scripts/make-slot.mjs --activate      ...and point the shortcuts at it
 //   node scripts/make-slot.mjs --dry-run       print what would happen
 //   node scripts/make-slot.mjs --skip-build    package what is already in dist/
+//   node scripts/make-slot.mjs --seed-from D   take the starting profile from D
 //
 // Slots are named `<version>-<MMDD>-<HHmm>-<sha>`: the timestamp comes before
 // the hash because that is the part you can actually read in a Start-menu
@@ -26,7 +27,9 @@ import { version } from './vars.mjs'
 const __dirname = url.fileURLToPath(new URL('.', import.meta.url))
 const repo = path.resolve(__dirname, '..')
 
-const args = new Set(process.argv.slice(2))
+const argv = process.argv.slice(2)
+const args = new Set(argv)
+const seedFrom = argv.includes('--seed-from') ? argv[argv.indexOf('--seed-from') + 1] : null
 const dryRun = args.has('--dry-run')
 const activate = args.has('--activate')
 const skipBuild = args.has('--skip-build')
@@ -113,12 +116,92 @@ function upstreamBase () {
 }
 
 /**
+ * The config directory of the build a shortcut launches.
+ *
+ * A portable build keeps its profile in `data\` beside the binary; anything
+ * else reads %APPDATA%\tabby.
+ */
+function configOf (exe) {
+    const portable = path.join(path.dirname(exe), 'data', 'config.yaml')
+    return fs.existsSync(portable) ? portable : path.join(USER_DATA, 'config.yaml')
+}
+
+/** What the taskbar pin and the fork shortcut point at, in that order. */
+function pinnedTargets () {
+    const pinDir = path.join(process.env.APPDATA ?? '', 'Microsoft', 'Internet Explorer',
+        'Quick Launch', 'User Pinned', 'TaskBar')
+    const forkLink = path.join(os.homedir(), 'Tabby', 'Tabby-fork.lnk')
+    const script = [
+        "$ErrorActionPreference = 'SilentlyContinue'",
+        '$shell = New-Object -ComObject WScript.Shell',
+        `$links = @(Get-ChildItem -LiteralPath '${pinDir}' -Filter *.lnk) + @(Get-Item -LiteralPath '${forkLink}')`,
+        'foreach ($f in $links) { $shell.CreateShortcut($f.FullName).TargetPath }',
+    ].join('; ')
+    try {
+        return execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script],
+            { encoding: 'utf-8', windowsHide: true, timeout: 20000 })
+            .split(/\r?\n/).map(x => x.trim())
+            .filter(x => /tabby\.exe$|electron\.exe$/i.test(x) && fs.existsSync(x))
+    } catch {
+        return []
+    }
+}
+
+/**
+ * Where the new slot's settings come from.
+ *
+ * Not `%APPDATA%\tabby` unconditionally: a slot is portable, so its settings
+ * live in its own `data\`, and once you are running slots that is where every
+ * change you make goes. Seeding from the installed app then hands the new slot
+ * a profile from whenever you last used the installed app — which is how
+ * "switched to the new build and lost all my settings" happens, with the
+ * settings in fact still sitting in the slot that was deleted.
+ *
+ * So: whatever the taskbar pin launches, which is the Builds page's definition
+ * of the build you use. Failing that, the most recently written config among
+ * the installed app and every slot — with both instances running, which is
+ * common here, that is a coin flip, which is why the pin is asked first.
+ * Printed either way, and `--seed-from` overrides it.
+ */
+function seedSource () {
+    if (seedFrom) {
+        return path.join(seedFrom, 'config.yaml')
+    }
+    for (const target of pinnedTargets()) {
+        const config = configOf(target)
+        if (fs.existsSync(config)) {
+            return config
+        }
+    }
+    const candidates = [path.join(USER_DATA, 'config.yaml')]
+    try {
+        for (const entry of fs.readdirSync(SLOTS_ROOT, { withFileTypes: true })) {
+            if (entry.isDirectory()) {
+                candidates.push(path.join(SLOTS_ROOT, entry.name, 'data', 'config.yaml'))
+            }
+        }
+    } catch {
+        // No slots yet; the installed app is the only candidate.
+    }
+    let best = null
+    for (const candidate of candidates) {
+        try {
+            const at = fs.statSync(candidate).mtimeMs
+            if (!best || at > best.at) {
+                best = { candidate, at }
+            }
+        } catch {
+            // Not there.
+        }
+    }
+    return best?.candidate ?? path.join(USER_DATA, 'config.yaml')
+}
+/**
  * The profile a slot starts with: yours, minus the two settings that would
  * make two instances fight. A slot is meant to run *alongside* your Tabby, not
  * instead of it.
  */
-function seedConfig (target) {
-    const source = path.join(USER_DATA, 'config.yaml')
+function seedConfig (target, source) {
     let config = {}
     try {
         config = yaml.load(fs.readFileSync(source, 'utf-8')) ?? {}
@@ -198,10 +281,12 @@ const upstream = upstreamBase()
 const slot = slotName(now, sha)
 const target = path.join(SLOTS_ROOT, slot)
 const unpacked = path.join(repo, 'dist', 'win-unpacked')
+const seed = seedSource()
 
 console.log(`slot:   ${slot}`)
 console.log(`from:   ${branch} @ ${sha} (upstream base ${upstream.base})`)
 console.log(`target: ${target}`)
+console.log(`seed:   ${seed}`)
 
 if (git('status --porcelain', '')) {
     console.log('\nWARNING: the working tree is dirty. The slot will record the current')
@@ -231,7 +316,7 @@ if (!dryRun) {
     fs.mkdirSync(target, { recursive: true })
     fs.cpSync(unpacked, target, { recursive: true })
     fs.mkdirSync(path.join(target, 'data'), { recursive: true })
-    seedConfig(path.join(target, 'data', 'config.yaml'))
+    seedConfig(path.join(target, 'data', 'config.yaml'), seed)
     // A junction rather than a copy: plugins stay shared and live, and the
     // Builds page knows not to follow it when sizing or deleting a slot.
     const plugins = path.join(target, 'data', 'plugins')

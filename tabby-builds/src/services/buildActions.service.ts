@@ -464,6 +464,14 @@ export class BuildActionsService {
                     ? this.translate.instant('{count} running process(es) will be closed first. Anything running in that window is lost.', { count: running })
                     : null,
                 this.translate.instant('This permanently removes {size} from disk:', { size }),
+                // Worth saying out loud: a portable build keeps its profile
+                // inside itself, so this is also every setting ever changed
+                // in it — and the usual reason to delete one is that a newer
+                // build has taken over, which starts from its own copy.
+                this.keepsOwnSettings(build)
+                    ? this.translate.instant('Its settings are inside it and go too: {path}',
+                        { path: build.configPath })
+                    : null,
                 // A source build has a directory per plugin; listing all twenty
                 // would push the buttons off the dialog.
                 ...targets.slice(0, 6),
@@ -499,6 +507,15 @@ export class BuildActionsService {
             this.notifications.error(`${this.translate.instant('Could not delete')}: ${err}`)
         }
         onChanged()
+    }
+
+    /** True when the build's profile lives inside the directory being removed. */
+    private keepsOwnSettings (build: TabbyBuild): boolean {
+        if (!build.configPath) {
+            return false
+        }
+        const root = path.resolve(build.root) + path.sep
+        return path.resolve(build.configPath).startsWith(root)
     }
 
     /**

@@ -513,6 +513,18 @@ points `Tabby-fork.lnk` and the taskbar pin at it.
   date was the part you could never read, and the hash alone told you nothing
   about which slot was newer.
 - `--dir` only — a slot is an unpacked directory, never an installer.
+- **The profile is seeded from the build the taskbar pin launches**, not from
+  `%APPDATA%\tabby`. A slot is portable, so its settings live in its own
+  `data\`, and once you are running slots that is where every change you make
+  goes — seeding from the installed app hands a new slot a profile from
+  whenever you last used the installed app. That is how "switched to the new
+  build and lost all my settings" happens, with the settings in fact still
+  sitting in the slot that was then deleted. The pin is asked first because
+  "newest config wins" is a coin flip while two instances are running, which is
+  the normal state here. The choice is printed (`seed:`, in `--dry-run` too) and
+  `--seed-from <dir>` overrides it.
+- The Builds page now reads every portable build's own `data\config.yaml`, not
+  just the running one's, so **Delete says that the settings go with it**.
 - The seeded profile drops `hotkeys.toggle-window` and blacklists `mcp-server`,
   because a slot is meant to run *beside* your Tabby: otherwise whichever
   instance starts first takes the global hotkey and the MCP port, and the other

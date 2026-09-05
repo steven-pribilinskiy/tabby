@@ -492,6 +492,19 @@ export class BuildScannerService {
 
     // ── Enrichment ───────────────────────────────────────────────────────
 
+    /**
+     * A portable build's own profile, when it has one.
+     *
+     * Worth knowing before it is deleted: a slot's settings live inside it,
+     * so removing the build removes everything you ever changed in it. Only
+     * the running build can be asked where its config is; every other one
+     * has to be read off the disk.
+     */
+    private async portableConfig (seed: Seed): Promise<string | null> {
+        const config = path.join(seed.root, 'data', 'config.yaml')
+        return await exists(config) ? config : null
+    }
+
     private async materialize (
         id: string,
         seed: Seed,
@@ -512,7 +525,7 @@ export class BuildScannerService {
             arch: await this.readArch(seed),
             git: await this.readBuildGit(seed),
             repoPath: seed.repoPath,
-            configPath: null,
+            configPath: await this.portableConfig(seed),
             uninstaller: seed.uninstaller ?? null,
             upstreamBase: seed.buildInfo?.upstreamBase ?? null,
             detail: seed.detail,
