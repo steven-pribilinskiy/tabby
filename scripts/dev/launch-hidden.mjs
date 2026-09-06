@@ -3,6 +3,13 @@
 //
 //   node scripts/dev/launch-hidden.mjs --frontend xterm [--keep]
 //   node scripts/dev/launch-hidden.mjs --enable builds --port 9239
+//   node scripts/dev/launch-hidden.mjs --profile <dir> --keep-profile
+//
+// `--keep-profile` starts on a profile that is already there, leaving both it
+// and its config alone. It is what lets a test *restart* the app and look at
+// what survived — session resume, restored tabs, anything persisted — which is
+// otherwise unreachable, since every other launch begins by deleting the
+// profile it is about to use.
 //
 // Without --port a free one is chosen and registered, and the tests find it
 // there: a debugging port written down in two places is a port that will one
@@ -46,7 +53,10 @@ function tabbyCount () {
 
 // A profile per (frontend, port): a second dev instance on the same
 // --user-data-dir hits the single-instance lock and exits 0 in silence.
-fs.rmSync(profile, { recursive: true, force: true })
+const keepProfile = process.argv.includes('--keep-profile')
+if (!keepProfile) {
+    fs.rmSync(profile, { recursive: true, force: true })
+}
 fs.mkdirSync(profile, { recursive: true })
 
 // Seeded so a run measures the renderer and not the theme: no blinking cursor,
@@ -64,7 +74,7 @@ const enabled = new Set(arg('enable', '').split(',').map(x => x.trim()).filter(x
 const BLACKLIST = ['links', 'linkifier', 'claude', 'builds', 'mcp-server', 'claude-status']
     .filter(x => !enabled.has(x))
 
-fs.writeFileSync(path.join(profile, 'config.yaml'), [
+const config = [
     'version: 8',
     'terminal:',
     // Plain cmd, not the default CMD (clink): clink injects itself into the
@@ -92,7 +102,12 @@ fs.writeFileSync(path.join(profile, 'config.yaml'), [
     'pluginBlacklist:',
     ...BLACKLIST.map(x => `  - ${x}`),
     '',
-].join('\n'))
+].join('\n')
+// Left alone under --keep-profile: the settings the previous run was started
+// with are the ones the restart has to be measured against.
+if (!keepProfile) {
+    fs.writeFileSync(path.join(profile, 'config.yaml'), config)
+}
 
 const before = tabbyCount()
 if (!await cdp.isPortFree(port)) {

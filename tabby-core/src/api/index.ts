@@ -3,6 +3,7 @@ export { BaseTabComponent, BaseTabProcess, GetRecoveryTokenOptions } from '../co
 export { TabHeaderComponent } from '../components/tabHeader.component'
 export { SplitTabComponent, SplitContainer, SplitDirection, SplitOrientation } from '../components/splitTab.component'
 export { TabRecoveryProvider, RecoveryToken } from './tabRecovery'
+export { TabRecoveryAugmentor } from './tabRecoveryAugmentor'
 export { ToolbarButtonProvider, ToolbarButton } from './toolbarButtonProvider'
 export { SidePanelProvider } from './sidePanelProvider'
 export { TabHoverProvider } from './tabHoverProvider'

@@ -8,6 +8,31 @@ import { getEnvironment, substituteEnv } from './environment'
 
 const windowsDirectoryRegex = /([a-zA-Z]:[^\:\[\]\?\"\<\>\|]+)/mi
 
+/**
+ * The per-pane identity exported into every session as `TABBY_SESSION`, and
+ * listed in `WSLENV` so it crosses into a distro.
+ *
+ * It exists because nothing else can say what a WSL pane is running: the
+ * processes inside a distro have Linux pids, which can never be matched
+ * against the Windows conpty pids Tabby knows about, so a probe running inside
+ * the distro has to be able to tell one pane's processes from another's. Every
+ * descendant of the shell inherits this, which is exactly the join.
+ *
+ * Windows Terminal has `WT_SESSION` for the same reason; Tabby had no
+ * equivalent. It is an opaque token, and nothing but us reads it.
+ */
+export const TABBY_SESSION_ENV = 'TABBY_SESSION'
+
+function newSessionUID (): string {
+    const uuid = (globalThis as any).crypto?.randomUUID?.()
+    if (typeof uuid === 'string') {
+        return uuid
+    }
+    // Not a security boundary — it only has to be unique among the panes of
+    // one machine at one moment.
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 function mergeEnv (...envs) {
     const result = {}
     const keyMap = {}
@@ -29,6 +54,8 @@ export class Session extends BaseSession {
     private pauseAfterExit = false
     private guessedCWD: string|null = null
     private initialCWD: string|null = null
+    /** @see TABBY_SESSION_ENV. Null for a session restored onto an existing PTY. */
+    sessionUID: string|null = null
     private config: ConfigService
     private hostApp: HostAppService
     private bootstrapData: BootstrapData
@@ -73,6 +100,22 @@ export class Session extends BaseSession {
             }
 
             delete env['']
+
+            this.sessionUID = newSessionUID()
+            env = mergeEnv(env, { [TABBY_SESSION_ENV]: this.sessionUID })
+            if (this.hostApp.platform === Platform.Windows) {
+                // WSLENV is the only thing that carries a Windows variable into
+                // a distro — a name not listed there simply does not arrive.
+                // Read case-insensitively: mergeEnv keeps whichever spelling
+                // the inherited environment used.
+                const key = Object.keys(env).find(x => x.toLowerCase() === 'wslenv') ?? 'WSLENV'
+                const existing = String(env[key] ?? '')
+                // A flag suffix (`VAR/p`) makes an entry unequal to the bare
+                // name, so entries are compared on the name alone.
+                if (!existing.split(':').some(x => x.split('/')[0] === TABBY_SESSION_ENV)) {
+                    env[key] = existing ? `${existing}:${TABBY_SESSION_ENV}` : TABBY_SESSION_ENV
+                }
+            }
 
             if (this.hostApp.platform === Platform.macOS && !process.env.LC_ALL) {
                 const locale = process.env.LC_CTYPE ?? 'en_US.UTF-8'
@@ -170,6 +213,21 @@ export class Session extends BaseSession {
 
     async getChildProcesses (): Promise<ChildProcess[]> {
         return this.pty?.getChildProcesses() ?? []
+    }
+
+    /**
+     * The PTY's own process — the pane's shell, and never what it launched.
+     *
+     * Deliberately not `getTruePID()`, which walks down single-child chains: on
+     * a pane running exactly one program that returns the *program*, which is
+     * the wrong root for asking what the shell started.
+     */
+    async getShellPID (): Promise<number|null> {
+        try {
+            return await this.pty?.getPID() ?? null
+        } catch {
+            return null
+        }
     }
 
     async gracefullyKillProcess (): Promise<void> {

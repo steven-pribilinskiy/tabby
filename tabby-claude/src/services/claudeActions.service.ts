@@ -9,6 +9,31 @@ import { StithService } from './stith.service'
 /** Actions offered for a session, by config id. */
 export type ClaudeSessionAction = 'focus' | 'details' | 'newTab' | 'resume' | 'stith'
 
+/** How [[ClaudeActionsService.resumeCommand]] should spell itself. */
+export interface ResumeCommandOptions {
+    /**
+     * Flags the session was launched with, kept as they were found — a session
+     * started `--dangerously-skip-permissions` has to come back with it.
+     * Options only, never positionals: a positional is claude's opening
+     * prompt, and replaying it would re-send the first turn of the very
+     * conversation being reopened.
+     */
+    args?: string[]
+    /**
+     * Quote one argument for the shell that will run this. The default double-
+     * quotes anything with a space, which every shell here understands; a
+     * caller that knows the pane's real shell passes its own.
+     */
+    quote?: (arg: string) => string
+    /**
+     * Which shell this is being typed into. cmd needs `/d` on `cd` to change
+     * drive at all, and Windows PowerShell 5.1 has no `&&` — it is a parse
+     * error there, not a fallback — so its two statements are joined with `;`.
+     * Inferred from the directory when absent.
+     */
+    shell?: 'posix' | 'cmd' | 'powershell'
+}
+
 /**
  * Everything you can do to a session from the panel.
  *
@@ -110,11 +135,20 @@ export class ClaudeActionsService {
      * finds a session by encoding the directory it was started in, so
      * `--resume` from anywhere else fails with "No conversation found".
      */
-    resumeCommand (session: ClaudeSession): string {
+    resumeCommand (session: ClaudeSession, options?: ResumeCommandOptions): string {
         const dir = this.sessions.launchDirectory(session)
-        const windows = /^[a-zA-Z]:[\\/]/.test(dir)
-        const cd = windows ? `cd /d "${dir}"` : `cd "${dir}"`
-        return `${cd} && claude --resume ${session.sessionId}`
+        const shell = options?.shell ?? (/^[a-zA-Z]:[\\/]/.test(dir) ? 'cmd' : 'posix')
+        const quote = options?.quote ?? (arg => /\s/.test(arg) ? `"${arg}"` : arg)
+        // The directory is double-quoted unless the caller brought a quoting
+        // rule of its own. Without one this string is being copied for a human
+        // to paste, and a bare path that later gains a space is a command that
+        // silently runs somewhere else.
+        const quotedDir = options?.quote ? quote(dir) : `"${dir}"`
+        const cd = shell === 'cmd' ? `cd /d ${quotedDir}` : `cd ${quotedDir}`
+        const claude = ['claude', ...options?.args ?? [], '--resume', session.sessionId]
+            .map(quote)
+            .join(' ')
+        return `${cd} ${shell === 'powershell' ? ';' : '&&'} ${claude}`
     }
 
     /**

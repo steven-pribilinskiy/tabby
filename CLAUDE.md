@@ -671,6 +671,170 @@ folder, and a click that did nothing at all.
   if that path happens to exist. Fixing it needs the distro's home, which costs
   a `wsl.exe` spawn on a hover.
 
+## Bringing back what a pane was running (`tabby-resume`)
+
+Upstream restores the furniture: the tabs, the splits, the profiles, and — via
+`xtermFrontend`'s serialized scrollback — a picture of what was on screen. Every
+pane still comes back as a fresh shell, so the agent you had a two-hour
+conversation with, the multiplexer holding six sessions and the dev server are
+all simply not running any more. `tabby-resume` is a builtin that asks each pane
+what it is running, persists the answer with the layout, and types it back into
+the restored pane.
+
+Ported from the Windows Terminal fork (`session-resume`, `a01b20b26`…`b44bdcbd8`);
+`recognize.ts`'s agent table is kept row-for-row with that fork's
+`PaneSessionCapture.h`.
+
+It rests on one new **generic** extension point in `tabby-core`, an add-only
+file: `TabRecoveryAugmentor` — `augment(tab, token, options)` on the way to
+storage and `restore(token, params)` on the way back. Orthogonal to
+`TabRecoveryProvider`, which owns tab *types* and rebuilds them; an augmentor
+runs for every token whatever its type, so a plugin can persist something about
+a tab without owning that tab or editing the provider that does. `tabby-local`'s
+recovery provider is untouched, so a resumed pane still comes back on its own
+profile, in its own directory, inside its own split.
+
+### Identifying a WSL pane: `TABBY_SESSION`
+
+None of a WSL pane's processes are Windows processes, so nothing Tabby knows
+about a pane — least of all its conpty pid — can be matched against them. Windows
+Terminal has `WT_SESSION` for exactly this; Tabby had no equivalent, so
+`tabby-local/src/session.ts` now mints one per pane and, on Windows, appends it
+to `WSLENV`, which is the only thing that carries a variable into a distro.
+Every descendant of the pane's shell inherits it, and that is the whole join.
+
+One `wsl.exe` probe per **distro**, never per pane, greps every `/proc/*/environ`
+at once — the obvious loop reads each and forks four helpers per process, which
+on this machine's 1531-process distro measured 3.5s against ~250ms for the grep.
+Two filters carry the rest of the weight, because a daemon started from a pane
+inherits that pane's identity and keeps it for ever: a controlling terminal is
+required (which drops detached daemons), and anything carrying `TMUX`, `STY`,
+`ZELLIJ` or `HERDR_ENV` is skipped (which drops everything a multiplexer owns).
+
+- **`tpgid` describes the terminal, not the process.** Every process sharing a
+  controlling terminal reports the same value, so "the topmost process's tpgid"
+  is not that process's opinion about its children — it is which group the
+  terminal is currently listening to. The port read it the first way and
+  reported *nothing at all* for a pane with anything between it and its shell.
+  The rule is now "am I the group the terminal is listening to":
+  `pid === pgrp === tpgid`, with a parent inside the pane. A pane at its prompt
+  has only its shell, which is a root, so nothing qualifies; a pipeline
+  qualifies at its leader; an agent qualifies rather than its MCP children,
+  which are in its group and are not its leader; and a nested pty qualifies
+  twice, which is why depth breaks the tie.
+- A profile with no `-d` is probed with no `-d` too, so it lands in the same
+  default distro that pane opened. The port treated that as "not a WSL pane".
+
+A **native** pane has no foreground process group to ask, so depth stands in for
+it: the *shallowest* non-shell descendant of the pane's own shell. Not the
+deepest, which is wrong for exactly the case this exists for — an agent spawns a
+child per MCP server. `session.getShellPID()` is the PTY's own process,
+deliberately not `getTruePID()`, which walks down single-child chains and would
+hand back the program.
+
+### Typed into the pane, never launched as it
+
+Putting the command in the profile's command line would make it the pane's root
+process, so the pane would close the moment the program exited. It is sent as
+input instead, after `resume.inputDelayMs`, and the Enter goes as its own write
+— many TUIs read one write containing text and newline as a bulk paste and never
+submit it.
+
+- **A restored pane does not start its shell until it is first rendered.**
+  `TerminalTabComponent` calls `initializeSession()` from `onFrontendReady`, and
+  only the tab that ends up selected is rendered at startup — so restoring five
+  panes gives you one session and four tabs that are, for now, just titles. The
+  first version gave up after ten seconds and every restored pane but the active
+  one silently lost its resume (measured: two panes, `hasSession: false` on
+  both, hours later). The wait now has no deadline and ends when the tab does.
+- **`savedStateIsLive` is not "the PTY was adopted", though it reads exactly
+  like it.** `terminalTab.component.ts` computes it in `onFrontendReady`, before
+  the session it compares against has a PTY, so `getID()` is still null and a
+  *fresh* pane comes out `null === null` — true. Measured live on every ordinary
+  pane. Asking the same question a second later, when the PTY exists, is exact,
+  and that is what guards against typing a resume at a pane that adopted a
+  still-running PTY.
+- **"Open in new window" is excluded by identity, not by heuristic.** That flow
+  reuses the running PTY, so the pane's agent never stopped; the augmentor
+  collects the leaf tokens of `bootstrapData.initialTab` at construction and
+  declines them. Every other route through `recoverTab` — the persisted layout,
+  reopening a closed tab — ends in a fresh shell, which is what this is for.
+- **A pane that reopens an agent conversation does not repaint its scrollback**:
+  the agent redraws its own history and both would show the same transcript
+  twice. Decided by re-reading the command (`resumesAgentSession`) rather than by
+  a flag stored beside it — a command and a flag describing it can disagree
+  after a hand-edited config, and the flag is the half nothing would notice.
+- **A restored pane is found by sweeping, not by an event.** A pane inside a
+  restored split is created by `SplitTabComponent` straight into its own view
+  and announced to nobody, so the only reliable signal it exists is that it is
+  in the tab tree carrying the input the augmentor put on it. The sweep also has
+  to stop when its count is *not* met: `recoverTab` produces tab parameters and
+  nothing guarantees each becomes a tab, and one that does not held the whole
+  batch to the deadline — measured, a resume typed 20s after the window opened.
+
+### What it costs
+
+Nothing on the save path, by construction. The capture runs on a timer that the
+save pass merely *kicks*; the save reads a cache. Measured live: `augment`
+0.002–0.010 ms per tab, `saveTabs` under 0.01 ms for one tab, worst event-loop
+gap during a full capture 11 ms — against the 250 ms the diagnostics call a
+stall.
+
+There is **no shutdown cost at all**, and that is upstream's doing rather than
+ours: `AppService.closeWindow` sets `tabRecovery.enabled = false` *before* its
+own final `saveTabs`, which then returns immediately. So the last save before a
+quit does nothing, there is no flush-before-quit seam to hang a probe on, and a
+recorded command is at most one `refreshIntervalSec` stale — the same guarantee
+Tabby already gives the scrollback saved beside it.
+
+- **A restored pane carries its command forward.** Without that the feature
+  quietly undoes itself: capture runs on a timer, so the first save after a
+  restore would write the layout back with no command and the next restart would
+  give you a bare shell.
+- The Claude registry watch is held only while a pane is *actually* running
+  claude, not merely while agent resume is switched on — which is the default,
+  and would otherwise have every user polling stith for a join nobody asked for.
+
+### Two things that only a running window found
+
+- **Injecting the service into the augmentor deadlocks the app.** `AppService`
+  builds `TabRecoveryService`, which asks for every augmentor, whose service asks
+  for `AppService`: `NG0200: Circular dependency in DI detected for AppService`,
+  bootstrap fails, safe mode fails identically, and the window sits on the splash
+  screen for ever. The augmentor resolves it from an `Injector` on first use
+  instead — by which time everything exists.
+- **Claude resume is `tabby-claude`'s, extended, not reimplemented.**
+  `ClaudeActionsService.resumeCommand` already knows the one hard part — the
+  *launch* directory a `--resume` has to run from, recovered from a drifted cwd.
+  It now takes the flags the pane was running with, a quoting function, and which
+  shell it is being typed into: `cd /d` is cmd's alone, and Windows PowerShell
+  5.1 has no `&&` at all — it is a parse error there, not a fallback.
+
+### Tests
+
+- `test/logic.test.js` — 96 checks, no app: the agent table, the multiplexer
+  attach forms, quoting per shell, `CommandLineToArgvW` splitting, the selection
+  rules against synthetic trees and probe records.
+- `test/wslProbe.test.js` — 14 checks against the **real Ubuntu distro**. Starts
+  its own panes (a pty via `script`, carrying `TABBY_SESSION` over `WSLENV`),
+  proves a pane is identified, a detached daemon that inherited the same token is
+  not, a real `tmux` is attached to rather than relaunched and what it runs is
+  never reported, and that in a real pane the shell is the root of the set.
+  Cleans up by pid; never touches the distro itself.
+- `test/native.electron.js` — a real Windows process tree under
+  `ELECTRON_RUN_AS_NODE`, asserting the first child wins and showing the deepest
+  descendant really is a different answer on that shape.
+- `test/resume.cdp.js` — 27 checks in a live window: the pane's environment, the
+  capture reaching the token, the exclusion list beating the switches, scrollback
+  suppression, the pane surviving the program it was given, and the timings above.
+- `test/restart.cdp.js` — the whole claim, end to end: launches the dev build,
+  starts a program in a pane, kills the window, relaunches **on the same
+  profile**, and finds the program running again. It needs
+  `scripts/dev/launch-hidden.mjs --keep-profile`, added for it, since every other
+  launch begins by deleting the profile it is about to use. Chromium is asked to
+  flush storage before the kill: it commits localStorage on its own schedule, and
+  without that the second run comes up with no saved layout at all.
+
 ## Builds page (`tabby-builds`)
 
 Settings → **Builds** lists every Tabby build on this machine: the installed

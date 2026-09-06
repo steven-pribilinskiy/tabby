@@ -1,5 +1,6 @@
-import { Injectable, Inject } from '@angular/core'
+import { Injectable, Inject, Optional } from '@angular/core'
 import { TabRecoveryProvider, RecoveryToken } from '../api/tabRecovery'
+import { TabRecoveryAugmentor } from '../api/tabRecoveryAugmentor'
 import { BaseTabComponent, GetRecoveryTokenOptions } from '../components/baseTab.component'
 import { Logger, LogService } from './log.service'
 import { ConfigService } from './config.service'
@@ -13,6 +14,7 @@ export class TabRecoveryService {
 
     private constructor (
         @Inject(TabRecoveryProvider) private tabRecoveryProviders: TabRecoveryProvider<BaseTabComponent>[]|null,
+        @Optional() @Inject(TabRecoveryAugmentor) private augmentors: TabRecoveryAugmentor[]|null,
         private config: ConfigService,
         log: LogService,
     ) {
@@ -43,6 +45,13 @@ export class TabRecoveryService {
                 token.tabColor = tab.color
             }
             token.disableDynamicTitle = tab['disableDynamicTitle']
+            for (const augmentor of this.config.enabledServices(this.augmentors ?? [])) {
+                try {
+                    await augmentor.augment(tab, token, options)
+                } catch (error) {
+                    this.logger.warn('Recovery token augmentor crashed:', augmentor, error)
+                }
+            }
         }
         return token
     }
@@ -61,6 +70,13 @@ export class TabRecoveryService {
                 tab.inputs.customTitle = token.tabCustomTitle || ''
                 tab.inputs.pinned = token.tabPinned ?? false
                 tab.inputs.disableDynamicTitle = token.disableDynamicTitle
+                for (const augmentor of this.config.enabledServices(this.augmentors ?? [])) {
+                    try {
+                        await augmentor.restore(token, tab)
+                    } catch (error) {
+                        this.logger.warn('Recovery token augmentor crashed:', augmentor, error)
+                    }
+                }
                 return tab
             } catch (error) {
                 this.logger.warn('Tab recovery crashed:', token, provider, error)

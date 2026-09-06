@@ -1,0 +1,96 @@
+h3.mb-3(translate) Session resume
+
+p.text-muted(translate) Shortly before the layout is saved, every pane is asked what it is running. On the next start that command is typed into the restored pane — not launched as it, so the pane keeps the shell it was running in when the program ends.
+
+.form-line
+    .header
+        .title(translate) Resume coding agents
+        .description
+            span(translate) Reopen a known agent's conversation, keeping the flags it was launched with. Known:&nbsp;
+            code {{agents}}
+    toggle(
+        [(ngModel)]='config.store.resume.agents',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Resume session multiplexers
+        .description
+            span(translate) Reattach rather than relaunch, and never resume what one of them is running — those belong to its daemon. Known:&nbsp;
+            code {{multiplexers}}
+    toggle(
+        [(ngModel)]='config.store.resume.multiplexers',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Also resume these programs
+        .description(translate) Program names, comma separated. Re-run exactly as they were found — a dev server, a watcher, a REPL
+    input.form-control(
+        type='text',
+        placeholder='vite, jest, cargo',
+        [(ngModel)]='extraPrograms',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Never resume these
+        .description(translate) Beats every switch above, including the built-in tables
+    input.form-control(
+        type='text',
+        [(ngModel)]='excludedPrograms',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) When a session is resumed
+        .description(translate) Confirm lists what would be resumed and waits for an answer before typing anything
+    select.form-control(
+        [(ngModel)]='config.store.resume.notification',
+        (ngModelChange)='saveConfiguration()',
+    )
+        option(value='silent') {{'Say nothing'|translate}}
+        option(value='toast') {{'Show a notification'|translate}}
+        option(value='confirm') {{'Ask first'|translate}}
+
+h4.mt-4.mb-2(translate) Timing
+
+.form-line
+    .header
+        .title(translate) Wait before typing
+        .description(translate) Milliseconds a restored pane's shell gets to draw a prompt first. Input sent earlier is not lost, but a shell still running its rc files echoes it in pieces
+    input.form-control(
+        type='number',
+        min='0',
+        step='100',
+        [(ngModel)]='config.store.resume.inputDelayMs',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Re-examine panes every
+        .description(translate) Seconds between asking each pane what it is running. This decides how stale a recorded command can be — never how long a save or a quit takes
+    input.form-control(
+        type='number',
+        min='5',
+        step='5',
+        [(ngModel)]='config.store.resume.refreshIntervalSec',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) WSL probe timeout
+        .description(translate) Milliseconds a distro gets to answer. A distro that does not answer leaves its panes with whatever was last recorded, rather than clearing them
+    input.form-control(
+        type='number',
+        min='500',
+        step='500',
+        [(ngModel)]='config.store.resume.wslProbeTimeoutMs',
+        (ngModelChange)='saveConfiguration()',
+    )

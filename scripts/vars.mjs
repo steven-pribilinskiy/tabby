@@ -35,6 +35,7 @@ export const builtinPlugins = [
     'tabby-render-timing',
     'tabby-upstream',
     'tabby-claude',
+    'tabby-resume',
     'tabby-builds',
     'tabby-auto-sudo-password',
 ]
