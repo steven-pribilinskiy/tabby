@@ -165,6 +165,12 @@ export interface IntegrationField {
     placeholder?: string
     description?: string
     required?: boolean
+    /**
+     * Settings only. The value a setting starts at, so an integration whose
+     * server is the same for everyone works before anything is configured.
+     * A stored value always wins; clearing the box falls back to this.
+     */
+    default?: string
     /** Credentials only. Defaults to true except for email/user/username. */
     secret?: boolean
     /**

@@ -9,8 +9,9 @@ import { IntegrationCredentialsService } from './integrationCredentials.service'
 
 /**
  * Built-ins. Bundled rather than read from disk so a fresh install has working
- * integrations, and byte-identical to the Windows Terminal fork's copies — that
- * identity is the compatibility test for the manifest format.
+ * integrations, and held to the Windows Terminal fork's copies key by key at a
+ * pinned commit — that identity is the compatibility test for the manifest
+ * format. `test/logic.test.js` names the commit and the divergences allowed.
  */
 const BUILT_IN: IntegrationManifest[] = [
     require('../integrations/github.json'),
@@ -18,6 +19,22 @@ const BUILT_IN: IntegrationManifest[] = [
     require('../integrations/slack.json'),
     require('../integrations/stith.json'),
 ]
+
+/**
+ * The values a manifest's settings start at. A stored value overlays these, so
+ * an integration whose server is the same for everyone — stith's dashboard —
+ * previews before it has ever been opened, instead of reporting itself
+ * unconfigured until someone retypes the placeholder into the box.
+ */
+export function settingDefaults (manifest: IntegrationManifest): Record<string, string> {
+    const out: Record<string, string> = {}
+    for (const field of manifest.settings ?? []) {
+        if (field.key && field.default) {
+            out[field.key] = field.default
+        }
+    }
+    return out
+}
 
 /**
  * An integration is only contacted once every `required` setting has a value and
@@ -155,7 +172,10 @@ export class IntegrationRegistryService {
         const out: Integration[] = []
         for (const { manifest, source } of manifests.values()) {
             const state = stored[manifest.id] ?? {}
-            const settings: Record<string, string> = { ...state.settings ?? {} }
+            const settings: Record<string, string> = {
+                ...settingDefaults(manifest),
+                ...state.settings ?? {},
+            }
             let credentialValues: Record<string, string> = {}
             try {
                 credentialValues = await this.credentials.getAll(manifest.id)
@@ -250,7 +270,14 @@ export class IntegrationRegistryService {
      * typed. Bind inputs to this instead.
      */
     settingValue (id: string, key: string): string {
-        return this.config.store.integrations?.[id]?.settings?.[key] ?? ''
+        const stored = this.config.store.integrations?.[id]?.settings?.[key]
+        if (stored) {
+            return stored
+        }
+        // Nothing stored means the manifest's default, which is also what the
+        // snapshot carries — otherwise the box would sit empty over a setting
+        // that is in fact in use.
+        return (this.byId(id)?.manifest.settings ?? []).find(f => f.key === key)?.default ?? ''
     }
 
     setSetting (id: string, key: string, value: string): void {

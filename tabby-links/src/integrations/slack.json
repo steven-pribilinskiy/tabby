@@ -17,7 +17,7 @@
     "matchers": [
         {
             "kind": "link",
-            "pattern": "^https://(?<workspace>[^/.]+)\\.slack\\.com/archives/(?<channel>[A-Z0-9]+)/p(?<ts_s>\\d{10})(?<ts_us>\\d{6})(?:\\?thread_ts=(?<thread>\\d+\\.\\d+))?"
+            "pattern": "^https://(?<workspace>[a-zA-Z0-9_.-]+)\\.slack\\.com/archives/(?<channel>[A-Z0-9]+)/p(?<tsSeconds>\\d{10})(?<tsMicros>\\d{6})(?:\\?thread_ts=(?<thread>\\d+\\.\\d+))?"
         }
     ],
     "fetch": [
@@ -26,7 +26,7 @@
             "type": "http",
             "method": "GET",
             "unless": "{{thread}}",
-            "url": "https://slack.com/api/conversations.history?channel={{channel}}&latest={{ts_s}}.{{ts_us}}&inclusive=true&limit=1",
+            "url": "https://slack.com/api/conversations.history?channel={{channel}}&latest={{tsSeconds}}.{{tsMicros}}&inclusive=true&limit=1",
             "auth": {
                 "type": "bearer",
                 "value": "{{credentials.token}}"
@@ -38,7 +38,7 @@
             "type": "http",
             "method": "GET",
             "when": "{{thread}}",
-            "url": "https://slack.com/api/conversations.replies?channel={{channel}}&ts={{thread}}&latest={{ts_s}}.{{ts_us}}&inclusive=true&limit=1",
+            "url": "https://slack.com/api/conversations.replies?channel={{channel}}&ts={{thread}}&latest={{tsSeconds}}.{{tsMicros}}&inclusive=true&limit=1",
             "auth": {
                 "type": "bearer",
                 "value": "{{credentials.token}}"

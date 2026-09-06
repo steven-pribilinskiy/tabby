@@ -400,9 +400,64 @@ to "one manifest, many terminals", far more than any cosmetic divergence.
   Development panel and GitHub's richer endpoints are permission-dependent, and a
   403 should cost that section, not the card.
 
-`github.json` joins the built-ins; all four manifests are now byte-identical to
-the reference's committed copies apart from Jira's two additive host keys and
-stith's `html` block, and the test asserts that key by key.
+`github.json` joins the built-ins. All four manifests are held to the
+reference's copies **key by key** — every top-level key, so one nobody thought
+to compare cannot drift — at a **pinned commit**, `c4e76ecd3` ("Give the Slack
+rule capture-group names ICU will accept"), the newest one there that touches a
+manifest.
+
+Pinning is the point. That checkout is somebody's live workspace; its HEAD moved
+four times during one session here, so a test that reads its HEAD reports a
+different number every run, and "parity" stops being checkable. `TERMINAL_REF`
+in `tabby-links/test/logic.test.js` names the commit; re-point it deliberately,
+after `git log <pin>..HEAD -- …/integrations` in that checkout says there is
+anything to re-point for. A pin that has been rebased away *fails* rather than
+skipping — the skip is only for a machine with no reference checkout at all,
+because a parity test that quietly skips is how this drifted in the first place.
+
+The divergences are a table in the test, and an entry is only spent when the key
+really differs, so one resolved upstream fails too and asks for its entry back:
+
+- **Jira's `normalize`/`suffix`** and **stith's `html`** — additive, documented
+  above, and ignorable by a host that has never heard of them.
+- **`github.icon`.** `icon` is the `src` of an `<img>` here and a WinUI
+  `IconPathConverter` string there, where a bare Segoe MDL2 code point is a
+  legal glyph. Their `"\uE82D"` would be a broken image on every GitHub card.
+- **`github.settings` and `github.matchers`** — `candidateOwners` and the
+  `repo#number` matcher, which are one feature whose working half is host code
+  there: a cached probe of each candidate owner, falling back to
+  `gh auth token`. No manifest key expresses that, so a `repo#123` match here
+  would resolve no owner and fetch `repos//<repo>/issues/<n>` — a 404 offered as
+  a suggested rule. Adopt the pair together, once that resolution is ported.
+
+The assertion had in fact been **red for some time** — nine failures, drift on
+three of the four manifests — which is the same shape as everything else in this
+section: a ported feature degrading quietly while the note above it says it is
+fine. What it had missed:
+
+- **Slack's capture groups**, renamed `ts_s`/`ts_us` → `tsSeconds`/`tsMicros`
+  upstream to satisfy ICU's stricter group-name grammar. JS `RegExp` needs no
+  such thing, and the rename is adopted anyway: a manifest is meant to be moved
+  between the two, and a group name is exactly the sort of detail that decides
+  whether it works when it arrives.
+- **GitHub's `commitSha`, `commitParent` and `commitFiles`**, and the field
+  group that lists them.
+- **stith's `tabs`** (a markdown Summary body), its `baseUrl` default, and the
+  suggested text matcher that makes a `stith://` reference in plain output
+  offerable as a rule.
+
+Two of those needed the engine to mean the same thing, not just the JSON:
+
+- **`length` on an array is a pointer extension the reference has** and this did
+  not. `commit:/files/length` is how GitHub's "Files changed" is counted for a
+  commit, and without it that field rendered as nothing at all — the adopted-key,
+  silent-no-op failure in miniature.
+- **A settings field's `default`** is now seeded, stored values overlaying it.
+  It is the whole of the reference's "default configuration" fix: stith previews
+  out of the box instead of calling itself unconfigured until someone retypes the
+  placeholder into the box. The reference *also* falls back to a `placeholder`
+  that starts with a scheme; that is a host heuristic rather than a manifest key,
+  and no built-in manifest can tell the difference, so it is not copied.
 
 Two things worth knowing:
 
@@ -608,7 +663,8 @@ button is a split button whose caret offers eleven ready-made rules, and an
   takes the pattern *from that manifest*, selected by running the manifest's own
   matchers against a canonical example the preset names. A hardcoded twin of the
   Jira key regex would be a second copy that drifts, and these manifests are
-  asserted byte-identical to the Windows Terminal fork's, so they do move. The
+  held key by key to the Windows Terminal fork's, so they do move — Slack's
+  capture groups were renamed there and no preset had to notice. The
   join fails safe: no matcher claims the example, or more than one does, and the
   preset is simply not offered. Only commit hashes, media files and source files
   — which no manifest describes — carry a pattern written here.

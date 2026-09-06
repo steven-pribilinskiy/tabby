@@ -9,6 +9,7 @@
             "key": "baseUrl",
             "label": "Server",
             "placeholder": "https://stith.lvh.me",
+            "default": "https://stith.lvh.me",
             "description": "Where the stith dashboard is served. The same URL works from Windows and WSL, wherever the CLI itself lives.",
             "required": true
         }
@@ -20,12 +21,20 @@
     "matchers": [
         {
             "kind": "link",
-            "pattern": "^stith://(?:session|focus)/(?<id>[A-Za-z0-9-]{4,64})"
+            "pattern": "^stith://(?:session|focus)/(?<id>[A-Za-z0-9-]{4,64})",
+            "link": "{{settings.baseUrl}}/agent/{{id}}"
         },
         {
             "kind": "link",
             "pattern": "^https?://[^/]+/(?:s|agent|sessions|embed/s)/(?<id>[A-Za-z0-9-]{4,64})",
             "hostSetting": "baseUrl"
+        },
+        {
+            "kind": "text",
+            "pattern": "^stith://(?:session|focus)/(?<id>[A-Za-z0-9-]{4,64})",
+            "link": "{{settings.baseUrl}}/agent/{{id}}",
+            "suggested": true,
+            "description": "Stith session links"
         }
     ],
     "fetch": [
@@ -119,6 +128,16 @@
             "path": "/error",
             "kind": "badge",
             "color": "#c0392b",
+            "default": true
+        }
+    ],
+    "tabs": [
+        {
+            "key": "description",
+            "label": "Summary",
+            "kind": "body",
+            "path": "/docket/description",
+            "format": "markdown",
             "default": true
         }
     ],

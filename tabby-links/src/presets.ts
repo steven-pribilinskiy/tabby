@@ -11,9 +11,10 @@ import { IntegrationManifest, IntegrationMatcher, LinkFileTypeGroup, LinkMatchKi
  * - The **pattern**, for anything an integration already knows how to match, is
  *   taken from that integration's manifest rather than copied. A second copy of
  *   the Jira key regex would be a second copy that can drift, and the manifests
- *   here are asserted byte-identical to the Windows Terminal fork's — so they
- *   move, and a hardcoded twin would quietly stop agreeing with the integration
- *   whose preview the rule exists to configure.
+ *   here are held key by key to the Windows Terminal fork's — so they move, and
+ *   a hardcoded twin would quietly stop agreeing with the integration whose
+ *   preview the rule exists to configure. (Slack's capture groups were renamed
+ *   for exactly that reason and no preset noticed.)
  *
  * The join is by **example**: a preset names a string its matcher must match,
  * and the matcher is selected by running the manifest's own patterns against

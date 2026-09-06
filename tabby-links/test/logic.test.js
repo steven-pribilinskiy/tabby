@@ -76,7 +76,7 @@ const rt = loadSource('tabby-links/src/services/integrationRuntime.service.ts')
 const guard = loadSource('tabby-links/src/regexGuard.ts')
 const ft = loadSource('tabby-links/src/fileTypes.ts')
 
-console.log('── JSON pointers (RFC 6901 + the -1 extension) ──')
+console.log('── JSON pointers (RFC 6901 + the -1 and length extensions) ──')
 const slack = { messages: [{ text: 'first', user: 'U1' }, { text: 'last', user: 'U2' }] }
 check('last element', rt.resolvePointer(slack, '/messages/-1/text'), 'last')
 check('first element', rt.resolvePointer(slack, '/messages/0/text'), 'first')
@@ -88,6 +88,14 @@ check('escaped tilde', rt.resolvePointer({ 'a~b': 2 }, '/a~0b'), 2)
 check('tilde-01 decodes left to right', rt.resolvePointer({ 'a~1b': 3 }, '/a~01b'), 3)
 check('whole document', rt.resolvePointer({ x: 1 }, ''), { x: 1 })
 check('null root', rt.resolvePointer(null, '/a'), null)
+// `length` counts an array — github.json's "Files changed" for a commit is
+// `commit:/files/length`, and RFC 6901 has no way to ask.
+check('array length', rt.resolvePointer(slack, '/messages/length'), 2)
+check('empty array counts zero', rt.resolvePointer({ files: [] }, '/files/length'), 0)
+check('length on an object is still a key', rt.resolvePointer({ length: 'x' }, '/length'), 'x')
+// It answers there and then, so anything after it is ignored rather than an
+// error — which is what the other fork's ResolvePointer does too.
+check('length ends the pointer', rt.resolvePointer(slack, '/messages/length/text'), 2)
 
 console.log('── value rendering ──')
 check('string', rt.valueToString('x'), 'x')
@@ -207,6 +215,21 @@ check('empty stays empty', reg.normalizeSettingValue(hostField, '   '), '')
 check('a field with no normalize keys is untouched',
     reg.normalizeSettingValue({ key: 'baseUrl' }, 'https://stith.lvh.me'), 'https://stith.lvh.me')
 
+console.log('── setting defaults ──')
+// A `default` is what makes stith previewable out of the box, which is the
+// whole of the other fork's "default configuration" fix. Without it a manifest
+// that declares one is `required` and unconfigured until somebody retypes the
+// placeholder — the silent degradation, in the direction nobody looks.
+const stithManifest = require(path.join(REPO, 'tabby-links/src/integrations/stith.json'))
+check('stith starts pointed at its dashboard',
+    reg.settingDefaults(stithManifest), { baseUrl: 'https://stith.lvh.me' })
+check('a manifest with no defaults contributes none',
+    reg.settingDefaults(require(path.join(REPO, 'tabby-links/src/integrations/jira.json'))), {})
+check('a defaulted required setting counts as configured',
+    reg.isConfigured(stithManifest, reg.settingDefaults(stithManifest), {}), true)
+check('and without the default it does not',
+    reg.isConfigured(stithManifest, {}, {}), false)
+
 console.log('── secret previews ──')
 const creds = loadSource('tabby-links/src/services/integrationCredentials.service.ts')
 check('nothing stored, nothing shown', creds.maskSecret(''), '')
@@ -229,43 +252,105 @@ const ADDITIVE = new Set(['normalize', 'suffix', 'description', 'placeholder'])
 // working tree. That checkout is somebody's workspace and can be mid-edit; a
 // test that compares against uncommitted changes fails for reasons that have
 // nothing to do with this repo, which is exactly what happened the first time.
+//
+// And from **one pinned commit**, not from whatever that checkout is at now.
+// It is an active workspace: its HEAD moved four times during the session this
+// pin was written in, so a test that follows it reports a different number of
+// failures every run and "parity" stops meaning anything checkable. Re-pointing
+// is a deliberate edit — in that checkout,
+//
+//     git log <pin>..HEAD -- src/cascadia/TerminalSettingsModel/integrations
+//
+// says whether there is anything to re-point *for* — and it comes with whatever
+// reconciling the new state needs, including the table below.
 const TERMINAL_REPO = process.env.TERMINAL_REPO || 'C:/Users/steve/projects/terminal'
 const TERMINAL_MANIFESTS = 'src/cascadia/TerminalSettingsModel/integrations'
-function referenceManifest (id) {
+// "Give the Slack rule capture-group names ICU will accept" — the newest commit
+// there that touches a manifest, so it is the reference state itself and not a
+// HEAD that happens to sit above it.
+const TERMINAL_REF = process.env.TERMINAL_REF || 'c4e76ecd364ae5e7c7831a646108cabfe9c103ee'
+
+function git (args) {
+    return require('child_process').execFileSync('git', args,
+        { cwd: TERMINAL_REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+}
+// Absent checkout and absent commit are different answers. The first is the
+// ordinary case on any machine but this one; the second means the pin has
+// rotted — rebased away, or a clone that does not reach it — and is worth
+// failing over, because a silently skipped parity test is how this drifted.
+let reference = 'ok'
+try {
+    git(['rev-parse', '--git-dir'])
+} catch {
+    reference = 'no-checkout'
+}
+if (reference === 'ok') {
     try {
-        const raw = require('child_process').execFileSync(
-            'git', ['show', `HEAD:${TERMINAL_MANIFESTS}/${id}.json`],
-            { cwd: TERMINAL_REPO, encoding: 'utf8' })
-        return JSON.parse(raw)
-    } catch (err) {
-        return null
+        git(['cat-file', '-e', `${TERMINAL_REF}^{commit}`])
+    } catch {
+        reference = 'no-commit'
     }
 }
+function referenceManifest (id) {
+    return JSON.parse(git(['show', `${TERMINAL_REF}:${TERMINAL_MANIFESTS}/${id}.json`]))
+}
 
-for (const id of ['github', 'jira', 'slack', 'stith']) {
+/**
+ * The only top-level keys allowed to differ, and why. Everything else is
+ * compared — including keys nobody thought to compare when they were written,
+ * which is how `icon` drifted unnoticed.
+ *
+ * An entry is only spent when the key really differs, so a divergence that gets
+ * resolved upstream fails here too, asking for its entry back.
+ */
+const DIVERGENCES = {
+    // `icon` is the `src` of an `<img>` here and a WinUI `IconPathConverter`
+    // string there, where a bare Segoe MDL2 code point is a legal glyph.
+    // Adopting their "\uE82D" would put a broken image on every GitHub card.
+    'github.icon': true,
+    // `candidateOwners` and the `repo#number` matcher are one feature, and the
+    // half that makes it work is host code there: a cached probe of each
+    // candidate owner, falling back to `gh auth token`. No manifest key
+    // expresses that, so a `repo#123` match here would resolve no owner and
+    // fetch `repos//<repo>/issues/<n>` — a 404 offered as a suggested rule.
+    // Adopt the pair together, once that resolution is ported.
+    'github.settings': true,
+    'github.matchers': true,
+    // Ours only: the `html` document. That fork compiles its WebView2 host but
+    // ships it disabled, so the key is inert there rather than wrong.
+    'stith.html': true,
+}
+function documentedDivergences (id) {
+    return Object.keys(DIVERGENCES).filter(k => k.startsWith(`${id}.`)).map(k => k.slice(id.length + 1)).sort()
+}
+
+if (reference === 'no-checkout') {
+    // The compatibility claim is only checkable where both forks are present.
+    console.log(`  (skipped: no reference checkout at ${TERMINAL_REPO})`)
+}
+check('the pinned reference commit is reachable', reference !== 'no-commit', true)
+
+for (const id of reference === 'ok' ? ['github', 'jira', 'slack', 'stith'] : []) {
     const ours = require(path.join(REPO, `tabby-links/src/integrations/${id}.json`))
     const theirs = referenceManifest(id)
-    if (!theirs) {
-        // No reference checkout on this machine — skip rather than fail. The
-        // compatibility claim is only checkable where both forks are present.
-        console.log(`  (skipped ${id}: no reference checkout at ${TERMINAL_REPO})`)
+    const excused = []
+    for (const key of [...new Set([...Object.keys(ours), ...Object.keys(theirs)])].sort()) {
+        if (JSON.stringify(ours[key]) !== JSON.stringify(theirs[key]) && DIVERGENCES[`${id}.${key}`]) {
+            excused.push(key)
+            continue
+        }
+        if (key === 'settings') {
+            // Compared field by field below, where the additive keys are known.
+            continue
+        }
+        check(`${id}: ${key} identical`, ours[key], theirs[key])
+    }
+    check(`${id}: diverges only where documented`, excused, documentedDivergences(id))
+    if (excused.includes('settings')) {
         continue
     }
-    check(`${id}: matchers identical`, ours.matchers, theirs.matchers)
-    check(`${id}: fetch pipeline identical`, ours.fetch, theirs.fetch)
-    check(`${id}: display fields identical`, ours.fields, theirs.fields)
-    check(`${id}: cache lifetime identical`, ours.cacheSeconds, theirs.cacheSeconds)
-    // The keys the reference grew in `3f221ee31`. A manifest written there has
-    // to mean the same thing here, which is the whole promise of the format.
-    check(`${id}: field groups identical`, ours.fieldGroups, theirs.fieldGroups)
-    check(`${id}: tabs identical`, ours.tabs, theirs.tabs)
-    check(`${id}: actions identical`, ours.actions, theirs.actions)
-    check(`${id}: detect patterns identical`, ours.detectPatterns, theirs.detectPatterns)
     check(`${id}: setting keys identical`,
         (ours.settings ?? []).map(f => f.key), (theirs.settings ?? []).map(f => f.key))
-    check(`${id}: credential keys and secrecy identical`,
-        (ours.credentials ?? []).map(f => [f.key, f.secret ?? null]),
-        (theirs.credentials ?? []).map(f => [f.key, f.secret ?? null]))
     // Anything that differs must be one of the additive, ignorable keys.
     const diffs = []
     for (const [i, field] of (ours.settings ?? []).entries()) {

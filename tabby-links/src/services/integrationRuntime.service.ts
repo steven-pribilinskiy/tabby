@@ -57,6 +57,13 @@ export function resolvePointer (root: any, pointer: string): any {
             return null
         }
         if (Array.isArray(current)) {
+            // `length` counts an array, which RFC 6901 has no way to say. It is
+            // the other fork's extension, and `github.json` uses it to report a
+            // commit's file count; without it that field renders as nothing at
+            // all, which is the silent degradation this port exists to avoid.
+            if (segment === 'length') {
+                return current.length
+            }
             let index = Number(segment)
             if (!Number.isInteger(index)) {
                 return null

@@ -284,8 +284,11 @@
                 "message",
                 "commitAuthor",
                 "committed",
+                "commitSha",
+                "commitParent",
                 "commitAdditions",
-                "commitDeletions"
+                "commitDeletions",
+                "commitFiles"
             ]
         }
     ],
@@ -439,6 +442,20 @@
             "default": true
         },
         {
+            "key": "commitSha",
+            "label": "Commit",
+            "path": "commit:/sha",
+            "kind": "text",
+            "default": true
+        },
+        {
+            "key": "commitParent",
+            "label": "Parent",
+            "path": "commit:/parents/0/sha",
+            "kind": "text",
+            "default": true
+        },
+        {
             "key": "commitAdditions",
             "label": "Added",
             "path": "commit:/stats/additions",
@@ -449,6 +466,13 @@
             "key": "commitDeletions",
             "label": "Removed",
             "path": "commit:/stats/deletions",
+            "kind": "text",
+            "default": true
+        },
+        {
+            "key": "commitFiles",
+            "label": "Files changed",
+            "path": "commit:/files/length",
             "kind": "text",
             "default": true
         }

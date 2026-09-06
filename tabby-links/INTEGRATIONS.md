@@ -231,6 +231,7 @@ a short `fields` list is the whole of Slack's. Everything else is optional.
 | `placeholder` | Placeholder text for the input. |
 | `description` | Help text under the field. |
 | `required` | Settings only: the plugin is not contacted until this has a value. Every declared *credential* is required in practice. |
+| `default` | Settings only: the value the setting starts at, so a plugin whose server is the same for everyone works before it is opened. A stored value wins; clearing the box falls back to this. |
 | `secret` | Credentials only. Defaults to `true` unless the key is `email`, `user` or `username`. A non-secret credential is shown back in full; a secret one is masked and only ever previewed. |
 | `normalize` | Settings only. `"host"` reduces whatever was entered to a bare hostname, so a pasted URL works. Applied on blur. |
 | `suffix` | Settings only. Appended when the entered value has no dot — `acme` → `acme.atlassian.net`. |
@@ -420,8 +421,9 @@ must survive unescaped. An unknown name expands to the empty string, which is wh
 ### Paths
 
 `path`, `iconPath` and `colorPath` are [RFC 6901](https://www.rfc-editor.org/rfc/rfc6901) JSON
-pointers, with one extension: **a negative index counts from the end**, so
-`message:/messages/-1/text` is "the last message". An unqualified pointer (`/fields/summary`)
+pointers, with two extensions: **a negative index counts from the end**, so
+`message:/messages/-1/text` is "the last message", and **`length` on an array is its size**, so
+`commit:/files/length` is how many files a commit touched. An unqualified pointer (`/fields/summary`)
 resolves against the most recent step that produced parseable JSON; qualify with a step id when
 there are several.
 
@@ -475,6 +477,15 @@ The manifest format is the same. Two things about the surrounding app are not:
 
 - **The `html` representation runs here and is switched off there.** See
   [Availability](#availability). The contract is identical; only whether it draws differs.
+- **`icon` is a URI here, a glyph there.** That fork passes it to WinUI's `IconPathConverter`,
+  which accepts a Segoe MDL2 character as readily as a path; here it is the `src` of an `<img>`,
+  so its `"\uE82D"` for GitHub would be a broken image. A manifest meant for both should give a
+  URI, or leave the key out.
+- **Owner-less GitHub references (`repo#123`) are not resolved here.** That fork answers "which
+  owner?" in host code — a cached probe of the `candidateOwners` setting, falling back to
+  `gh auth token`. Nothing in the manifest format expresses that, so this fork carries neither
+  the setting nor the `repo#number` matcher it serves: without the probe every such preview
+  would fetch `repos//<repo>/issues/<n>` and card a 404.
 
 `normalize` and `suffix` on a setting field are additive and, per the "unknown keys are ignored"
 rule, harmless to an implementation that has not adopted them yet. The same goes for `html`
