@@ -696,5 +696,204 @@ check('null', hh.parseHtmlHostMessage(null), null)
 check('non-string open is ignored', hh.parseHtmlHostMessage({ open: 123 }), null)
 check('empty open is ignored', hh.parseHtmlHostMessage({ open: '' }), null)
 
+console.log('\n── rule presets ──')
+const presets = loadSource('tabby-links/src/presets.ts')
+const api = loadSource('tabby-links/src/api.ts')
+const rules = loadSource('tabby-links/src/services/linkRules.service.ts')
+
+// Presets take their patterns from the manifests, so build the list the
+// settings page would: the four built-ins, shaped as the registry hands them
+// over.
+const BUILT_IN = ['github', 'jira', 'slack', 'stith'].map(id => {
+    const manifest = require(path.join(REPO, `tabby-links/src/integrations/${id}.json`))
+    return { id: manifest.id, name: manifest.name, manifest }
+})
+const allPresets = presets.rulePresets(BUILT_IN)
+
+// Every catalogue entry must resolve. A manifest-backed preset whose matcher
+// can no longer be found is dropped — silently, and by design — so this list of
+// ids is the assertion that none of them has been.
+check('every preset is offered, in order', allPresets.map(p => p.id), [
+    'jira-issue-keys', 'jira-issue-links',
+    'github-pull-requests', 'github-issues', 'github-commits',
+    'slack-messages',
+    'stith-session-uris', 'stith-web-links',
+    'git-commit-hashes', 'media-files', 'source-code-files',
+])
+check('with no integrations, only the standalone presets remain',
+    presets.rulePresets([]).map(p => p.id),
+    ['git-commit-hashes', 'media-files', 'source-code-files'])
+
+// No second copy of anyone's regex: a manifest-backed preset's pattern has to
+// be a string the manifest itself contains, selected unambiguously.
+const manifestPatterns = new Set(
+    BUILT_IN.flatMap(i => (i.manifest.matchers ?? []).map(m => m.pattern)))
+for (const preset of allPresets) {
+    if (!preset.integration) {
+        continue
+    }
+    check(`${preset.id}: pattern comes from the manifest`,
+        manifestPatterns.has(preset.pattern), true)
+    const integration = BUILT_IN.find(i => i.id === preset.integration)
+    const claiming = (integration.manifest.matchers ?? []).filter(m =>
+        (m.kind ?? 'link') === preset.match && new RegExp(m.pattern).test(preset.example))
+    check(`${preset.id}: exactly one matcher claims its example`, claiming.length, 1)
+}
+
+// Every preset compiles, and passes the guard that would otherwise refuse it at
+// the moment it was applied. Measured, because "looks fine" is exactly how a
+// shipped preset becomes a rule that silently never fires.
+let slowestCheck = 0
+for (const preset of allPresets) {
+    if (!preset.pattern) {
+        continue
+    }
+    let compiles = true
+    try {
+        void new RegExp(preset.pattern, 'g')
+    } catch (err) {
+        compiles = false
+    }
+    check(`${preset.id}: compiles as a JS RegExp`, compiles, true)
+    const started = process.hrtime.bigint()
+    const verdict = guard.checkPattern(preset.pattern)
+    const elapsed = Number(process.hrtime.bigint() - started) / 1e6
+    slowestCheck = Math.max(slowestCheck, elapsed)
+    check(`${preset.id}: passes checkPattern (${elapsed.toFixed(2)}ms)`
+        + (verdict.ok ? '' : ` — ${verdict.error}`), verdict.ok, true)
+}
+console.log(`  slowest checkPattern across all presets: ${slowestCheck.toFixed(2)}ms`)
+
+// And they stay fast on input designed to make a backtracking engine explode —
+// at the length a text rule is actually offered (MAX_TEXT_INPUT) and well past
+// it. The guard's own probe stops at 22 characters on purpose; this is the
+// other half of the claim, and the half a remote host controls.
+const hostileInputs = n => [
+    'a'.repeat(n),
+    'ab'.repeat(Math.ceil(n / 2)),
+    '0'.repeat(n) + 'x',
+    'abcdef '.repeat(Math.ceil(n / 7)),
+    '0123456789abcdef'.repeat(Math.ceil(n / 16)),
+    'A'.repeat(n) + '-' + '9'.repeat(n),
+    'https://' + 'a/'.repeat(Math.ceil(n / 2)),
+    'https://github.com/' + 'a'.repeat(n) + '/pull/',
+    'https://' + 'a'.repeat(n) + '.slack.com/archives/A/p',
+    'stith://session/' + '-'.repeat(n),
+    '/' + 'a/'.repeat(Math.ceil(n / 2)) + 'x.png',
+]
+let slowestMatch = 0
+let slowestWhere = ''
+for (const preset of allPresets) {
+    if (!preset.pattern) {
+        continue
+    }
+    // The flags the rules service compiles a rule with: 'g' for a text rule
+    // scanned across a line, 'i' for a link rule tested against one URI.
+    const flags = preset.match === 'text' ? 'g' : 'i'
+    let worst = 0
+    for (const length of [guard.MAX_TEXT_INPUT, 4096]) {
+        for (const input of hostileInputs(length)) {
+            const regex = new guard.GuardedRegex(preset.pattern, flags, preset.id)
+            const started = process.hrtime.bigint()
+            regex.execAll(input, preset.match === 'text' ? 32 : 1)
+            worst = Math.max(worst, Number(process.hrtime.bigint() - started) / 1e6)
+        }
+    }
+    if (worst > slowestMatch) {
+        slowestMatch = worst
+        slowestWhere = preset.id
+    }
+    check(`${preset.id}: under 5ms on hostile input (worst ${worst.toFixed(2)}ms)`, worst < 5, true)
+}
+console.log(`  slowest match across all presets: ${slowestMatch.toFixed(2)}ms (${slowestWhere})`)
+
+// Each preset matches the thing it claims to. A file-type preset has no
+// pattern; its criteria are the scheme and the extension, which is what
+// `LinkRulesService` checks for it.
+function presetMatches (preset, text) {
+    if (preset.pattern) {
+        return new RegExp(preset.pattern).test(text)
+    }
+    return (!preset.schemes.length || preset.schemes.includes(rules.schemeOf(text)))
+        && ft.matchesFileType(text, preset.fileTypeGroup, preset.extensions)
+}
+for (const preset of allPresets) {
+    check(`${preset.id}: matches its own example`, presetMatches(preset, preset.example), true)
+}
+
+// …and not the obvious near-misses.
+const nearMisses = {
+    'jira-issue-keys': ['cab-8209', 'CAB8209', 'C-1'],
+    'jira-issue-links': ['https://example.atlassian.net/browse/cab-8209', 'https://example.atlassian.net/CAB-8209'],
+    'github-pull-requests': ['https://github.com/Eugeny/tabby/issues/11383', 'https://gitlab.com/a/b/pull/1', 'http://github.com/a/b/pull/1'],
+    'github-issues': ['https://github.com/Eugeny/tabby/pull/11511', 'https://github.com/Eugeny/tabby/issues/'],
+    'github-commits': ['https://github.com/Eugeny/tabby/commit/zzzzzzz', 'https://github.com/Eugeny/tabby/commit/abc'],
+    'slack-messages': ['https://myteam.slack.com/archives/C01234ABCD/p17123456780', 'https://slack.com/archives/C1/p1712345678000100'],
+    'stith-session-uris': ['stith://other/1a2b3c4d', 'stith://session/ab'],
+    'stith-web-links': ['https://stith.lvh.me/nope/1a2b3c4d', 'stith://agent/1a2b3c4d'],
+    'git-commit-hashes': ['1234567', '12345678901234', 'abcdef', 'ghijklm'],
+    'media-files': ['/home/steve/notes.md', 'https://example.test/a.txt'],
+    'source-code-files': ['/home/steve/notes.md', 'https://example.test/a.ts'],
+}
+for (const preset of allPresets) {
+    for (const miss of nearMisses[preset.id] ?? []) {
+        check(`${preset.id}: does not match ${JSON.stringify(miss)}`, presetMatches(preset, miss), false)
+    }
+}
+
+// `git-commit-hashes` is the one pattern written here rather than taken from a
+// manifest, and the letter it insists on is the whole reason it is not noise.
+const hashes = allPresets.find(p => p.id === 'git-commit-hashes')
+const hashRegex = () => new RegExp(hashes.pattern)
+check('a full sha matches', hashRegex().test('c79ccc1f0a7d4e2b1c3f5a6d8e9b0c1d2e3f4a5b'), true)
+check('an abbreviated sha matches', hashRegex().test('c79ccc1'), true)
+check('an epoch timestamp does not', hashRegex().test('1712345678'), false)
+check('a port number does not', hashRegex().test('24200'), false)
+
+// ── applying one ────────────────────────────────────────────────────────────
+
+const fresh = presets.applyPreset(allPresets.find(p => p.id === 'media-files'))
+check('a preset fills in a fresh rule', {
+    name: fresh.name, match: fresh.match, schemes: fresh.schemes,
+    fileTypeGroup: fresh.fileTypeGroup, integration: fresh.integration, enabled: fresh.enabled,
+}, {
+    name: 'Media: Images, audio and video', match: 'link', schemes: ['file', 'http', 'https'],
+    fileTypeGroup: 'media', integration: '', enabled: true,
+})
+
+// Two rules from one preset must not share their arrays, or editing one edits
+// the other — and the config is then written with a YAML anchor pointing at it.
+const twin = presets.applyPreset(allPresets.find(p => p.id === 'media-files'))
+twin.schemes.push('sftp')
+check('the schemes array is copied, not shared', fresh.schemes.length, 3)
+
+// Applied over an existing rule: criteria replaced, overrides reset, and the
+// user's own custom actions left alone.
+const existing = api.newRule()
+existing.name = 'mine'
+existing.match = 'text'
+existing.pattern = 'nonsense'
+existing.showDelay = 1234
+existing.maxWidth = 999
+existing.suppressOpen = true
+existing.actions = [{ name: 'Show', icon: '', type: 'sendInput', value: 'git show %u' }]
+const returned = presets.applyPreset(allPresets.find(p => p.id === 'github-commits'), existing)
+check('applied in place', returned === existing, true)
+check('criteria replaced',
+    [existing.match, existing.integration, existing.pattern.startsWith('^https://github')],
+    ['link', 'github', true])
+check('overrides reset', [existing.showDelay, existing.hideDelay, existing.maxWidth], [null, null, null])
+check('button suppression reset', existing.suppressOpen, false)
+check('custom actions survive', existing.actions.length, 1)
+
+// The Jira text preset and the Integrations page's "Add as rule" describe the
+// same thing, so they must produce the same rule.
+const jiraManifest = require(path.join(REPO, 'tabby-links/src/integrations/jira.json'))
+const suggested = jiraManifest.matchers.find(m => m.kind === 'text' && m.suggested)
+const viaPreset = presets.applyPreset(allPresets.find(p => p.id === 'jira-issue-keys'))
+check('preset and "Add as rule" agree',
+    [viaPreset.name, viaPreset.pattern, viaPreset.integration, viaPreset.match],
+    [`Jira: ${suggested.description}`, suggested.pattern, 'jira', 'text'])
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

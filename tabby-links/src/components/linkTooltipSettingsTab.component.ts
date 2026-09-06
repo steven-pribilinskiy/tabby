@@ -3,12 +3,26 @@ import { ConfigService, HostAppService, Platform, PlatformService } from 'tabby-
 
 import { Integration, LinkTooltipAction, LinkTooltipRule, hydrateRule, newRule } from '../api'
 import { FILE_TYPE_GROUP_LABELS } from '../fileTypes'
+import { RulePreset, applyPreset, rulePresets } from '../presets'
 import { checkPattern } from '../regexGuard'
 import { IntegrationRegistryService } from '../services/integrationRegistry.service'
 
 /** A comma-separated field, cleaned up. Empty entries are dropped, not stored. */
 function splitList (value: string): string[] {
     return value.split(',').map(x => x.trim()).filter(x => x)
+}
+
+/**
+ * A preset's pattern goes through the same guard as a typed one.
+ *
+ * It should never fail — `test/logic.test.js` measures every shipped preset
+ * against `checkPattern` — but the pattern lands in the same box the user edits,
+ * so the box's error line has to describe what is in it either way. A preset
+ * that was quietly refused at compile time would otherwise look like a rule
+ * that simply never fires.
+ */
+function checkPresetPattern (pattern: string): string {
+    return pattern ? checkPattern(pattern).error : ''
 }
 
 @Component({
@@ -22,6 +36,13 @@ export class LinkTooltipSettingsTabComponent {
     currentRule: LinkTooltipRule | null = null
     patternError = ''
     integrations: Integration[] = []
+    /**
+     * A field, rebuilt when the integrations change, rather than a method the
+     * template calls. `*ngFor` tracks by identity, so a method handing back a
+     * fresh array on every change detection pass re-creates every menu item —
+     * the shape that froze the whole window on the Integrations page.
+     */
+    presets: RulePreset[] = []
 
     constructor (
         public config: ConfigService,
@@ -31,6 +52,9 @@ export class LinkTooltipSettingsTabComponent {
     ) {
         registry.integrations$.subscribe(list => {
             this.integrations = list
+            // Presets take their patterns from the manifests, so the menu is
+            // only correct once these have arrived.
+            this.presets = rulePresets(list)
         })
     }
 
@@ -80,7 +104,37 @@ export class LinkTooltipSettingsTabComponent {
         const rule = newRule()
         this.rules.push(rule)
         this.currentRule = rule
+        this.patternError = ''
         this.saveConfiguration()
+    }
+
+    /** Add a rule already filled in, and open it — a preset is a starting point. */
+    addRuleFromPreset (preset: RulePreset): void {
+        const rule = applyPreset(preset)
+        this.rules.push(rule)
+        this.currentRule = rule
+        this.patternError = checkPresetPattern(rule.pattern)
+        this.saveConfiguration()
+    }
+
+    /**
+     * Overwrite the open rule with a preset.
+     *
+     * Only offered from inside the editor, where what is about to be replaced is
+     * on screen — the alternative, a preset picker that silently rewrites a rule
+     * from the list, would be a click with no visible subject.
+     */
+    applyPresetToCurrent (preset: RulePreset): void {
+        if (!this.currentRule) {
+            return
+        }
+        applyPreset(preset, this.currentRule)
+        this.patternError = checkPresetPattern(this.currentRule.pattern)
+        this.saveConfiguration()
+    }
+
+    trackPreset (index: number): number {
+        return index
     }
 
     editRule (rule: LinkTooltipRule): void {

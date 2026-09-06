@@ -483,6 +483,36 @@ Each of these was shipped and wrong; they are listed because the shape recurs.
 - The **punycode/IDN annotation was missing entirely** — a homograph warning the
   reference has and this port had silently dropped.
 
+### Rule presets
+
+Adding a Link Tooltip rule no longer starts with writing a regex: the "Add rule"
+button is a split button whose caret offers eleven ready-made rules, and an
+"Apply preset" dropdown inside the editor rewrites the open one.
+`tabby-links/src/presets.ts` holds them.
+
+- **A preset does not own its pattern.** Anything an integration already matches
+  takes the pattern *from that manifest*, selected by running the manifest's own
+  matchers against a canonical example the preset names. A hardcoded twin of the
+  Jira key regex would be a second copy that drifts, and these manifests are
+  asserted byte-identical to the Windows Terminal fork's, so they do move. The
+  join fails safe: no matcher claims the example, or more than one does, and the
+  preset is simply not offered. Only commit hashes, media files and source files
+  — which no manifest describes — carry a pattern written here.
+- Consequence: presets are **per matcher**, not per subject. The reference merges
+  `pull|issues` into one preset and both stith forms into another; here they are
+  five separate presets, because that is how the manifests are written.
+- **Every preset must pass `regexGuard.checkPattern`** — one that the guard then
+  refuses is a rule that silently never fires. `logic.test.js` times all of them
+  through the guard and against adversarial input at 512 and 4096 characters
+  (measured: worst 0.06 ms to check, 0.05 ms to match).
+- `\b[0-9a-f]{7,40}\b`, the reference's commit-hash pattern, is carried here as
+  `\b(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b`. Without the letter it demands, every
+  seven-digit number in the output is a commit — PIDs, ports, epoch seconds — and
+  a rule that decorates everything gets turned off.
+- Applying a preset resets the delay/width overrides and the button suppression
+  but **keeps custom actions**: they are the one part of a rule that is
+  unambiguously the user's own work.
+
 ### WSL paths: the translation was right and unreachable
 
 The `\\wsl.localhost\<distro>\…` translation was correct in isolation and never

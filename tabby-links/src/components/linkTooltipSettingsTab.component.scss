@@ -41,6 +41,32 @@
     flex: none;
 }
 
+// The preset menus, on the "Add rule" split button and inside the editor.
+//
+// Both are moved to `body` by ng-bootstrap's `container`, so they are styled
+// here rather than in the page: the elements are still created by this
+// template and keep its style-scoping attribute wherever they end up.
+.preset-menu {
+    max-height: 60vh;
+    overflow-y: auto;
+    // Enough for a preset name and its line of prose without wrapping the name.
+    max-width: 460px;
+
+    .dropdown-item {
+        // Bootstrap's item is one line with `white-space: nowrap`; these are two.
+        white-space: normal;
+    }
+}
+
+.preset-name {
+    font-weight: 500;
+}
+
+.preset-description {
+    font-size: 12px;
+    opacity: .6;
+}
+
 .rule-editor {
     margin-top: 16px;
     padding: 4px 14px 14px;

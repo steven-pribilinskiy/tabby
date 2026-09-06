@@ -10,8 +10,12 @@ node tabby-links/test/logic.test.js
 
 Loads the package's own TypeScript sources through a `.ts` require hook and exercises the
 exported helpers directly: JSON pointers, template expansion, host guarding, the regex guard,
-badge colours, secret masking, the `html` document builder, and manifest compatibility with the
-Windows Terminal fork. Needs nothing running.
+badge colours, secret masking, the `html` document builder, the rule presets, and manifest
+compatibility with the Windows Terminal fork. Needs nothing running.
+
+The preset section is the one that *measures*: every shipped preset is timed through
+`checkPattern` and then run against adversarial input at 512 and 4096 characters, because a
+preset the ReDoS guard would refuse is a rule that silently never fires.
 
 Run this first. It is fast, and most regressions show up here.
 
@@ -63,6 +67,7 @@ TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/credentials.cdp.js  # safeStor
 TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/html.cdp.js         # the sandboxed html frame
 TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/wslPath.cdp.js      # WSL paths: service, card, click
 TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/delimitedLinks.cdp.js  # <uri|label>, column by column
+TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/presets.cdp.js      # both preset entry points
 ```
 
 With more than one instance up, say which: `CDP_PORT=9247 node …`.
@@ -109,6 +114,13 @@ that `allow-same-origin` is absent is the single most important assertion in thi
 
 These run against a *reused* profile that may hold real settings someone typed. Write them to
 establish whatever state they assert on and put it back afterwards; do not assume a clean one.
+That extends to the *DOM*: `presets.cdp.js` closes any open dropdown before it opens one, because
+a caret is a toggle and a menu another run left open makes the next click close it.
+
+**`element.click()` does not close an ng-bootstrap dropdown.** It closes on a `mousedown`/`mouseup`
+pair, which a synthetic `click` never produces — so picking a menu item that way fires the handler
+and leaves the menu open, which nothing a person does ever produces. Dispatch all three events.
+`presets.cdp.js` has the helper; it passed and failed on alternate runs until this was found.
 
 ## `htmlPage.electron.js` — a manifest page measuring itself
 

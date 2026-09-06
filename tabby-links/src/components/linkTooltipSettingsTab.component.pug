@@ -103,9 +103,29 @@ h4.mt-4.mb-2(translate) Rules
 
 .text-muted.mb-2(translate) The first enabled rule that matches a link decides how its tooltip behaves. Criteria you leave empty are ignored rather than treated as "no match".
 
-button.btn.btn-secondary.mb-3((click)='addRule()')
-    i.fas.fa-fw.fa-plus.me-2
-    span(translate) Add rule
+//- A split button: the left half adds a blank rule, the caret starts from a
+//- preset. `container='body'` because the settings tab is a scroll container
+//- and a menu this tall is clipped by it otherwise.
+.btn-group.mb-3(ngbDropdown, container='body', placement='bottom-start')
+    button.btn.btn-secondary((click)='addRule()')
+        i.fas.fa-fw.fa-plus.me-2
+        span(translate) Add rule
+    button.btn.btn-secondary.dropdown-toggle-split(
+        ngbDropdownToggle,
+        [title]='"Start from a preset"|translate',
+    )
+    .preset-menu.add-rule-presets(ngbDropdownMenu)
+        h6.dropdown-header(translate) Start from a preset
+        //- `ngbDropdownItem` is what closes the menu on a click and makes the
+        //- list navigable from the keyboard; a bare `.dropdown-item` looks the
+        //- same and leaves the menu open behind the rule it just added.
+        button.dropdown-item(
+            ngbDropdownItem,
+            *ngFor='let preset of presets; trackBy: trackPreset',
+            (click)='addRuleFromPreset(preset)',
+        )
+            .preset-name {{preset.name}}
+            .preset-description {{preset.description}}
 
 .rule-list
     .rule-row(*ngFor='let rule of rules; let i = index; trackBy: trackRule', [class.editing]='currentRule === rule')
@@ -135,6 +155,23 @@ button.btn.btn-secondary.mb-3((click)='addRule()')
         h5.mb-0(translate) Edit rule
         button.btn.btn-sm.btn-link.ms-auto((click)='currentRule = null')
             i.fas.fa-fw.fa-times
+
+    .form-line
+        .header
+            .title(translate) Preset
+            .description(translate) Fill in the criteria below from a ready-made rule. Your custom actions are kept; the overrides are reset
+        .dropdown(ngbDropdown, container='body', placement='bottom-end')
+            button.btn.btn-secondary(ngbDropdownToggle)
+                i.fas.fa-fw.fa-wand-magic-sparkles.me-2
+                span(translate) Apply preset
+            .preset-menu.apply-preset(ngbDropdownMenu)
+                button.dropdown-item(
+                    ngbDropdownItem,
+                    *ngFor='let preset of presets; trackBy: trackPreset',
+                    (click)='applyPresetToCurrent(preset)',
+                )
+                    .preset-name {{preset.name}}
+                    .preset-description {{preset.description}}
 
     .form-line
         .header
