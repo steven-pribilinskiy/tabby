@@ -1271,7 +1271,9 @@ it has never run a session and holds nothing to lose. The first one disarms the
 watchdog permanently, for the life of the process. That single rule is what
 makes code that can call `app.exit()` safe to ship.
 
-Two failure shapes, and they need different tests:
+Two failure shapes here, and they need different tests. A third — a process
+sitting inside a blocking error box — is what made both of these unreachable,
+and it is closed in `app/lib/fatal.ts` below.
 
 - **No window at all** — a creation that threw, or a handoff that produced
   nothing. `activate`, the `app:new-window` IPC and `handleSecondInstance` all
@@ -1318,16 +1320,74 @@ also runs the fault with `TABBY_WATCHDOG=0` and asserts it *still* hangs,
 because otherwise a fixture that quietly stopped reproducing would turn the
 whole run green.
 
-**Two things it cannot cover, both worth knowing:**
+**The zero-window half is now covered end to end** by
+`app/test/startupFailure.test.js` — a real window-construction throw, quit by
+`armNoWindowWatchdog` 4s later, with the reason in the log. It could not be
+reached before because the modal below caught the throw first and stopped the
+loop the timer lives on. What is still beyond all of this, by construction, is
+a wedged *main* process: the watchdog runs on that loop.
 
-- The zero-window half is not reachable end-to-end on Windows. Induce a window
-  construction that throws (a `window.json` with non-numeric bounds does it, at
-  `window.ts:98`) and `index.ts`'s own handler catches it first —
-  `dialog.showErrorBox` is a **blocking** modal, so the main loop stops there
-  and no timer of ours can run. That is its own hostage shape: alive, holding
-  the lock, zero windows, and on an unattended launch nobody sees the box.
-- A wedged *main* process is beyond all of this, by construction. The watchdog
-  runs on that loop.
+### A startup error is the third hostage shape (`app/lib/fatal.ts`)
+
+`dialog.showErrorBox` is **modal and synchronous** — the main loop stops inside
+it until someone clicks OK. Measured: a process showing one ran **not a single
+timer callback in fourteen seconds**. So a startup error left a process alive,
+with no window, holding the lock, unable to run the watchdog that exists for
+exactly that; and on an unattended launch nobody ever saw the box. Measured
+before and after, on a window construction that throws:
+
+| | before | after |
+|---|---|---|
+| the failed launch | still there at 19s, nothing in `diagnostics.log` | exits itself in **5.3s** (a 4s no-window budget), exit 1 |
+| the launch after it | handed to it, **exit 0 after 1.3s**, no window | its own process, `app:ready` in 1.7s |
+| a config that will not parse | modal, forever, invisible | exits in **1.2s**, record flushed |
+
+Four rules, in this order:
+
+1. **Record before anything else.** `recordFailure` + `logMainError`, then
+   `flushDiagnostics()` — `app.exit()` runs no timers, so the batched record
+   explaining the exit is otherwise the one guaranteed to be lost. A box on a
+   screen nobody is looking at is not a record of anything.
+2. **Release the single-instance lock before saying a word.** The hostage
+   property is then closed by one call rather than by everything after it going
+   right.
+3. **Never block the loop.** `dialog.showMessageBox` runs its dialog on its own
+   thread and answers with a promise. Verified both ways: under the async box a
+   500ms interval kept ticking and an 8s timer fired; under `showErrorBox`
+   nothing ran at all.
+4. **Don't decide the exit here.** Whether there is anything worth keeping is
+   the watchdog's question and it already answers it carefully, so quitting is
+   handed back to `armNoWindowWatchdog` via `hasSomethingToLose()`. That also
+   means a failure at the *tail* of startup — `focus()` on a window the user
+   closed while it was booting — no longer kills a window that had already
+   reached `app:ready`.
+
+- **`--hidden` is the only certain "nobody is watching".** Nothing on Windows
+  separates a double-click from a startup item, so the box is shown by default
+  and skipped only where the answer is known: a launch that asked for no window
+  at all. Nobody loses the error that way — a hidden Tabby that failed to start
+  is one the user launches again the ordinary way, and *that* launch is not
+  hidden, with both logs already written. `TABBY_FATAL_DIALOG_MS` (2 min) bounds
+  the cost of guessing wrong; `TABBY_FATAL_DIALOG=0` skips it outright.
+- **Before `app.ready` the blocking box is still the only one available**, so a
+  config that will not parse gets `showErrorBox` — tolerable there and nowhere
+  else, because `requestSingleInstanceLock()` has not been called yet, so that
+  process is holding nothing. Nothing is armed that early either (there is no
+  `Application` to count windows), so that path exits on its own.
+- **`report()`'s detail must not carry a `kind` field.** It is spread over the
+  record after its own kind, so `report('startup-failed', { kind })` silently
+  files the record under the *other* name. Cost a round trip; the field is
+  `failure` now.
+- **The documented lever no longer throws.** A `window.json` with non-numeric
+  bounds is cascaded past by `usable()` in `windowGeometry.ts` since
+  `0036abab`. The test uses a *directory* named `window.json`: `conf` reads it
+  with `readFileSync`, and EISDIR is neither ENOENT nor a SyntaxError, so it
+  rethrows — from inside the `Window` constructor, which is the same place and
+  the same shape.
+- **The attended checks are opt-in** (`--attended`), because they put a real
+  dialog on the screen. They read the box's own title from outside
+  (`MainWindowTitle`) and then let it hit the cap: a timer firing while the box
+  is up is the proof that it is no longer blocking.
 
 ## Where each window was
 

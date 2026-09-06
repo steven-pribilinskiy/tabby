@@ -38,6 +38,11 @@ import { logMainError } from './errors'
  * lose. The first `app:ready` disarms the lot, permanently, for the life of the
  * process.
  *
+ * There is a third way to hold the lock uselessly, and it is the one that made
+ * all of the above unreachable: sitting inside a modal error box, which stops
+ * the loop these timers live on. That is closed in `./fatal`, which hands the
+ * quitting back here rather than deciding it itself.
+ *
  * `TABBY_WATCHDOG=0` turns it off entirely; `TABBY_WATCHDOG_BOOT_MS` and
  * `TABBY_WATCHDOG_NO_WINDOW_MS` retune it without a rebuild.
  */
@@ -80,14 +85,37 @@ let anyWindowReady = false
 /** Set by `Application`. Until it is, the answer is "yes, there are windows",
  *  which is the answer that makes the watchdog do nothing. */
 let countWindows: () => number = () => 1
+/** Whether that probe is the real one yet. Before `Application` is constructed
+ *  no window can exist, and the fallback above deliberately says otherwise. */
+let counting = false
 let noWindowTimer: ReturnType<typeof setTimeout> | null = null
 let bootTimer: ReturnType<typeof setInterval> | null = null
+/** An exit is decided: this process is on its way out, or something else has
+ *  taken responsibility for ending it. Nothing re-arms afterwards. */
 let quitting = false
 const startedAt = Date.now()
 
 /** Tell the watchdog how to count live windows. Called once, from `Application`. */
 export function watchWindows (probe: () => number): void {
     countWindows = probe
+    counting = true
+}
+
+/**
+ * Is there anything in this process worth keeping alive?
+ *
+ * The watchdogs' own question, exported so that anything else deciding whether
+ * to quit asks it here instead of inventing a second answer. A window that has
+ * reached `app:ready` may be holding live sessions; one that exists but has not
+ * is still a boot in progress, and `armBootWatchdog` is already timing it.
+ */
+export function hasSomethingToLose (): boolean {
+    return anyWindowReady || counting && countWindows() > 0
+}
+
+/** Is a timer running that will end this process if no window turns up? */
+export function watchdogArmed (): boolean {
+    return !!noWindowTimer || !!bootTimer
 }
 
 function disarm (): void {
@@ -99,6 +127,23 @@ function disarm (): void {
         clearInterval(bootTimer)
         bootTimer = null
     }
+}
+
+/**
+ * Something else has taken responsibility for ending this process.
+ *
+ * Used while a startup error is being shown to someone: the box has to outlive
+ * the few seconds of grace below, and `./fatal` has already scheduled the exit
+ * behind it. Nothing re-arms afterwards, so this cannot leave a timer to fire
+ * out from under a dialog somebody is still reading.
+ */
+export function standDown (reason: string): void {
+    if (quitting) {
+        return
+    }
+    quitting = true
+    disarm()
+    note('watchdog-stand-down', { reason })
 }
 
 /**

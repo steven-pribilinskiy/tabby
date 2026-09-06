@@ -1,8 +1,8 @@
 // Registers main-process error logging - must be first so it catches import-time errors
-import { logMainError } from './errors'
+import './errors'
 import { installDiagnostics, mark, recordFailure } from './diagnostics'
 
-import { app, ipcMain, Menu, dialog } from 'electron'
+import { app, ipcMain, Menu } from 'electron'
 
 // Dev mode has only ever been expressible as an environment variable, and a
 // Windows shortcut cannot carry one — so a build run from source could not be
@@ -40,6 +40,7 @@ import { parseArgs } from './cli'
 import { Application } from './app'
 import electronDebug from 'electron-debug'
 import { loadConfig } from './config'
+import { fatalStartupError } from './fatal'
 import { armBootWatchdog } from './watchdog'
 
 const argv = parseArgs(process.argv, process.cwd())
@@ -50,8 +51,9 @@ let configStore: any
 try {
     configStore = loadConfig()
 } catch (err) {
-    dialog.showErrorBox('Could not read config', err.message)
-    app.exit(1)
+    // Never returns: this runs before `app.ready`, where nothing is armed that
+    // could end the process afterwards, so it exits on its own.
+    fatalStartupError('config-load-failed', 'Could not read config', err)
 }
 
 process.mainModule = module
@@ -143,9 +145,10 @@ app.on('ready', async () => {
         window.passCliArguments(process.argv, process.cwd(), false)
         window.focus()
     } catch (err) {
-        recordFailure('window-open-failed', err)
-        logMainError('Failed to open window', err)
-        dialog.showErrorBox('Tabby failed to start', String(err?.stack ?? err))
-        app.exit(1)
+        // Records it, releases the single-instance lock, shows it to anyone who
+        // is there without blocking the loop, and leaves the quitting to the
+        // watchdog armed above. The blocking box that used to stand here is
+        // what stopped that watchdog from ever firing.
+        fatalStartupError('window-open-failed', 'Tabby failed to start', err)
     }
 })
