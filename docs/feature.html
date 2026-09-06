@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Feature — steven-pribilinskiy/tabby</title>
+<meta name="description" content="What this feature does, why it exists, what it costs, and what it does not claim." />
+<link rel="stylesheet" href="site.css" />
+<script src="theme.js"></script>
+<style>
+  html, body { height: 100%; }
+  body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  .topbar {
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 0.85rem;
+    padding: 0.7rem 1.25rem;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar .back {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--border); border-radius: 5px;
+    background: var(--control); color: var(--text); font-size: 0.85rem;
+  }
+  .topbar .back:hover { background: var(--control-hover); text-decoration: none; }
+  .topbar .spacer { flex: 1 1 auto; }
+
+  main { flex: 1 1 auto; overflow-y: auto; }
+  .wrap { max-width: 54rem; margin: 0 auto; padding: 2rem 1.25rem 6rem; }
+
+  h1 { font-size: clamp(1.5rem, 3.5vw, 1.9rem); line-height: 1.25; margin: 0 0 0.6rem; font-weight: 650; }
+  h2 { font-size: 1.08rem; margin: 2.4rem 0 0.7rem; font-weight: 650; }
+  p { margin: 0 0 0.85rem; }
+  .lede { font-size: 1.02rem; color: var(--muted); margin-bottom: 1.35rem; }
+  .meta { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-bottom: 0.7rem; }
+
+  code {
+    background: var(--control); border: 1px solid var(--stroke-subtle);
+    border-radius: 4px; padding: 0.05em 0.35em; color: var(--accent-text);
+  }
+
+  .stats {
+    display: flex; flex-wrap: wrap; gap: 1.5rem;
+    padding: 0.85rem 1.1rem; margin: 0 0 0.5rem;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; box-shadow: var(--shadow-card);
+  }
+  .stat .n { font-size: 1.1rem; font-weight: 650; }
+  .stat .l { font-size: 0.75rem; color: var(--text-tertiary); }
+  .stat .n.add { color: var(--success); }
+
+  figure { margin: 0 0 1.25rem; }
+  figure img, figure video {
+    width: 100%; height: auto; display: block;
+    border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-card);
+  }
+  figcaption { font-size: 0.82rem; color: var(--muted); margin-top: 0.5rem; }
+
+  /* Captures ship per theme; show the one matching the page. */
+  .shot-dark { display: none; }
+  :root[data-theme="dark"] .shot-light { display: none; }
+  :root[data-theme="dark"] .shot-dark { display: block; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .shot-light { display: none; }
+    :root:not([data-theme="light"]) .shot-dark { display: block; }
+  }
+  /* A capture that exists in only one theme is shown in both rather than
+   * leaving the other blank — the wrong background beats no picture. */
+  .absent { display: none !important; }
+  figure:has(.shot-light.absent) .shot-dark { display: block; }
+  figure:has(.shot-dark.absent) .shot-light { display: block; }
+
+  .pending {
+    padding: 1.6rem; text-align: center; color: var(--text-tertiary); font-size: 0.82rem;
+    background: var(--card); border: 1px dashed var(--border); border-radius: 8px;
+  }
+  /* The placeholder only appears once both captures have failed to load. */
+  figure[data-base] .pending { display: none; }
+  figure.no-media .pending { display: block; }
+  figure.no-media img, figure.no-media video { display: none !important; }
+
+  pre.sample {
+    margin: 0 0 0.5rem;
+    padding: 0.9rem 1.05rem;
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    overflow-x: auto;
+    font-family: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+    font-size: 0.8rem; line-height: 1.5; color: var(--text);
+  }
+  .sample-label { font-size: 0.78rem; color: var(--text-tertiary); margin: 0 0 1.35rem; }
+
+  ol.steps, ul.notes { margin: 0 0 0.9rem; padding-left: 1.35rem; }
+  ol.steps li, ul.notes li { margin-bottom: 0.5rem; }
+
+  table.settings { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+  table.settings th, table.settings td {
+    text-align: left; padding: 0.55rem 0.7rem;
+    border-bottom: 1px solid var(--stroke-subtle); vertical-align: top;
+  }
+  table.settings th {
+    color: var(--text-tertiary); font-weight: 650; font-size: 0.72rem;
+    text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
+  }
+  table.settings tr:last-child td { border-bottom: none; }
+  table.settings td:first-child, table.settings td:nth-child(2) { white-space: nowrap; }
+
+  .caveats {
+    background: var(--caveat-bg); border: 1px solid var(--caveat-border);
+    border-radius: 8px; padding: 1rem 1.25rem 1rem;
+  }
+  .caveats h2 { margin: 0 0 0.55rem; font-size: 0.95rem; color: var(--caveat-text); }
+  .caveats ul { margin: 0; padding-left: 1.2rem; font-size: 0.92rem; }
+  .caveats li { margin-bottom: 0.6rem; }
+  .caveats li:last-child { margin-bottom: 0; }
+  .caveats code { background: rgba(127, 127, 127, 0.16); border-color: transparent; color: inherit; }
+
+  .commits { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+  .commits a {
+    font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; font-size: 0.78rem;
+    padding: 0.25rem 0.6rem; border-radius: 5px;
+    background: var(--control); border: 1px solid var(--border);
+  }
+  .commits a:hover { background: var(--control-hover); text-decoration: none; }
+
+  .pager {
+    display: flex; justify-content: space-between; gap: 1rem;
+    margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--border);
+    font-size: 0.87rem;
+  }
+  .pager span { color: var(--text-tertiary); }
+
+  .missing { padding: 4rem 1.5rem; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<a class="skip-link" href="#content">Skip to content</a>
+
+<div class="topbar">
+  <a class="back" href="features.html">&larr;&nbsp;All features</a>
+  <div class="spacer"></div>
+  <div class="theme-toggle" role="group" aria-label="Colour theme">
+    <button type="button" data-theme-choice="light">Light</button>
+    <button type="button" data-theme-choice="system">System</button>
+    <button type="button" data-theme-choice="dark">Dark</button>
+  </div>
+</div>
+
+<main><div class="wrap" id="content"></div></main>
+
+<script src="features.js"></script>
+<script src="feature-details.js"></script>
+<script>
+(function () {
+    var REPO = 'https://github.com/steven-pribilinskiy/tabby/commit/'
+
+    function esc (s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    }
+    function param (name) {
+        var m = new RegExp('[?&]' + name + '=([^&]*)').exec(window.location.search)
+        return m ? decodeURIComponent(m[1].replace(/\+/g, ' ')) : ''
+    }
+
+    var features = window.FEATURES || []
+    var id = param('id')
+    var index = -1
+    for (var i = 0; i < features.length; i++) { if (features[i].id === id) { index = i } }
+    var feature = index === -1 ? null : features[index]
+    var host = document.getElementById('content')
+
+    if (!feature) {
+        host.innerHTML = '<div class="missing"><h1>No such feature</h1>' +
+            '<p>Nothing in the catalogue is called <code>' + esc(id || '(nothing)') + '</code>.</p>' +
+            '<p><a href="features.html">Back to all features</a></p></div>'
+        document.title = 'Not found — steven-pribilinskiy/tabby'
+        return
+    }
+
+    document.title = feature.title + ' — steven-pribilinskiy/tabby'
+    var d = (window.FEATURE_DETAILS || {})[feature.id] || null
+    var html = ''
+
+    html += '<div class="meta">' +
+        '<span class="chip">' + esc(feature.catLabel) + '</span>' +
+        (feature.standout ? '<span class="chip is-standout">Standout</span>' : '') +
+        '<span class="chip">Added ' + esc(feature.dateAdded) + '</span>' +
+        '</div>'
+    html += '<h1>' + esc(feature.title) + '</h1>'
+    html += '<p class="lede">' + esc(feature.desc) + '</p>'
+
+    html += '<div class="stats">' +
+        '<div class="stat"><div class="n add">+' + feature.ins.toLocaleString() + '</div><div class="l">added</div></div>' +
+        '<div class="stat"><div class="n">&minus;' + feature.del.toLocaleString() + '</div><div class="l">removed</div></div>' +
+        '<div class="stat"><div class="n">' + feature.files + '</div><div class="l">files touched</div></div>' +
+        '<div class="stat"><div class="n">' + feature.commits.length + '</div><div class="l">commit' + (feature.commits.length === 1 ? '' : 's') + '</div></div>' +
+        '</div>'
+
+    if (d && d.media && d.media.length) {
+        html += '<h2>What it looks like</h2>'
+        d.media.forEach(function (item) {
+            var alt = esc(item.caption)
+            var body
+            if (item.kind === 'video') {
+                body = '<video class="shot-light" src="media/' + esc(item.base) + '-light.mp4" autoplay loop muted playsinline controls preload="metadata"></video>' +
+                    '<video class="shot-dark" src="media/' + esc(item.base) + '-dark.mp4" autoplay loop muted playsinline controls preload="metadata"></video>'
+            } else {
+                body = '<img class="shot-light" src="media/' + esc(item.base) + '-light.png" alt="' + alt + '" loading="lazy" />' +
+                    '<img class="shot-dark" src="media/' + esc(item.base) + '-dark.png" alt="' + alt + '" loading="lazy" />'
+            }
+            html += '<figure data-base="' + esc(item.base) + '">' + body +
+                '<div class="pending">Capture pending</div>' +
+                '<figcaption>' + alt + '</figcaption></figure>'
+        })
+    }
+
+    if (d && d.problem) { html += '<h2>Why it exists</h2><p>' + d.problem + '</p>' }
+    if (d && d.how) { html += '<h2>How it works</h2><p>' + d.how + '</p>' }
+
+    if (d && d.sample) {
+        html += '<pre class="sample">' + esc(d.sample.text) + '</pre>' +
+            '<p class="sample-label">' + esc(d.sample.label) + ' &mdash; recorded output, not a mock-up.</p>'
+    }
+
+    if (d && d.steps && d.steps.length) {
+        html += '<h2>Try it</h2><ol class="steps">'
+        d.steps.forEach(function (s) { html += '<li>' + s + '</li>' })
+        html += '</ol>'
+    }
+
+    if (d && d.settings && d.settings.length) {
+        html += '<h2>Settings</h2><div class="scroller"><table class="settings"><thead><tr>' +
+            '<th scope="col">Key</th><th scope="col">Default</th><th scope="col">What it does</th>' +
+            '</tr></thead><tbody>'
+        d.settings.forEach(function (row) {
+            html += '<tr><td><code>' + row.key + '</code></td><td><code>' + esc(row.def) + '</code></td><td>' + row.note + '</td></tr>'
+        })
+        html += '</tbody></table></div>'
+    }
+
+    if (d && d.notes && d.notes.length) {
+        html += '<h2>Worth knowing</h2><ul class="notes">'
+        d.notes.forEach(function (n) { html += '<li>' + n + '</li>' })
+        html += '</ul>'
+    }
+
+    if (d && d.caveats && d.caveats.length) {
+        html += '<div class="caveats"><h2>What this does not claim</h2><ul>'
+        d.caveats.forEach(function (c) { html += '<li>' + c + '</li>' })
+        html += '</ul></div>'
+    }
+
+    if (d && d.upstream) { html += '<h2>Upstream</h2><p>' + d.upstream + '</p>' }
+
+    if (!d) {
+        html += '<h2>Documentation</h2><p class="pending" style="text-align:left">' +
+            'The long-form write-up for this one is still to be written. The summary above, the numbers, ' +
+            'and the commits below are accurate in the meantime.</p>'
+    }
+
+    html += '<h2>Commits</h2><div class="commits">'
+    feature.commits.forEach(function (sha) {
+        html += '<a href="' + REPO + sha + '" target="_blank" rel="noopener">' + esc(sha) + '</a>'
+    })
+    html += '</div>'
+
+    var prev = features[index - 1]
+    var next = features[index + 1]
+    html += '<nav class="pager" aria-label="Catalogue">' +
+        (prev ? '<a href="feature.html?id=' + encodeURIComponent(prev.id) + '">&larr; ' + esc(prev.title) + '</a>' : '<span></span>') +
+        (next ? '<a href="feature.html?id=' + encodeURIComponent(next.id) + '">' + esc(next.title) + ' &rarr;</a>' : '<span></span>') +
+        '</nav>'
+
+    host.innerHTML = html
+
+    // A figure shows its placeholder only once BOTH captures have failed to
+    // load. Wired up after insertion rather than as an inline onerror, which
+    // would be an HTML attribute nested inside a JS string — three levels of
+    // escaping, and exactly the kind of thing that breaks silently.
+    host.querySelectorAll('figure[data-base]').forEach(function (fig) {
+        var shots = fig.querySelectorAll('img, video')
+        var missing = 0
+        shots.forEach(function (shot) {
+            // A video reports failure on its own element rather than bubbling,
+            // so both node types are listened to the same way.
+            shot.addEventListener('error', function () {
+                this.classList.add('absent')
+                missing++
+                if (missing >= shots.length) { fig.classList.add('no-media') }
+            })
+        })
+    })
+})()
+</script>
+
+</body>
+</html>

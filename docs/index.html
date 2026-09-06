@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>steven-pribilinskiy/tabby — a Tabby fork</title>
+<meta name="description" content="What this personal Tabby fork has that upstream Eugeny/tabby does not: link previews and integrations, Claude session awareness, session resume, diagnostics for a window that froze, and a page listing every build on the machine." />
+<link rel="stylesheet" href="site.css" />
+<script src="theme.js"></script>
+<style>
+  header.hero {
+    padding: 4.5rem 1.5rem 3.25rem;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+  }
+  header.hero .badge {
+    display: inline-block;
+    font-family: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+    font-size: 0.75rem; color: var(--accent-text);
+    background: var(--control); border: 1px solid var(--border);
+    border-radius: 999px; padding: 0.25rem 0.9rem; margin-bottom: 1.15rem;
+  }
+  header.hero h1 {
+    font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    font-size: clamp(1.8rem, 4.5vw, 2.75rem);
+    font-weight: 650;
+    margin: 0 0 0.85rem;
+    line-height: 1.2;
+  }
+  header.hero p.tagline {
+    font-size: 1.05rem; color: var(--muted);
+    max-width: 42rem; margin: 0 auto 2rem;
+  }
+  header.hero .links { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+
+  .topbar-theme { position: fixed; top: 1rem; right: 1rem; z-index: 10; }
+
+  main { max-width: 62rem; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+
+  h2.section-title {
+    font-size: 0.95rem; font-weight: 650;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-tertiary);
+    margin: 0 0 1.1rem;
+  }
+  section + section { margin-top: 3.25rem; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(17.5rem, 1fr)); gap: 1rem; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: var(--shadow-card);
+    padding: 1.25rem; display: flex; flex-direction: column; gap: 0.5rem;
+    transition: box-shadow 0.12s, border-color 0.12s;
+    color: inherit;
+  }
+  a.card:hover { box-shadow: var(--shadow-raised); border-color: var(--accent); text-decoration: none; }
+  .card h3 { margin: 0; font-size: 1.02rem; font-weight: 650; }
+  .card p { margin: 0; color: var(--muted); font-size: 0.87rem; flex-grow: 1; }
+
+  .prose { max-width: 46rem; }
+  .prose p { color: var(--muted); margin: 0 0 0.9rem; }
+  .prose ul { color: var(--muted); margin: 0 0 0.9rem; padding-left: 1.25rem; }
+  .prose li { margin-bottom: 0.45rem; }
+  .prose code {
+    background: var(--control); border: 1px solid var(--stroke-subtle);
+    border-radius: 4px; padding: 0.05em 0.35em; color: var(--accent-text);
+  }
+
+  .limits {
+    background: var(--caveat-bg);
+    border: 1px solid var(--caveat-border);
+    border-radius: 8px;
+    padding: 1.15rem 1.35rem;
+    max-width: 46rem;
+  }
+  .limits h3 { margin: 0 0 0.6rem; font-size: 0.95rem; font-weight: 650; color: var(--caveat-text); }
+  .limits ul { margin: 0; padding-left: 1.2rem; color: var(--text); font-size: 0.9rem; }
+  .limits li { margin-bottom: 0.6rem; }
+  .limits li:last-child { margin-bottom: 0; }
+  .limits code {
+    background: rgba(127, 127, 127, 0.16); border-radius: 4px; padding: 0.05em 0.35em;
+  }
+
+  .cta-row { margin-top: 2.25rem; text-align: center; }
+</style>
+</head>
+<body>
+
+<a class="skip-link" href="#main">Skip to content</a>
+
+<div class="topbar-theme">
+  <div class="theme-toggle" role="group" aria-label="Colour theme">
+    <button type="button" data-theme-choice="light">Light</button>
+    <button type="button" data-theme-choice="system">System</button>
+    <button type="button" data-theme-choice="dark">Dark</button>
+  </div>
+</div>
+
+<header class="hero">
+  <span class="badge">personal fork — run from source, not distributed</span>
+  <h1>Tabby, with the fixes that were not going to arrive</h1>
+  <p class="tagline">
+    A personal fork of <a href="https://github.com/Eugeny/tabby">Eugeny/tabby</a>. Hover a
+    link and see what it actually points at; get a pane back running what it was running;
+    find out why a window froze; and know which of the four Tabbys on the machine you are
+    looking at. This is the catalogue of everything it carries on top of upstream — with
+    the caveats, which are half the point.
+  </p>
+  <div class="links">
+    <a class="btn btn-primary" href="features.html">Browse all features &rarr;</a>
+    <a class="btn btn-ghost" href="https://github.com/steven-pribilinskiy/tabby">View on GitHub</a>
+  </div>
+</header>
+
+<main id="main">
+
+  <section>
+    <h2 class="section-title">A few highlights</h2>
+    <div class="grid" id="highlights"></div>
+    <div class="cta-row">
+      <a class="btn btn-ghost" href="features.html">The full list, with dates, diffstats and commit links &rarr;</a>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title">How to read this</h2>
+    <div class="prose">
+      <p>
+        Every entry names the commits it is made of, and its <code>+</code>/<code>&minus;</code>
+        numbers come from git's own diffstat for exactly those commits — not from an estimate.
+        <code>features.js</code> is the single source the cards, the filters and the detail
+        pages all read, so they cannot disagree with each other.
+      </p>
+      <p>
+        Where a feature is a <em>fix</em> to something upstream already built, it says so.
+        Where something is not proven, it says that too, in its own block on the page. The
+        fork's working notes (<code>CLAUDE.md</code>) are unusually candid about what has and
+        has not been measured, and a catalogue that quietly dropped that would be worse than
+        no catalogue at all.
+      </p>
+      <p>
+        <strong>No screenshots are shipped.</strong> The pages support them and will show
+        them per theme when they exist; nothing here fakes one in the meantime.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title">Known limits</h2>
+    <div class="limits">
+      <h3>Things this fork does not fix, or has not proved it fixes</h3>
+      <ul>
+        <li>
+          <strong>Emoji width is still wrong.</strong> <code>&#10055;&#65039;</code> gets one
+          column where Windows Terminal gives two, so the glyph paints wider than the cell
+          reserved for it and everything after it sits one column off. xterm 6 removed the
+          first blocker, but the addon that carries the fix —
+          <code>@xterm/addon-unicode-graphemes@0.4.0</code> — cannot be put in this bundle at
+          all: importing it spins the renderer at 100% CPU during module evaluation, and that
+          is still unexplained. This is a known issue, not a feature.
+        </li>
+        <li>
+          <strong>The stale-glyph artifacts are not reproduced.</strong> The test written to
+          measure them reports 0 dirty cells on the canvas renderer, on WebGL and on xterm 6
+          alike, so it does not reproduce the artifacts that prompted the renderer work and
+          cannot be cited as proof they are fixed. Retiring the canvas renderer is
+          well-founded on its own grounds.
+        </li>
+        <li>
+          <strong>Some things are upstream's, and are not claimed here.</strong> Separate
+          light and dark colour schemes, and pane titles with draggable dividers, are stock
+          upstream Tabby. So is the jump list itself — this fork only fixed the icons on it.
+        </li>
+        <li>
+          <strong>Not everything on the branch is in the catalogue.</strong> Six commits are
+          deliberately absent: two <code>binding.gyp</code> patches that only exist so the
+          native modules compile on this machine, two pure <code>CLAUDE.md</code> commits, and
+          a reverted first attempt at the xterm 6 upgrade together with its revert.
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site">
+  <a href="https://github.com/steven-pribilinskiy/tabby">steven-pribilinskiy/tabby</a>
+  — a fork of <a href="https://github.com/Eugeny/tabby">Eugeny/tabby</a>, MIT licensed.
+</footer>
+
+<script src="features.js"></script>
+<script>
+(function () {
+    // The highlights are the catalogue's own standout entries, so this page
+    // cannot drift from features.js by being edited separately.
+    function esc (s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    }
+    var standouts = (window.FEATURES || []).filter(function (f) { return f.standout })
+    document.getElementById('highlights').innerHTML = standouts.map(function (f) {
+        return '<a class="card" href="feature.html?id=' + encodeURIComponent(f.id) + '">' +
+            '<span class="kicker">' + esc(f.catLabel) + '</span>' +
+            '<h3>' + esc(f.title) + '</h3>' +
+            '<p>' + esc(f.desc) + '</p>' +
+            '</a>'
+    }).join('')
+})()
+</script>
+
+</body>
+</html>

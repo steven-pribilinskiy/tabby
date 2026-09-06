@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Features — steven-pribilinskiy/tabby</title>
+<meta name="description" content="Every feature this Tabby fork carries that upstream does not, with the date it landed, its real diffstat, and links to the commits." />
+<link rel="stylesheet" href="site.css" />
+<script src="theme.js"></script>
+<style>
+  html, body { height: 100%; }
+  body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  /* The toolbar is a flex sibling of <main>, not a sticky child of it, so it
+   * never scrolls out of view however the list is filtered. <main> is its own
+   * scroll container underneath. */
+  .toolbar {
+    flex: 0 0 auto;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 1.25rem;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem;
+  }
+  .toolbar .back { font-size: 0.85rem; color: var(--muted); white-space: nowrap; margin-right: 0.3rem; }
+
+  .search-box { position: relative; flex: 1 1 13rem; min-width: 9rem; }
+  .search-box input {
+    width: 100%;
+    padding: 0.45rem 0.7rem;
+    border-radius: 5px; border: 1px solid var(--border);
+    background: var(--control); color: var(--text);
+    font-size: 0.87rem;
+  }
+  .search-box input::placeholder { color: var(--text-tertiary); }
+
+  .chip-row { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+  .chip-row button {
+    font-family: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    cursor: pointer;
+    background: var(--control);
+    white-space: nowrap;
+  }
+  .chip-row button:hover { background: var(--control-hover); color: var(--text); }
+  .chip-row button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent-text); }
+
+  select.sort-select {
+    padding: 0.4rem 0.55rem; border-radius: 5px;
+    border: 1px solid var(--border); background: var(--control); color: var(--text);
+    font-size: 0.82rem;
+  }
+
+  .view-switch { display: inline-flex; border-radius: 5px; border: 1px solid var(--border); overflow: hidden; }
+  .view-switch button {
+    border: none; background: var(--control); color: var(--muted);
+    padding: 0.4rem 0.75rem; font-size: 0.8rem; cursor: pointer;
+    border-left: 1px solid var(--border);
+  }
+  .view-switch button:first-child { border-left: none; }
+  .view-switch button:hover { background: var(--control-hover); color: var(--text); }
+  .view-switch button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+
+  main { flex: 1 1 auto; overflow-y: auto; width: 100%; }
+  .wrap { max-width: 78rem; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+
+  .result-count { color: var(--text-tertiary); font-size: 0.82rem; margin-bottom: 0.9rem; }
+  .empty { padding: 3.5rem 1rem; text-align: center; color: var(--muted); }
+
+  /* ---------- cards ---------- */
+  #view-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); gap: 1rem; }
+  #view-cards .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: var(--shadow-card);
+    padding: 1.2rem; display: flex; flex-direction: column; gap: 0.5rem;
+    transition: box-shadow 0.12s, border-color 0.12s;
+  }
+  #view-cards .card:hover { box-shadow: var(--shadow-raised); border-color: var(--accent); }
+  #view-cards .card.standout { border-color: var(--accent); }
+  #view-cards .card h3 { margin: 0; font-size: 1.02rem; font-weight: 650; }
+  #view-cards .card h3 a { color: inherit; }
+  #view-cards .card h3 a:hover { color: var(--accent-text); text-decoration: none; }
+  #view-cards .card p.desc { margin: 0; color: var(--muted); font-size: 0.86rem; flex-grow: 1; }
+
+  /* ---------- table ---------- */
+  #view-table { width: 100%; }
+  table.feature-table {
+    width: 100%; border-collapse: collapse; font-size: 0.85rem;
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  }
+  table.feature-table th, table.feature-table td {
+    padding: 0.6rem 0.85rem; text-align: left;
+    border-bottom: 1px solid var(--stroke-subtle); vertical-align: top;
+  }
+  table.feature-table th {
+    background: var(--control); font-weight: 650; cursor: pointer; user-select: none; white-space: nowrap;
+    position: sticky; top: 0; z-index: 5;
+  }
+  table.feature-table th:hover { background: var(--control-hover); }
+  table.feature-table tr:last-child td { border-bottom: none; }
+  table.feature-table tbody tr:hover td { background: var(--control-hover); }
+  table.feature-table td.desc-cell { color: var(--muted); min-width: 20rem; }
+  table.feature-table td strong a { color: inherit; }
+  table.feature-table td strong a:hover { color: var(--accent-text); text-decoration: none; }
+  table.feature-table td.num { white-space: nowrap; }
+
+  .opens { cursor: pointer; }
+</style>
+</head>
+<body>
+
+<a class="skip-link" href="#main">Skip to the list</a>
+
+<div class="toolbar">
+  <a class="back" href="index.html">&larr; steven-pribilinskiy/tabby</a>
+  <div class="search-box">
+    <label class="skip-link" for="search">Search features</label>
+    <input type="search" id="search" placeholder="Search features&hellip;" autocomplete="off" />
+  </div>
+  <div class="chip-row" id="category-chips" role="group" aria-label="Filter by category"></div>
+  <label class="skip-link" for="sort-select">Sort</label>
+  <select class="sort-select" id="sort-select">
+    <option value="date-desc">Newest first</option>
+    <option value="date-asc">Oldest first</option>
+    <option value="size-desc">Largest change</option>
+    <option value="size-asc">Smallest change</option>
+    <option value="alpha">A&ndash;Z</option>
+    <option value="cat">By category</option>
+  </select>
+  <div class="view-switch" role="group" aria-label="View">
+    <button type="button" data-view="cards" aria-pressed="true">Cards</button>
+    <button type="button" data-view="table" aria-pressed="false">Table</button>
+  </div>
+  <div class="theme-toggle" role="group" aria-label="Colour theme">
+    <button type="button" data-theme-choice="light">Light</button>
+    <button type="button" data-theme-choice="system">System</button>
+    <button type="button" data-theme-choice="dark">Dark</button>
+  </div>
+</div>
+
+<main id="main">
+  <div class="wrap">
+    <div class="result-count" id="result-count" role="status"></div>
+    <div id="view-cards"></div>
+    <div class="scroller" id="view-table" hidden>
+      <table class="feature-table">
+        <thead>
+          <tr>
+            <th data-sort="alpha" scope="col">Feature</th>
+            <th data-sort="cat" scope="col">Category</th>
+            <th data-sort="date-desc" scope="col">Added</th>
+            <th data-sort="size-desc" scope="col">Changed</th>
+            <th scope="col">Commits</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="empty" hidden>Nothing matches that.</div>
+  </div>
+</main>
+
+<script src="features.js"></script>
+<script>
+(function () {
+    var REPO = 'https://github.com/steven-pribilinskiy/tabby/commit/'
+    var FEATURES = window.FEATURES || []
+    var state = { query: '', cat: 'all', sort: 'date-desc', view: 'cards' }
+
+    function esc (s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    }
+
+    function matches (f) {
+        if (state.cat !== 'all' && f.cat !== state.cat) { return false }
+        if (!state.query) { return true }
+        var q = state.query.toLowerCase()
+        return f.title.toLowerCase().indexOf(q) !== -1 ||
+            f.desc.toLowerCase().indexOf(q) !== -1 ||
+            f.catLabel.toLowerCase().indexOf(q) !== -1 ||
+            f.commits.join(' ').indexOf(q) !== -1
+    }
+
+    function compare (a, b) {
+        switch (state.sort) {
+        case 'date-asc': return a.dateAdded.localeCompare(b.dateAdded) || a.title.localeCompare(b.title)
+        case 'date-desc': return b.dateAdded.localeCompare(a.dateAdded) || a.title.localeCompare(b.title)
+        case 'size-desc': return (b.ins + b.del) - (a.ins + a.del)
+        case 'size-asc': return (a.ins + a.del) - (b.ins + b.del)
+        case 'alpha': return a.title.localeCompare(b.title)
+        case 'cat': return a.catLabel.localeCompare(b.catLabel) || a.title.localeCompare(b.title)
+        default: return 0
+        }
+    }
+
+    function commitLinks (f) {
+        return f.commits.map(function (sha) {
+            return '<a class="commit-link" href="' + REPO + sha + '" target="_blank" rel="noopener">' + esc(sha) + '</a>'
+        }).join(' ')
+    }
+
+    function metaRow (f) {
+        return '<div class="meta-row">' +
+            '<span>' + esc(f.dateAdded) + '</span>' +
+            '<span><span class="stat-add">+' + f.ins.toLocaleString() + '</span> ' +
+            '&minus;' + f.del.toLocaleString() + ' &middot; ' + f.files + ' files</span>' +
+            '</div>'
+    }
+
+    function href (f) { return 'feature.html?id=' + encodeURIComponent(f.id) }
+
+    function renderCards (list) {
+        document.getElementById('view-cards').innerHTML = list.map(function (f) {
+            return '<article class="card opens' + (f.standout ? ' standout' : '') + '" data-open="' + href(f) + '">' +
+                '<span class="kicker">' + esc(f.catLabel) + '</span>' +
+                '<h3><a href="' + href(f) + '">' + esc(f.title) + '</a></h3>' +
+                '<p class="desc">' + esc(f.desc) + '</p>' +
+                metaRow(f) +
+                '<div class="commit-row">' + commitLinks(f) + '</div>' +
+                '</article>'
+        }).join('')
+    }
+
+    function renderTable (list) {
+        document.getElementById('table-body').innerHTML = list.map(function (f) {
+            return '<tr class="opens" data-open="' + href(f) + '">' +
+                '<td><strong><a href="' + href(f) + '">' + esc(f.title) + '</a></strong>' +
+                (f.standout ? ' <span class="chip is-standout">standout</span>' : '') + '</td>' +
+                '<td>' + esc(f.catLabel) + '</td>' +
+                '<td class="num">' + esc(f.dateAdded) + '</td>' +
+                '<td class="num"><span class="stat-add">+' + f.ins.toLocaleString() + '</span> &minus;' + f.del.toLocaleString() + '</td>' +
+                '<td class="commit-row">' + commitLinks(f) + '</td>' +
+                '</tr>'
+        }).join('')
+    }
+
+    function render () {
+        var list = FEATURES.filter(matches).sort(compare)
+        document.getElementById('result-count').textContent =
+            list.length + ' of ' + FEATURES.length + ' features'
+        document.getElementById('empty').hidden = list.length > 0
+        renderCards(list)
+        renderTable(list)
+    }
+
+    // Category chips come from the catalogue itself, so a new category cannot
+    // arrive without a filter for it.
+    (function buildChips () {
+        var seen = []
+        FEATURES.forEach(function (f) {
+            if (!seen.some(function (c) { return c.cat === f.cat })) { seen.push({ cat: f.cat, label: f.catLabel }) }
+        })
+        seen.sort(function (a, b) { return a.label.localeCompare(b.label) })
+        var host = document.getElementById('category-chips')
+        host.innerHTML = '<button type="button" data-cat="all" aria-pressed="true">All</button>' +
+            seen.map(function (c) {
+                return '<button type="button" data-cat="' + esc(c.cat) + '" aria-pressed="false">' + esc(c.label) + '</button>'
+            }).join('')
+        host.addEventListener('click', function (e) {
+            var button = e.target.closest('button[data-cat]')
+            if (!button) { return }
+            host.querySelectorAll('button[data-cat]').forEach(function (b) { b.setAttribute('aria-pressed', 'false') })
+            button.setAttribute('aria-pressed', 'true')
+            state.cat = button.getAttribute('data-cat')
+            render()
+        })
+    })()
+
+    // A whole card or row is a target, but the anchors inside it keep their own
+    // destinations — so a click that landed on any anchor is left alone.
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('a')) { return }
+        var opener = e.target.closest('[data-open]')
+        if (opener) { window.location.href = opener.getAttribute('data-open') }
+    })
+
+    document.getElementById('search').addEventListener('input', function (e) {
+        state.query = e.target.value
+        render()
+    })
+
+    document.getElementById('sort-select').addEventListener('change', function (e) {
+        state.sort = e.target.value
+        render()
+    })
+
+    var viewButtons = document.querySelectorAll('.view-switch button')
+    var viewEls = { cards: document.getElementById('view-cards'), table: document.getElementById('view-table') }
+    viewButtons.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            viewButtons.forEach(function (b) { b.setAttribute('aria-pressed', 'false') })
+            btn.setAttribute('aria-pressed', 'true')
+            state.view = btn.getAttribute('data-view')
+            Object.keys(viewEls).forEach(function (key) { viewEls[key].hidden = key !== state.view })
+        })
+    })
+
+    // Sortable headers drive the same control the dropdown does.
+    document.querySelectorAll('th[data-sort]').forEach(function (th) {
+        th.addEventListener('click', function () {
+            state.sort = th.getAttribute('data-sort')
+            document.getElementById('sort-select').value = state.sort
+            render()
+        })
+    })
+
+    render()
+})()
+</script>
+
+</body>
+</html>

@@ -1,5 +1,17 @@
 name: Package-Build
-on: [push, pull_request]
+# Fork-local: docs/ is a static showcase site and *.md is prose, neither of
+# which compiles into anything. paths-ignore skips a run only when every
+# changed file matches, so a commit touching both code and docs still builds.
+# GitHub Actions does not support YAML anchors, hence the repetition.
+on:
+  push:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
 jobs:
   Lint:
     runs-on: ubuntu-24.04

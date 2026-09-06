@@ -1,5 +1,12 @@
 name: Docs
-on: push
+# This builds upstream's typedoc API reference into docs/api (gitignored) and
+# is unrelated to the static showcase site the rest of docs/ holds — so a
+# change to that site has nothing for it to do either.
+on:
+  push:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
 jobs:
   build:
     runs-on: ubuntu-latest

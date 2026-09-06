@@ -46,6 +46,50 @@ releases ranged 3–135 days; `master` averaged ~52 active days/year in bursts (
 3 days between active days, max gap 30). Syncing per upstream release tag is the
 natural rhythm — roughly 6–14 times a year.
 
+## The feature catalogue (`docs/`)
+
+`docs/` is a static showcase site listing everything this fork carries that
+upstream does not — 38 features over 89 of the 95 commits in the series, each
+with a detail page. Plain HTML/CSS/JS opened straight from disk: no build step,
+no Jekyll (`.nojekyll`), no CDN, no network at all. `docs/features.js` is the
+one source the cards, the filters and the detail pages all read;
+`docs/feature-details.js` carries the long-form prose beside it. Both workflows
+now carry `paths-ignore: docs/**` so a docs-only commit does not run a package
+build.
+
+**It has to be kept current — that is the whole point of it.** When a commit
+lands on `local` that a reader would call a feature, it belongs there, as a new
+entry or on an existing one's `commits`.
+
+```bash
+node scripts/dev/check-docs.mjs
+```
+
+recomputes every `ins`/`del`/`files`/`dateAdded` from git and fails on anything
+that disagrees, on a commit claimed twice, on a commit not on the branch, on a
+detail entry for a feature that no longer exists, on a dead link, and on a
+capture referenced but never committed. It also *warns* about commits in no
+feature — six today, all reverts, docs or build patches.
+
+- **Run it after every rebase onto `master`.** Replaying the series rewrites
+  every SHA, so all 89 commit links go stale at once and every entry fails
+  until they are re-pointed. This is the one maintenance cost the site has.
+- **The candour is load-bearing.** Each page has a *What this does not claim*
+  block, and the index has *Known limits*: emoji width is listed as broken, the
+  stale-glyph artifacts are stated as **not reproduced** by `glyphs.cdp.js`, and
+  the things that are upstream's — light/dark schemes, draggable pane titles,
+  the jump list itself — say so. Anything hedged in this file must stay hedged
+  there.
+- **No captures ship.** The pages render media per theme when files exist in
+  `docs/media/` and degrade to a placeholder when they do not; nothing fakes
+  one meanwhile, and the checker refuses a `media` entry with no file.
+- Verified by rendering all 40 pages, and the unknown-id path, in a hidden
+  `BrowserWindow` under four theme states (OS light, OS dark, and each forced
+  by the toggle) — worst measured contrast 4.93:1 — plus a pass at 380px wide
+  for horizontal overflow, and a run over the controls: search, chips, both
+  sorts, the view switch, the whole-card click target and the toggle surviving
+  navigation.
+
 ## Building and running locally
 
 Prereqs on this machine: VS 2022 Build Tools (VC x86/x64 toolset v143), Rust +

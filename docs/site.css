@@ -1,0 +1,192 @@
+/* ============================================================================
+ * Shared tokens and components for the fork's feature catalogue.
+ *
+ * Light is the default and is defined on bare :root; dark is redefined twice —
+ * once under prefers-color-scheme, guarded so an explicit [data-theme="light"]
+ * still wins, and once under [data-theme="dark"] so the toggle wins in both
+ * directions. Nothing here is defined ONLY inside a media query.
+ *
+ * The palette is the app's own: #1d272d and #a1c5e4 are the splash screen's
+ * dark values, #f5f7f9 and #2f5d80 the light ones it gained in 212bd05d.
+ * ========================================================================== */
+
+:root,
+:root[data-theme="light"] {
+  --bg: #f5f7f9;
+  --card: #ffffff;
+  --control: #eef2f5;
+  --control-hover: #e4eaef;
+  --border: #d7dee4;
+  --stroke-subtle: #e6ebef;
+  --text: #16212a;
+  --muted: #4e5d6a;
+  --text-tertiary: #626f7b;
+  --accent: #2f5d80;
+  --accent-hover: #27506f;
+  --on-accent: #ffffff;
+  --accent-text: #245177;
+  --success: #1a7f37;
+  --caveat-bg: #fff6e8;
+  --caveat-border: #e8cda2;
+  --caveat-text: #8a5a08;
+  --shadow-card: 0 0 2px rgba(16, 30, 40, 0.06), 0 1px 2px rgba(16, 30, 40, 0.09);
+  --shadow-raised: 0 0 2px rgba(16, 30, 40, 0.1), 0 6px 16px rgba(16, 30, 40, 0.12);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1d272d;
+    --card: #24313a;
+    --control: #2b3944;
+    --control-hover: #33434f;
+    --border: #37474f;
+    --stroke-subtle: #2f3e48;
+    --text: #eef4f8;
+    --muted: #b3c3ce;
+    --text-tertiary: #8ea0ac;
+    --accent: #a1c5e4;
+    --accent-hover: #b7d4ec;
+    --on-accent: #10191f;
+    --accent-text: #a1c5e4;
+    --success: #7ec98a;
+    --caveat-bg: #33291a;
+    --caveat-border: #5c4a24;
+    --caveat-text: #f0c674;
+    --shadow-card: 0 0 2px rgba(0, 0, 0, 0.22), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-raised: 0 0 2px rgba(0, 0, 0, 0.28), 0 6px 16px rgba(0, 0, 0, 0.36);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #1d272d;
+  --card: #24313a;
+  --control: #2b3944;
+  --control-hover: #33434f;
+  --border: #37474f;
+  --stroke-subtle: #2f3e48;
+  --text: #eef4f8;
+  --muted: #b3c3ce;
+  --text-tertiary: #8ea0ac;
+  --accent: #a1c5e4;
+  --accent-hover: #b7d4ec;
+  --on-accent: #10191f;
+  --accent-text: #a1c5e4;
+  --success: #7ec98a;
+  --caveat-bg: #33291a;
+  --caveat-border: #5c4a24;
+  --caveat-text: #f0c674;
+  --shadow-card: 0 0 2px rgba(0, 0, 0, 0.22), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-raised: 0 0 2px rgba(0, 0, 0, 0.28), 0 6px 16px rgba(0, 0, 0, 0.36);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  line-height: 1.55;
+  -webkit-text-size-adjust: 100%;
+}
+
+a { color: var(--accent-text); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+code, .mono {
+  font-family: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+  font-size: 0.92em;
+}
+
+button, select, input { font-family: inherit; }
+
+/* One visible focus ring everywhere, including for the whole-card targets,
+ * which are focusable so the catalogue is navigable from the keyboard. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+[hidden] { display: none !important; }
+
+.skip-link {
+  position: absolute; left: -9999px; top: 0;
+  background: var(--accent); color: var(--on-accent);
+  padding: 0.6rem 1rem; border-radius: 0 0 4px 0; z-index: 100;
+}
+.skip-link:focus { left: 0; text-decoration: none; }
+
+/* ---------------------------------------------------------------- controls */
+
+.btn {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.6rem 1.25rem; border-radius: 5px;
+  font-weight: 600; font-size: 0.92rem;
+  border: 1px solid transparent; cursor: pointer;
+}
+.btn-primary { background: var(--accent); color: var(--on-accent); }
+.btn-primary:hover { background: var(--accent-hover); text-decoration: none; }
+.btn-ghost { border-color: var(--border); color: var(--text); background: var(--control); }
+.btn-ghost:hover { background: var(--control-hover); text-decoration: none; }
+
+.theme-toggle {
+  display: inline-flex; gap: 2px;
+  border-radius: 5px; border: 1px solid var(--border);
+  background: var(--control); padding: 2px;
+}
+.theme-toggle button {
+  border: 0; background: transparent; color: var(--muted);
+  padding: 0.35rem 0.6rem; border-radius: 3px; cursor: pointer;
+  font-size: 0.78rem; line-height: 1.4;
+}
+.theme-toggle button:hover { background: var(--control-hover); color: var(--text); }
+.theme-toggle button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+
+.chip {
+  font-size: 0.75rem; padding: 0.2rem 0.65rem; border-radius: 999px;
+  background: var(--control); border: 1px solid var(--border); color: var(--muted);
+  white-space: nowrap;
+}
+.chip.is-standout { border-color: var(--accent); color: var(--accent-text); }
+
+.kicker {
+  font-family: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-text);
+}
+
+.commit-link {
+  font-family: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  background: var(--control);
+  border: 1px solid var(--border);
+  color: var(--accent-text);
+}
+.commit-link:hover { background: var(--control-hover); text-decoration: none; }
+
+.commit-row { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+
+.meta-row {
+  display: flex; flex-wrap: wrap;
+  gap: 0.3rem 0.9rem;
+  font-size: 0.76rem;
+  color: var(--text-tertiary);
+}
+.stat-add { color: var(--success); }
+
+/* Wide content scrolls inside its own container; the page body never does. */
+.scroller { overflow-x: auto; background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+
+footer.site {
+  border-top: 1px solid var(--border);
+  text-align: center; padding: 2.25rem 1.5rem;
+  color: var(--text-tertiary); font-size: 0.83rem;
+}
