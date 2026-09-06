@@ -1,13 +1,13 @@
 // The table view: its own placeholder, a width that fits, and a path that says
 // what clicking it does.
 //
-//   node scripts/dev/launch-hidden.mjs --enable builds --port 9248 &
-//   CDP_PORT=9248 node tabby-builds/test/tableView.cdp.js
+//   node scripts/dev/launch-hidden.mjs --enable builds &
+//   node tabby-builds/test/tableView.cdp.js
 //
 // All three were reported from a screenshot: card skeletons stacked above the
 // table's own header row, a grey bar under the table that was its permanent
 // horizontal scrollbar, and a path that looked like a link but copied itself.
-const { connect } = require('./cdp')
+const { closeAll, connect } = require('./cdp')
 
 function ok (message) { console.log(`ok    ${message}`) }
 function fail (message) { console.error(`FAIL  ${message}`); process.exitCode = 1 }
@@ -138,7 +138,9 @@ async function main () {
     cdp.close()
 }
 
+// Reports by exit code rather than exiting, so the socket has to go with it or
+// a failure leaves the process alive.
 main().catch(err => {
     console.error(err)
     process.exitCode = 1
-})
+}).finally(closeAll)

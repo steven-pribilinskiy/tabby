@@ -95,6 +95,39 @@ sessions, and Electron's single-instance lock is keyed on the userData dir.
 Electron as plain Node — no window, but the correct native ABI. Use it to check that
 native modules load, instead of launching the app and stealing focus.
 
+### A CDP test must prove what it attached to
+
+**A hardcoded debugging port is a live hazard, not a style problem.** Chromium does
+not report a `--remote-debugging-port` it could not bind — it just does not listen,
+and every request then goes to whatever *is* on that port. Measured here: a test
+that assumed 9251 attached to the user's own Chrome, full of logged-in tabs, and
+only a URL filter stopped it evaluating JavaScript in them. Probing whether a port
+is free beforehand does not help; the collision is with something that binds it
+first, or that was there all along.
+
+So every `*.cdp.js` in this repo goes through `scripts/dev/cdp.cjs`, and:
+
+- **The port is found, never assumed.** `scripts/dev/launch-hidden.mjs` picks a free
+  one, records it under `%TEMP%\tabby-cdp\<port>.json`, and removes it on exit; a
+  test reads that, sweeps `9230-9280` if there is nothing registered, and refuses
+  ambiguity rather than guessing between two instances. There is deliberately no
+  fallback constant. `CDP_PORT` names an instance; it vouches for nothing.
+- **Nothing is attached to until `/json/version` answers with JSON that names
+  Electron.** A browser answers there too — with `Chrome/…` — and is refused. So is
+  a port answering HTML, and one that accepts the connection and then says nothing,
+  which is what 9223/9224 do because svchost forwards them from WSL (hence a 1.5s
+  probe timeout; without it the whole suite waits on the OS).
+- `scripts/dev/cdp.test.cjs` asserts each refusal against HTTP servers it owns.
+  Never point a negative test at a real browser.
+
+**And a failing CDP test has to exit.** An open CDP socket holds the event loop, so
+a `main().catch(…)` that sets `process.exitCode` without closing it leaves the
+process alive for ever — `integrationsFreeze.cdp.js` did exactly that, measured at
+`>90s` and still going, against 11s now. Two halves: a test that reports by exit
+code ends `.finally(closeAll)`, and the shared driver settles every pending request
+both when the target goes away and when it simply never replies (20s), because a
+promise that does neither is the same hang one level down.
+
 ## NEVER kill the running Tabby
 
 The installed Tabby runs live Claude Code agent sessions. **Never close, restart or kill

@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 // Launch the dev build hidden, with an isolated profile, for CDP-driven tests.
 //
-//   node scripts/dev/launch-hidden.mjs --frontend xterm --port 9238 [--keep]
+//   node scripts/dev/launch-hidden.mjs --frontend xterm [--keep]
 //   node scripts/dev/launch-hidden.mjs --enable builds --port 9239
+//
+// Without --port a free one is chosen and registered, and the tests find it
+// there: a debugging port written down in two places is a port that will one
+// day be someone else's, and a test that assumed 9251 attached to the user's
+// Chrome. See scripts/dev/cdp.cjs.
 //
 // Never touches the installed Tabby: the dev build is electron.exe, the
 // installed app is Tabby.exe. The Tabby.exe process count is recorded before
@@ -12,9 +17,10 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import * as url from 'node:url'
-import * as net from 'node:net'
+import { createRequire } from 'node:module'
 
 const root = path.resolve(url.fileURLToPath(new URL('.', import.meta.url)), '..', '..')
+const cdp = createRequire(import.meta.url)('./cdp.cjs')
 
 function arg (name, fallback) {
     const i = process.argv.indexOf(`--${name}`)
@@ -22,7 +28,8 @@ function arg (name, fallback) {
 }
 
 const frontend = arg('frontend', 'xterm-webgl')
-const port = parseInt(arg('port', '9238'), 10)
+const asked = arg('port', null)
+const port = asked ? parseInt(asked, 10) : await cdp.pickPort()
 const profile = arg('profile', path.join(
     process.env.TEMP ?? os.tmpdir(), `tabby-render-${frontend}-${port}`))
 
@@ -35,15 +42,6 @@ function tabbyCount () {
     } catch {
         return -1
     }
-}
-
-function portFree (p) {
-    return new Promise(resolve => {
-        const s = net.createServer()
-        s.once('error', () => resolve(false))
-        s.once('listening', () => s.close(() => resolve(true)))
-        s.listen(p, '127.0.0.1')
-    })
 }
 
 // A profile per (frontend, port): a second dev instance on the same
@@ -97,8 +95,8 @@ fs.writeFileSync(path.join(profile, 'config.yaml'), [
 ].join('\n'))
 
 const before = tabbyCount()
-if (!await portFree(port)) {
-    console.error(`port ${port} is already in use — pick another with --port`)
+if (!await cdp.isPortFree(port)) {
+    console.error(`port ${port} is already in use — pick another with --port, or omit it and let one be chosen`)
     process.exit(2)
 }
 
@@ -133,6 +131,8 @@ child.stderr.pipe(log)
 
 const meta = { pid: child.pid, port, profile, frontend, log: logPath, tabbyBefore: before }
 fs.writeFileSync(path.join(profile, 'launch.json'), JSON.stringify(meta, null, 2))
+// And where a test will look for it, so neither side has to name a port.
+cdp.registerInstance(meta)
 console.log(JSON.stringify(meta))
 
 let stopped = false
@@ -141,6 +141,7 @@ function stop (code) {
         return
     }
     stopped = true
+    cdp.unregisterInstance(port)
     try {
         // By PID, never by name.
         execFileSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' })

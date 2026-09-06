@@ -1,7 +1,7 @@
 // Deleting a build must not trip over its own app.asar.
 //
-//   node scripts/dev/launch-hidden.mjs --enable builds --port 9239 &
-//   CDP_PORT=9239 node tabby-builds/test/asarDelete.cdp.js
+//   node scripts/dev/launch-hidden.mjs --enable builds &
+//   node tabby-builds/test/asarDelete.cdp.js
 //
 // Electron patches `fs` so an `.asar` archive looks like a directory, and the
 // first patched call on one opens the archive and holds the handle for the
@@ -19,7 +19,7 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { connect } = require('./cdp')
+const { closeAll, connect } = require('./cdp')
 
 const TMP = path.join(os.tmpdir(), `tabby-builds-asar-${process.pid}`)
 
@@ -184,8 +184,10 @@ async function main () {
     cleanup()
 }
 
+// Reports by exit code rather than exiting, so the socket has to go with it or
+// a failure leaves the process alive.
 main().catch(err => {
     console.error(err)
     process.exitCode = 1
     cleanup()
-})
+}).finally(closeAll)

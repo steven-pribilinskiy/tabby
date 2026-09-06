@@ -1,6 +1,6 @@
 // Verifies the Upstream settings page against this checkout, in a dev build
 // launched hidden. See tabby-links/test/README.md for the launch line.
-const { connect } = require('../../tabby-links/test/cdp')
+const { connect } = require('../../scripts/dev/cdp.cjs')
 const { execFileSync } = require('child_process')
 const path = require('path')
 

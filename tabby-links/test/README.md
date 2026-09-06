@@ -47,26 +47,47 @@ exponential pattern is cheap at 1000 characters and ruinous at 8000.
 
 ## `*.cdp.js` — the real UI, over CDP
 
-Launch the dev build **hidden**, so nothing takes focus:
+Launch the dev build **hidden**, so nothing takes focus. The launcher picks a free debugging
+port, writes it down, and the tests find it there:
 
 ```bash
-P=<some scratch dir>/tabby-profile
-NODE_PATH='<repo>/app/node_modules' TABBY_PLUGINS= TABBY_DEV=1 TABBY_CONFIG_DIRECTORY="$P" \
-  ./node_modules/electron/dist/electron.exe \
-  --user-data-dir="$P" --remote-debugging-port=9238 app --hidden
+node scripts/dev/launch-hidden.mjs --enable links,linkifier   # prints its port and profile
 ```
 
-`--user-data-dir` must come **before** `app`, or Electron hands the switch to the app and
-silently ignores it — the dev build then shares `%APPDATA%\tabby` with the installed Tabby.
-
 ```bash
+P=<the profile it printed>
 TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/links.cdp.js        # discovery, rules, settings pages
 TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/card.cdp.js         # hover card placement and buttons
 TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/preview.cdp.js      # the fetch pipeline against live stith
 TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/credentials.cdp.js  # safeStorage, and what reaches config.yaml
 TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/html.cdp.js         # the sandboxed html frame
-CDP_PORT=9241 node tabby-links/test/wslPath.cdp.js                    # WSL paths: service, card, click
-CDP_PORT=9242 node tabby-links/test/delimitedLinks.cdp.js             # <uri|label>, column by column
+TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/wslPath.cdp.js      # WSL paths: service, card, click
+TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/delimitedLinks.cdp.js  # <uri|label>, column by column
+```
+
+With more than one instance up, say which: `CDP_PORT=9247 node …`.
+
+**Never hardcode a debugging port.** Chromium does not report a `--remote-debugging-port` it
+could not bind — it just does not listen, and every request then goes to whatever *is* there.
+A test that assumed 9238 attached to the user's own Chrome, full of logged-in tabs, and only
+a URL filter stopped it evaluating script in them. So `scripts/dev/cdp.cjs` finds the running
+instance rather than assuming one, and attaches to nothing until `/json/version` has answered
+with JSON that names Electron; `scripts/dev/cdp.test.cjs` asserts the refusals. `CDP_PORT`
+names a port, it does not vouch for one — the check runs either way.
+
+A `.cdp.js` that reports by setting `process.exitCode` rather than calling `process.exit()`
+must end `main().catch(…).finally(closeAll)`. An open CDP socket holds the event loop, so
+without it **every** failure leaves the process alive for ever, which is what
+`integrationsFreeze.cdp.js` did.
+
+Launching by hand still works — `--user-data-dir` must come **before** `app`, or Electron hands
+the switch to the app and silently ignores it, and the dev build then shares `%APPDATA%\tabby`
+with the installed Tabby:
+
+```bash
+NODE_PATH='<repo>/app/node_modules' TABBY_PLUGINS= TABBY_DEV=1 TABBY_CONFIG_DIRECTORY="$P" \
+  ./node_modules/electron/dist/electron.exe \
+  --user-data-dir="$P" --remote-debugging-port=<free port> app --hidden
 ```
 
 `delimitedLinks.cdp.js` also needs the handlers, so launch it the same way as

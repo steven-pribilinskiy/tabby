@@ -1,8 +1,8 @@
 // `<uri|label>` in a real terminal: what every column of the construct resolves
 // to, and what it does to the bare-URI match nested inside it.
 //
-//   node scripts/dev/launch-hidden.mjs --enable links,linkifier --port 9242
-//   CDP_PORT=9242 node tabby-links/test/delimitedLinks.cdp.js
+//   node scripts/dev/launch-hidden.mjs --enable links,linkifier
+//   node tabby-links/test/delimitedLinks.cdp.js
 //
 // The pattern itself is covered in `delimitedLinks.test.js`. What only the app
 // can answer is the part that matters: text is written to a real xterm buffer,

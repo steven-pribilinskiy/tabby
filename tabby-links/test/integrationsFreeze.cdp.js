@@ -1,7 +1,7 @@
 // Clicking an integration must not freeze the window.
 //
-//   node scripts/dev/launch-hidden.mjs --enable links,linkifier --port 9246 &
-//   CDP_PORT=9246 node tabby-links/test/integrationsFreeze.cdp.js
+//   node scripts/dev/launch-hidden.mjs --enable links,linkifier &
+//   node tabby-links/test/integrationsFreeze.cdp.js
 //
 // The detail view iterates the manifest's field groups, and those used to be
 // built by a method the template called: `*ngFor` tracks by identity, so a
@@ -13,7 +13,7 @@
 // So the assertion is liveness, not appearance. The click is fired without
 // waiting for it, and the renderer is then asked simple questions with a
 // deadline. A frozen one answers none of them.
-const { connect } = require('./cdp')
+const { closeAll, connect } = require('./cdp')
 
 const PING_MS = 1500
 const ROUNDS = 3
@@ -128,7 +128,10 @@ async function main () {
     cdp.close()
 }
 
+// This run reports by exit *code* rather than exiting, so an open socket is the
+// difference between a failing suite and one that sits alive for ever — which
+// is what the first version of this file did on every failure.
 main().catch(err => {
     console.error(err)
     process.exitCode = 1
-})
+}).finally(closeAll)

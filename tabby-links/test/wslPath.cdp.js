@@ -1,8 +1,8 @@
 // A WSL path resolving inside the running app: real DI, the real registry
 // lookup for the default distro, and the card that comes out of it.
 //
-//   node scripts/dev/launch-hidden.mjs --enable links,linkifier --port 9241
-//   CDP_PORT=9241 node tabby-links/test/wslPath.cdp.js
+//   node scripts/dev/launch-hidden.mjs --enable links,linkifier
+//   node tabby-links/test/wslPath.cdp.js
 //
 // The pure translation is checked in logic.test.js and the ordering against the
 // filesystem in wslPath.test.js. What only the app can answer is whether the

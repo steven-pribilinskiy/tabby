@@ -1,8 +1,8 @@
 // "Search the web for ..." in the real app: the menu the tab actually builds,
 // and the URL the item would hand the browser.
 //
-//   node scripts/dev/launch-hidden.mjs --port 9243 &
-//   CDP_PORT=9243 node tabby-terminal/test/webSearch.cdp.js
+//   node scripts/dev/launch-hidden.mjs &
+//   node tabby-terminal/test/webSearch.cdp.js
 //
 // The selection is a real xterm selection, and the menu is the one
 // `buildContextMenu()` produces — so this proves the provider is registered and

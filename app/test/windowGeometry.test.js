@@ -26,21 +26,20 @@
 // uses for the old module ordering, and for the same reason: `app/lib/window.ts`
 // cannot be imported outside Electron.
 const fs = require('fs')
-const http = require('http')
-const net = require('net')
 const os = require('os')
 const path = require('path')
 const { spawn, execFileSync } = require('child_process')
 
 const root = path.resolve(__dirname, '..', '..')
 const electron = path.join(root, 'node_modules', 'electron', 'dist', 'electron.exe')
-const WebSocket = require(path.join(root, 'node_modules', 'ws'))
+const cdp = require(path.join(root, 'scripts', 'dev', 'cdp.cjs'))
 
 // Chosen at startup, and only after proving it is free. A debugging port that
 // something else already holds is not an error Chromium reports — it just does
 // not listen, and every request goes to whatever *is* there. Measured: 9251 was
 // the user's own Chrome, full of logged-in tabs, and this test would have been
-// evaluating JavaScript in it.
+// evaluating JavaScript in it. Which is why nothing is attached to until
+// `/json/version` names Electron — see `scripts/dev/cdp.cjs`.
 let PORT = 0
 
 // Small enough to fit any work area this test will accept, far enough apart
@@ -214,121 +213,20 @@ async function waitForRecords (handle, kind, count, timeoutMs = 8000) {
 const stored = handle => JSON.parse(fs.readFileSync(path.join(handle.dir, 'window.json'), 'utf8'))
 
 // ── CDP ─────────────────────────────────────────────────────────────────────
-
-function get (urlPath) {
-    return new Promise((resolve, reject) => {
-        http.get({ host: '127.0.0.1', port: PORT, path: urlPath }, res => {
-            let body = ''
-            res.on('data', c => body += c)
-            res.on('end', () => resolve(JSON.parse(body)))
-        }).on('error', reject)
-    })
-}
-
-function free (port) {
-    return new Promise(resolve => {
-        const server = net.createServer()
-        server.once('error', () => resolve(false))
-        server.once('listening', () => server.close(() => resolve(true)))
-        server.listen(port, '127.0.0.1')
-    })
-}
-
-async function pickPort () {
-    for (let port = 9260; port < 9300; port++) {
-        if (await free(port)) {
-            return port
-        }
-    }
-    throw new Error('no free debugging port in 9260-9299')
-}
-
-async function pages (count, timeoutMs = 45000) {
-    const deadline = Date.now() + timeoutMs
-    while (Date.now() < deadline) {
-        try {
-            // Whose debugger is this? A port that was free before the launch can
-            // still be answered by something else by the time we ask.
-            const version = await get('/json/version')
-            if (!String(version['User-Agent'] ?? '').includes('Electron')) {
-                throw new Error(`port ${PORT} is not an Electron debugger: ${version.Browser}`)
-            }
-            const found = (await get('/json/list')).filter(t => t.type === 'page' && t.url.includes('index.html'))
-            if (found.length >= count) {
-                return found
-            }
-        } catch (err) {
-            if (err.message?.includes('not an Electron debugger')) {
-                throw err
-            }
-            /* the port is not up yet */
-        }
-        await sleep(500)
-    }
-    throw new Error(`only saw fewer than ${count} renderer(s) after ${timeoutMs}ms`)
-}
-
-async function attach (target) {
-    const ws = new WebSocket(target.webSocketDebuggerUrl, { maxPayload: 32 * 1024 * 1024 })
-    await new Promise((resolve, reject) => {
-        ws.on('open', resolve)
-        ws.on('error', reject)
-    })
-    let id = 0
-    const pending = new Map()
-    ws.on('message', data => {
-        const message = JSON.parse(data.toString())
-        if (message.id && pending.has(message.id)) {
-            pending.get(message.id)(message)
-            pending.delete(message.id)
-        }
-    })
-    // Half of this test closes windows, which kills the target mid-call. A
-    // pending CDP request that is never answered and never rejected is how
-    // integrationsFreeze.cdp.js came to hang forever; both exits are covered.
-    ws.on('close', () => {
-        for (const resolve of pending.values()) {
-            resolve({ gone: true })
-        }
-        pending.clear()
-    })
-    const send = (method, params = {}) => new Promise(resolve => {
-        const messageId = ++id
-        pending.set(messageId, resolve)
-        const timer = setTimeout(() => {
-            pending.delete(messageId)
-            resolve({ timedOut: true })
-        }, 20000)
-        ws.send(JSON.stringify({ id: messageId, method, params }), () => { /* may already be closed */ })
-        pending.set(messageId, message => {
-            clearTimeout(timer)
-            resolve(message)
-        })
-    })
-    const evaluate = async expression => {
-        const result = await send('Runtime.evaluate', {
-            expression: `(async () => { ${expression} })()`,
-            awaitPromise: true,
-            returnByValue: true,
-        })
-        if (result.result?.exceptionDetails) {
-            throw new Error(result.result.exceptionDetails.exception?.description
-                ?? JSON.stringify(result.result.exceptionDetails))
-        }
-        return result.result?.result?.value
-    }
-    return { evaluate, close: () => ws.close() }
-}
+//
+// Half of this test closes windows, which kills the target mid-call. The shared
+// driver settles a request when the socket goes as well as when it times out —
+// a pending one that does neither is how integrationsFreeze.cdp.js came to hang
+// for ever.
 
 /** Every renderer, paired with the bounds of the window it is drawing into. */
 async function windows (count) {
-    const targets = await pages(count)
+    const drivers = await cdp.connect({ port: PORT, count, timeoutMs: 45000 })
     const out = []
-    for (const target of targets.slice(0, count)) {
-        const cdp = await attach(target)
-        const bounds = await cdp.evaluate(
+    for (const driver of [drivers].flat()) {
+        const bounds = await driver.evaluate(
             `return require('@electron/remote').getCurrentWindow().getBounds()`)
-        out.push({ ...cdp, bounds })
+        out.push({ ...driver, bounds })
     }
     return out.sort((a, b) => a.bounds.x - b.bounds.x || a.bounds.y - b.bounds.y)
 }
@@ -388,7 +286,7 @@ const oldPlacement = (cdp, store) =>
 const before = tabbyCount()
 
 async function main () {
-    PORT = parseInt(process.env.CDP_PORT ?? '', 10) || await pickPort()
+    PORT = parseInt(process.env.CDP_PORT ?? '', 10) || await cdp.pickPort()
     console.log(`     debugging on port ${PORT}`)
 
     // ── Two windows, two saved places ───────────────────────────────────────
@@ -532,6 +430,7 @@ main().catch(err => {
     failed++
 }).finally(async () => {
     clearTimeout(overall)
+    cdp.closeAll()
     for (const handle of live) {
         stop(handle)
     }

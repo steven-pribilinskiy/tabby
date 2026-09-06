@@ -1,8 +1,8 @@
 // Measures stale glyphs: pixels the renderer left on screen that the buffer
 // does not account for.
 //
-//   node scripts/dev/launch-hidden.mjs --frontend xterm --port 9238 &
-//   CDP_PORT=9238 node tabby-terminal/test/glyphs.cdp.js
+//   node scripts/dev/launch-hidden.mjs --frontend xterm &
+//   node tabby-terminal/test/glyphs.cdp.js
 //
 // The oracle is a forced full repaint. Snapshot the renderer's own canvases,
 // repaint every row from the buffer without touching the buffer, snapshot
