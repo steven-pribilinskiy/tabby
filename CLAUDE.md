@@ -822,6 +822,79 @@ whole run green.
 - A wedged *main* process is beyond all of this, by construction. The watchdog
   runs on that loop.
 
+## Where each window was
+
+Position and size are remembered **per window**, in `<config dir>/window.json`
+under `windowGeometries`. Upstream keeps one `windowBoundaries` key that every
+window reads and writes, which is invisible with one window and wrong the moment
+there are two: the second opens exactly on top of the first, and whichever
+closes last overwrites the other. Multi-window is fork-added; the persistence is
+upstream's and was never scoped to it.
+
+- **The identity is the window ordinal, because it is the only one Tabby already
+  has.** `isMainWindow` — the first window in `Application.windows` — is the sole
+  condition under which the saved tab list is replayed (`app.service.ts`), so a
+  window-scoped thing is already keyed off an ordinal; this widens that from one
+  bit to N. Nothing else about a window survives a restart to key off: the tab
+  list is one `localStorage` blob shared by every window in the partition, and
+  only the main window reads it.
+- **Slots are claimed lowest-free and released on close**, so *open* order
+  decides them and close order cannot disturb them. Open order at launch is not
+  a guess — `app.on('ready')` creates exactly one window — so slot 1 is always
+  the main window. What it does not survive: closing window 1 and opening
+  another mid-session hands the new one slot 1, so it lands where window 1 was.
+- **No DPI is stored.** Windows Terminal's version of this (microsoft/terminal#12633,
+  the reference for the port) keeps physical pixels and rescales them; Electron's
+  screen coordinates are already per-display DIPs, so rescaling would introduce
+  exactly the drift it exists to prevent.
+- **A frameless window reports back 2px taller than the size its constructor was
+  given.** Measured, consistently. `getBounds()` is what gets saved, so a window
+  only ever opened and closed grew 2px and crept down the screen every launch —
+  upstream has this too. `setBounds` is exact, so the restored rectangle is
+  applied once more after construction.
+- **"On screen" is decided by the title bar, not by area.** The old check only
+  fired when the saved rect missed the nearest display *entirely*, so a window
+  whose title bar was above the top of the screen was restored exactly there and
+  could not be dragged back. A rect now needs 120px of width and a 32px strip of
+  its top edge inside some work area, or it is clamped into the nearest one — and
+  a window deliberately hung off an edge is left alone. Size is clamped to the
+  work area either way, so a rect saved on a 4K display does not reopen larger
+  than a laptop panel. (The old centring was also wrong on a secondary monitor:
+  it used the display's *size* without its origin.)
+- **A slot with nothing saved cascades** 28px off the newest live window,
+  wrapping at the work area edge, rather than opening on top of it.
+- Geometry is written on close and 2s after the last move or resize — the
+  watchdog's `app.exit()`, a session ending and a crash all skip `close`. The
+  write is `conf`'s read-modify-write through `write-file-atomic`, which throws
+  rather than losing data quietly, and a failure is recorded as
+  `window-geometry-save-failed` (the read-only `data\` of a mis-frozen slot is
+  what produces it).
+- Slot 1 is mirrored back to `windowBoundaries`, so a build without slots —
+  upstream, or an older one of ours — still finds the main window's place.
+- Every placement writes a `window-geometry` record to `diagnostics.log`, and an
+  adjusted one writes `window-geometry-adjusted` saying what was wrong. "Why did
+  my window open there" is otherwise unanswerable from outside the process.
+
+**No setting.** The reference gates this behind `rememberWindowGeometry` because
+there it is new behaviour; here geometry has always been remembered and this only
+fixes who it belongs to, so a toggle would be a way to ask for the bug. It would
+also mean a `configDefaults.yaml` line, and every changed default is a rebase
+conflict.
+
+`app/test/windowGeometry.test.js` launches three hidden dev instances and drives
+them over CDP, opening the extra windows through `app:new-window`'s own `hidden`
+option so a run never shows a window or takes focus. It transcribes the old
+placement and runs it against the same `window.json` and the same displays,
+because a check only the new code can fail proves nothing — the transcription
+puts both windows in one place and accepts the unreachable rect unchanged.
+
+**Probe the debugging port, never assume it.** A port Chromium cannot bind is not
+an error it reports: it simply does not listen, and every request goes to whatever
+*is* there. Measured — 9251 was the user's own Chrome, full of logged-in tabs, and
+the first version of this test was one URL filter away from evaluating JavaScript
+in it. It now finds a free port and checks `/json/version` says Electron before
+attaching.
+
 ## Why it froze (`diagnostics.log`)
 
 `app/lib/diagnostics.ts` records what blocks an event loop, in both the main

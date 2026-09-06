@@ -2,7 +2,6 @@ import * as glasstron from 'glasstron'
 import { autoUpdater } from 'electron-updater'
 import { Subject, Observable, debounceTime } from 'rxjs'
 import { BrowserWindow, app, ipcMain, Rectangle, Menu, screen, BrowserWindowConstructorOptions, TouchBar, nativeImage, WebContents, nativeTheme } from 'electron'
-import ElectronConfig = require('electron-config')
 import { enable as enableRemote } from '@electron/remote/main'
 import * as os from 'os'
 import * as path from 'path'
@@ -13,6 +12,7 @@ import type { Application } from './app'
 import { parseArgs } from './cli'
 import { note, recordFailure } from './diagnostics'
 import { parseTabbyURL, isTabbyURL } from './urlHandler'
+import { claimSlot, describe, placeWindow, releaseSlot, saveGeometry } from './windowGeometry'
 
 let DwmEnableBlurBehindWindow: any = null
 if (process.platform === 'win32') {
@@ -41,8 +41,10 @@ export class Window {
     private visible = new Subject<boolean>()
     private closed = new Subject<void>()
     private window?: GlasstronWindow
-    private windowConfig: ElectronConfig
     private windowBounds?: Rectangle
+    /** Which remembered geometry this window is. See ./windowGeometry. */
+    private geometrySlot: number
+    private savedGeometry: string | null = null
     private closing = false
     private lastVibrancy: { enabled: boolean, type?: string } | null = null
     private disableVibrancyWhileDragging = false
@@ -59,18 +61,21 @@ export class Window {
         options = options ?? {}
         this.options = options
 
-        this.windowConfig = new ElectronConfig({ name: 'window' })
-        this.windowBounds = this.windowConfig.get('windowBoundaries')
+        this.geometrySlot = claimSlot()
 
-        const maximized = this.windowConfig.get('maximized')
         // Full HD for a first run, clamped to the work area: 1080 does not fit
         // a 1080-tall display once the taskbar is out of it, and a smaller
-        // screen would otherwise get a window hanging off the bottom. Only the
-        // first run uses this at all — saved bounds overwrite it below.
+        // screen would otherwise get a window hanging off the bottom. Only a
+        // slot with nothing remembered uses this at all.
         const workArea = screen.getPrimaryDisplay().workAreaSize
-        const bwOptions: BrowserWindowConstructorOptions = {
+        const placement = placeWindow(this.geometrySlot, {
             width: Math.min(1920, workArea.width),
             height: Math.min(1080, workArea.height),
+        })
+        const maximized = placement.maximized
+
+        const bwOptions: BrowserWindowConstructorOptions = {
+            ...placement.bounds,
             title: 'Tabby',
             minWidth: 400,
             minHeight: 300,
@@ -91,19 +96,6 @@ export class Window {
                 ? '#00000000'
                 : (nativeTheme.shouldUseDarkColors ? '#131d27' : '#ffffff'),
             acceptFirstMouse: true,
-        }
-
-        if (this.windowBounds) {
-            Object.assign(bwOptions, this.windowBounds)
-            const closestDisplay = screen.getDisplayNearestPoint( { x: this.windowBounds.x, y: this.windowBounds.y } )
-
-            const [left1, top1, right1, bottom1] = [this.windowBounds.x, this.windowBounds.y, this.windowBounds.x + this.windowBounds.width, this.windowBounds.y + this.windowBounds.height]
-            const [left2, top2, right2, bottom2] = [closestDisplay.bounds.x, closestDisplay.bounds.y, closestDisplay.bounds.x + closestDisplay.bounds.width, closestDisplay.bounds.y + closestDisplay.bounds.height]
-
-            if ((left2 > right1 || right2 < left1 || top2 > bottom1 || bottom2 < top1) && !maximized) {
-                bwOptions.x = closestDisplay.bounds.width / 2 - bwOptions.width / 2
-                bwOptions.y = closestDisplay.bounds.height / 2 - bwOptions.height / 2
-            }
         }
 
         if (this.configStore.appearance?.frame === 'native') {
@@ -127,7 +119,22 @@ export class Window {
             this.window = new glasstron.BrowserWindow(bwOptions)
         }
 
+        if (placement.source !== 'default') {
+            // The constructor's width and height are not what `getBounds()`
+            // reports back — measured on Windows, consistently 2px taller for a
+            // frameless window — so a rectangle that came from `getBounds()`
+            // and goes back in through the constructor grows a little every
+            // time it round-trips, and a window that is only ever opened and
+            // closed creeps down the screen. `setBounds` is exact, so applying
+            // the same rectangle once more is what stops the drift.
+            this.window.setBounds(placement.bounds as Rectangle)
+        }
+
         this.webContents = this.window.webContents
+        // Where it actually landed, not where we asked it to: a window opened
+        // by cascade and never touched is still worth remembering, and this is
+        // the only place it is known before the first move event.
+        this.windowBounds = this.window.getBounds()
 
         this.window.webContents.once('did-finish-load', () => {
             if (process.platform === 'darwin') {
@@ -369,6 +376,26 @@ export class Window {
         }
     }
 
+    /**
+     * Remember where this window is, under its own slot.
+     *
+     * `windowBounds` and not `getBounds()`: it is only updated while the window
+     * is not maximized, which is what makes a maximized window remember the
+     * size it would restore to rather than the size of the screen.
+     */
+    private persistGeometry (): void {
+        if (!this.window || this.window.isDestroyed() || !this.windowBounds) {
+            return
+        }
+        const geometry = describe(this.windowBounds, this.window.isMaximized())
+        const digest = JSON.stringify(geometry)
+        if (digest === this.savedGeometry) {
+            return
+        }
+        this.savedGeometry = digest
+        saveGeometry(this.geometrySlot, geometry)
+    }
+
     private setupWindowManagement () {
         this.window.on('show', () => {
             this.visible.next(true)
@@ -385,8 +412,21 @@ export class Window {
             this.send('host:window-moved')
         })
 
+        // A close is not the only way a window goes away — the watchdog's
+        // `app.exit()`, a session ending and a crash all skip it — so the
+        // geometry is written once the user stops dragging as well as on close.
+        // Debounced because `conf` reads and rewrites the file synchronously
+        // and a drag is hundreds of events, and skipped when nothing moved.
+        const geometrySubscription = new Observable<void>(observer => {
+            this.window.on('move', () => observer.next())
+            this.window.on('resize', () => observer.next())
+        }).pipe(debounceTime(2000)).subscribe(() => {
+            this.persistGeometry()
+        })
+
         this.window.on('closed', () => {
             moveSubscription.unsubscribe()
+            geometrySubscription.unsubscribe()
         })
 
         this.window.on('enter-full-screen', () => this.send('host:window-enter-full-screen'))
@@ -401,11 +441,13 @@ export class Window {
                 this.send('host:window-close-request')
                 return
             }
-            this.windowConfig.set('windowBoundaries', this.windowBounds)
-            this.windowConfig.set('maximized', this.window.isMaximized())
+            this.persistGeometry()
         })
 
         this.window.on('closed', () => {
+            // Only now: a slot taken by a window that is still on screen would
+            // hand the next window this one's remembered place.
+            releaseSlot(this.geometrySlot)
             this.destroy()
         })
 
