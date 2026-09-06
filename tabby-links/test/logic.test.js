@@ -617,14 +617,26 @@ check('sandbox never grants same-origin', hh.HTML_SANDBOX.includes('allow-same-o
 
 // The template writes the attribute out literally (Angular refuses a bound
 // one), so the constant above and the markup can drift. They must not.
-const cardPug = require('fs').readFileSync(
-    path.join(REPO, 'tabby-links/src/components/linkHoverCard.component.pug'), 'utf8')
+//
+// One template, checked once, because there is one: the card and the preview
+// pane render the frame through the same component. A second copy of this
+// markup is exactly what would let the pane end up less sealed than the card,
+// so the assertion below also refuses to find an iframe anywhere else in the
+// package.
+const viewPug = require('fs').readFileSync(
+    path.join(REPO, 'tabby-links/src/components/linkPreviewView.component.pug'), 'utf8')
 check('the template hard-codes the same sandbox',
-    cardPug.includes(`sandbox='${hh.HTML_SANDBOX}'`), true)
+    viewPug.includes(`sandbox='${hh.HTML_SANDBOX}'`), true)
 check('the template never grants same-origin',
-    cardPug.includes('allow-same-origin'), false)
+    viewPug.includes('allow-same-origin'), false)
 check('the sandbox is not bound',
-    /\[attr\.sandbox\]|\[sandbox\]/.test(cardPug), false)
+    /\[attr\.sandbox\]|\[sandbox\]/.test(viewPug), false)
+check('nothing else in the package renders an iframe',
+    require('fs').readdirSync(path.join(REPO, 'tabby-links/src/components'))
+        .filter(f => f.endsWith('.pug') && f !== 'linkPreviewView.component.pug')
+        .filter(f => require('fs').readFileSync(
+            path.join(REPO, 'tabby-links/src/components', f), 'utf8').includes('iframe')),
+    [])
 check('csp denies by default', hh.HTML_CSP.startsWith("default-src 'none'"), true)
 check('csp blocks the network', hh.HTML_CSP.includes("connect-src 'none'"), true)
 check('csp blocks form submission', hh.HTML_CSP.includes("form-action 'none'"), true)
@@ -637,6 +649,16 @@ for (const [input, expected] of [
 ]) {
     check(`clamp ${JSON.stringify(input)}`, hh.clampHtmlHeight(input), expected)
 }
+
+// The pane is the one place a page may ask for real room. The card's own
+// ceiling is unchanged by that — which is the half of the old "a plugin asking
+// for 1000px does not get the pane" comment that was always about the card.
+check('the card still clamps at 320', hh.HTML_MAX_HEIGHT, 320)
+check('the default ceiling is the card\'s', hh.clampHtmlHeight(1000), 320)
+check('the pane lets a page be tall', hh.clampHtmlHeight(1000, hh.HTML_PANE_MAX_HEIGHT), 1000)
+check('the pane still has a ceiling',
+    hh.clampHtmlHeight(1e9, hh.HTML_PANE_MAX_HEIGHT), hh.HTML_PANE_MAX_HEIGHT)
+check('the pane still has a floor', hh.clampHtmlHeight(1, hh.HTML_PANE_MAX_HEIGHT), 40)
 
 // The CSP and the bootstrap have to land ahead of anything the page can run,
 // whatever shape the document arrived in.

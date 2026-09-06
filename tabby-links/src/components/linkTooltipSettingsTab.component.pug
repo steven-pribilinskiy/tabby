@@ -66,10 +66,20 @@ h4.mt-4.mb-2(translate) Defaults
 .form-line
     .header
         .title(translate) Show buttons on the link tooltip
-        .description(translate) Open the link, copy it, and — for links to files — copy the path it resolves to or show it in the file manager
+        .description(translate) Open the link, copy it, show the preview in a pane, and — for links to files — copy the path it resolves to or show it in the file manager
     reset-to-default([proxy]='config.store.linkTooltip', key='showButtons')
     toggle(
         [(ngModel)]='config.store.linkTooltip.showButtons',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+.form-line
+    .header
+        .title(translate) Hide link tooltips while a preview pane is open
+        .description(translate) "Show in pane" puts a preview somewhere it stays put. With this on, hovering a link while such a pane is open no longer also throws a card over the terminal. Links are still detected and still clickable, and closing the last pane brings the cards back
+    reset-to-default([proxy]='config.store.linkTooltip', key='hideTooltipsWithPane')
+    toggle(
+        [(ngModel)]='config.store.linkTooltip.hideTooltipsWithPane',
         (ngModelChange)='saveConfiguration()',
     )
 
@@ -425,6 +435,10 @@ h4.mt-4.mb-2(translate) Rules
         .header
             .title(translate) Hide "Show in folder"
         toggle([(ngModel)]='currentRule.suppressReveal', (ngModelChange)='saveConfiguration()')
+    .form-line
+        .header
+            .title(translate) Hide "Show in pane"
+        toggle([(ngModel)]='currentRule.suppressShowInPane', (ngModelChange)='saveConfiguration()')
 
     h6.mt-3.mb-2(translate) On click
 

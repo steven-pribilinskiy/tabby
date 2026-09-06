@@ -457,6 +457,64 @@ fork", which was wrong and cost a rediscovery.
   the frame's own viewport, so a page that reports it just asks to stay the size
   it already is — a silent no-op that looks exactly like a broken channel.
 
+### Show in pane
+
+A card button puts the same preview in a **real pane** beside the terminal —
+grouped fields, markdown bodies, comments, actions and a plugin's own `html` —
+with a switch that silences hover cards while one is open.
+
+**This reverses a decision this fork had written down.** `htmlHost.ts` used to
+say outright that "a plugin asking for 1000px does not get the pane", because
+there was no pane. Half of that sentence was always about the card and still
+holds: the card is a hover affordance, it is still bounded by the terminal pane
+it floats over, and a page there is still clamped to 320px. The pane is the
+opt-in place where a big preview is legitimate, and there a page may ask for up
+to 4000px. That comment now says which host each limit belongs to rather than
+stating a policy the code contradicts.
+
+- **One renderer, in two hosts.** `linkPreviewView.component` is the whole
+  preview — groups, the tab strip, markdown, comments, actions, the sandboxed
+  frame — and the card and the pane each mount it. A second copy of that markup
+  is exactly how the pane would end up less sealed than the card, so
+  `logic.test.js` now also asserts that no other template in the package
+  contains an `iframe` at all.
+- **The only thing the pane passes it that the card does not is room**: a `pane`
+  flag that swaps five CSS variables (body cap, options cap, two line clamps, an
+  image cap) and a larger `maxHtmlHeight`. Everything else — `trackBy` on every
+  `*ngFor`, markdown parsed to data and never to HTML, `srcdoc` written only
+  when the key changes — is therefore stated once and true in both.
+- **`ngAfterViewChecked` writes the frame**, not each host. The card called
+  `syncHtmlFrame()` from its own `refresh()`; with two hosts that becomes two
+  places to forget. A check whose key has not changed is one comparison.
+- **The pane must be opened inside `NgZone`.** The card's buttons hang off
+  xterm's own DOM, which is outside it, and `TabsService.create` +
+  `SplitTabComponent.addTab` from outside the zone builds a tab nothing ever
+  draws.
+- **Settling a load must not happen during the pass that created the view.**
+  `load()` finishes *synchronously* when no integration claims the link, so
+  `ngOnInit` defers it by a microtask; otherwise its `detectChanges()` re-enters
+  the pass that is still constructing the pane.
+- **Suppression needs both halves** — `linkTooltip.hideTooltipsWithPane` *and* a
+  pane open — which is what makes the switch safe to leave on: closing the last
+  pane brings hover cards back without anyone having to remember to turn it off.
+  It is asked in `onHover`, so a suppressed hover costs no timer, no `convert`
+  and no rule resolution.
+- **The pane takes the card's answers rather than resolving again.** The card
+  already knows which buttons this link earned, which integration answered and
+  what a `text` match resolved to; asking a second time can get a different
+  answer, because a `text` match has no link until an integration says so.
+- **A pane has no recovery token**, so it is not restored with the window. That
+  is upstream's own path for a tab that cannot be recovered (`recoverContainer`
+  skips a null child) and it leaves that container's ratios one entry long,
+  which is an upstream bug affecting any such tab. Not worth a preview pane
+  re-running someone's Jira fetch at boot.
+- Verified in `tabby-links/test/pane.cdp.js` (40 checks): opened through a real
+  hover and a real click on the card's button; the `html` frame in the pane on
+  an opaque origin with no `require`, no `process`, the CSP present and the
+  network refused; tooltips silenced and restored; and **change-detection
+  passes over an idle pane counted — measured 0 over 2.5s** — because the
+  `*ngFor` freeze does not fail a test, it hangs one.
+
 ### Click chords
 
 What a click does is configurable: two chords, primary and alternative, each a

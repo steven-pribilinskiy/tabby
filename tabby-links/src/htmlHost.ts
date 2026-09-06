@@ -20,9 +20,29 @@
  * running app — see `test/htmlHost.test.js`.
  */
 
-/** A card is a hover affordance. A plugin asking for 1000px does not get the pane. */
+/**
+ * How tall a plugin's page may ask its host to make it.
+ *
+ * The ceiling belongs to the host, not to the page, and there are two hosts.
+ * On the **card** it is 320px, because a card is a hover affordance that
+ * appeared because the pointer passed over something — a page asking for
+ * 1000px there would cover the terminal it is describing. In the **pane** the
+ * user asked for this preview and can resize the thing it is in, so a page may
+ * ask for as much as `HTML_PANE_MAX_HEIGHT` and the pane scrolls.
+ *
+ * (An earlier version of this file said outright that a plugin asking for
+ * 1000px "does not get the pane", because there was no pane. There is one now;
+ * the card's own limit is unchanged, which is the half of that sentence that
+ * was actually about the card.)
+ */
 export const HTML_MIN_HEIGHT = 40
 export const HTML_MAX_HEIGHT = 320
+/**
+ * The pane's ceiling. Still finite: the height is written to an element, and a
+ * page answering with a number it computed from its own content can get that
+ * arbitrarily wrong. Well past any screen, so in practice the page decides.
+ */
+export const HTML_PANE_MAX_HEIGHT = 4000
 /** What the frame gets before the page has measured itself. */
 export const HTML_DEFAULT_HEIGHT = 120
 export const HTML_MIN_WIDTH = 240
@@ -154,7 +174,7 @@ export function buildHtmlDocument (html: string, data: Record<string, any>, uri:
  * can use. `postMessage` carries whatever the page felt like sending, so a
  * string, a NaN and a negative all have to be survivable.
  */
-export function clampHtmlHeight (value: unknown): number | null {
+export function clampHtmlHeight (value: unknown, max = HTML_MAX_HEIGHT): number | null {
     // A string is accepted because a page may well send `"120"`; a boolean is
     // not, because `Number(true)` is 1 and that would silently become a card.
     if (typeof value !== 'number' && typeof value !== 'string') {
@@ -164,7 +184,7 @@ export function clampHtmlHeight (value: unknown): number | null {
     if (!Number.isFinite(height) || height <= 0) {
         return null
     }
-    return Math.min(HTML_MAX_HEIGHT, Math.max(HTML_MIN_HEIGHT, Math.round(height)))
+    return Math.min(max, Math.max(HTML_MIN_HEIGHT, Math.round(height)))
 }
 
 /** What a page sent us, if it is one of the two messages in the contract. */
@@ -178,7 +198,7 @@ export interface HtmlHostMessage {
  * `postMessage(object)` as JSON and `postMessage(string)` as a string, so both
  * shapes are accepted here too.
  */
-export function parseHtmlHostMessage (raw: unknown): HtmlHostMessage | null {
+export function parseHtmlHostMessage (raw: unknown, maxHeight = HTML_MAX_HEIGHT): HtmlHostMessage | null {
     let value = raw
     if (typeof value === 'string') {
         try {
@@ -192,7 +212,7 @@ export function parseHtmlHostMessage (raw: unknown): HtmlHostMessage | null {
     }
     const fields = value as Record<string, unknown>
     const message: HtmlHostMessage = {}
-    const height = clampHtmlHeight(fields.height)
+    const height = clampHtmlHeight(fields.height, maxHeight)
     if (height !== null) {
         message.height = height
     }

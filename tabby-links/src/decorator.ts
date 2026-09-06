@@ -6,12 +6,14 @@ import { BaseTerminalTabComponent, TerminalDecorator, XTermFrontend } from 'tabb
 import { EffectiveTooltipSettings, LinkMatchKind, LinkPreview, LinkTooltipAction, LinkTooltipRule } from './api'
 import { ChordName, ClickableKind, NO_ACTION } from './clickChords'
 import { CardModel, CardHandlers, LinkHoverCardComponent, emptyModel } from './components/linkHoverCard.component'
+import { LinkPreviewRequest } from './components/linkPreviewTab.component'
 import { DELIMITED_LINK_PRIORITY, findDelimitedLinks } from './delimitedLinks'
 import { BufferRange, getLineWindow, rangeFor } from './linkComputer'
 import { MAX_TEXT_INPUT } from './regexGuard'
 import { IntegrationRuntimeService } from './services/integrationRuntime.service'
 import { LinkActionsService } from './services/linkActions.service'
 import { LinkClicksService } from './services/linkClicks.service'
+import { LinkPanesService } from './services/linkPanes.service'
 import { LinkRulesService } from './services/linkRules.service'
 import { LinkTargetService, punycodeHost } from './services/linkTarget.service'
 
@@ -99,6 +101,7 @@ export class LinkTooltipDecorator extends TerminalDecorator {
         private actions: LinkActionsService,
         private clicks: LinkClicksService,
         private runtime: IntegrationRuntimeService,
+        private panes: LinkPanesService,
         @Optional() @Inject(LinkHandler) private handlers: LinkHandler[] | null,
     ) {
         super()
@@ -414,6 +417,13 @@ export class LinkTooltipDecorator extends TerminalDecorator {
         if (!this.rules.enabled) {
             return
         }
+        // Asked here rather than in `show()`, so a suppressed hover costs
+        // nothing at all: no timer, no `convert`, no rule resolution. Detection
+        // and clicking are unaffected — the link is still underlined, and the
+        // pane is where its details are.
+        if (this.panes.tooltipsSuppressed()) {
+            return
+        }
         const key = `${link.kind}:${link.text}:${link.range.start.y}:${link.range.start.x}`
         clearTimeout(state.hideTimer)
         if (state.shownKey === key) {
@@ -524,6 +534,9 @@ export class LinkTooltipDecorator extends TerminalDecorator {
             && settings.integration !== 'none'
             && this.runtime.canPreview(link.kind, link.text, settings.integration)
         model.loading = wantsPreview
+        // Offered only when there is something to put in a pane. For a link
+        // nobody previews, a pane would show what the card already shows.
+        model.showInPane = settings.showInPane && wantsPreview
 
         this.render(state, model, link, target.filePath, settings.integration)
 
@@ -562,7 +575,7 @@ export class LinkTooltipDecorator extends TerminalDecorator {
         this.zone.run(() => {
             const instance = state.componentRef.instance
             instance.model = model
-            instance.handlers = this.cardHandlers(state, link, filePath, integration)
+            instance.handlers = this.cardHandlers(state, link, filePath, integration, model)
             state.host.style.display = ''
             instance.refresh()
             this.position(state, link.range)
@@ -679,6 +692,7 @@ export class LinkTooltipDecorator extends TerminalDecorator {
         link?: HoveredLink,
         filePath = '',
         integration = '',
+        model?: CardModel,
     ): CardHandlers {
         const uri = () => link ? this.linkUri(link, integration) : ''
         return {
@@ -686,6 +700,21 @@ export class LinkTooltipDecorator extends TerminalDecorator {
             copyLink: () => this.actions.copy(uri()),
             copyPath: () => this.actions.copy(filePath),
             reveal: () => this.actions.reveal(filePath),
+            showInPane: () => {
+                if (!link) {
+                    return
+                }
+                // The card goes first. It is a hover affordance that the
+                // pointer is currently inside, and leaving it up over a
+                // terminal that is about to be resized by the new pane looks
+                // like a bug — and with the tooltip switch on, it would be one.
+                this.hide(state)
+                // Inside the zone: this creates a tab and rearranges a split,
+                // and the card's listeners hang off xterm's own DOM, which is
+                // outside it — nothing would be drawn.
+                this.zone.run(() => void this.panes.show(
+                    this.paneRequest(state, link, filePath, integration, model), state.tab))
+            },
             custom: (action: LinkTooltipAction) => void this.actions.runCustom(action, uri(), state.tab),
             pointerEnter: () => {
                 state.pointerInCard = true
@@ -721,6 +750,38 @@ export class LinkTooltipDecorator extends TerminalDecorator {
                 await this.refreshPreview(state, link, integration)
                 return ''
             },
+        }
+    }
+
+    /**
+     * What the pane is asked to show.
+     *
+     * Taken from the card the button was pressed on rather than resolved again:
+     * the card knows which buttons this link earned, which integration answered
+     * for it and what it resolves to, and asking a second time could get a
+     * different answer — the rules may have changed, and a `text` match's link
+     * is only known once an integration has said what it refers to.
+     */
+    private paneRequest (
+        state: TabState,
+        link: HoveredLink,
+        filePath: string,
+        integration: string,
+        model?: CardModel,
+    ): LinkPreviewRequest {
+        return {
+            kind: link.kind,
+            text: link.text,
+            uri: this.linkUri(link, integration),
+            filePath,
+            integration,
+            showOpen: model?.showOpen ?? false,
+            showCopyLink: model?.showCopyLink ?? false,
+            showCopyPath: model?.showCopyPath ?? false,
+            showReveal: model?.showReveal ?? false,
+            actions: model?.actions ?? [],
+            allowHtml: model?.allowHtml ?? true,
+            tab: state.tab,
         }
     }
 

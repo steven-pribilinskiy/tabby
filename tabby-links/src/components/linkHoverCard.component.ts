@@ -1,17 +1,16 @@
-import { ChangeDetectorRef, Component, ElementRef, OnDestroy, ViewChild } from '@angular/core'
+import { ChangeDetectorRef, Component, ElementRef, ViewChild } from '@angular/core'
 
-import {
-    LinkPreview, LinkTooltipAction, PreviewAction, PreviewActionOption,
-    PreviewField, PreviewGroup, PreviewTab,
-} from '../api'
-import { MarkdownBlock, parseMarkdown } from '../richText'
-import { HTML_DEFAULT_HEIGHT, buildHtmlDocument, parseHtmlHostMessage } from '../htmlHost'
-import { badgeColor } from '../services/integrationRuntime.service'
+import { LinkTooltipAction } from '../api'
+import { PreviewHandlers, PreviewModel, emptyPreviewModel } from './linkPreviewView.component'
 
-/** Everything the card draws. Owned and updated by the decorator. */
-export interface CardModel {
-    text: string
-    target: string
+/**
+ * Everything the card draws. Owned and updated by the decorator.
+ *
+ * The preview itself is `PreviewModel`, which the pane carries too — the card
+ * adds only what a *hover* needs: the hint, the homograph warning, and which
+ * buttons it offers.
+ */
+export interface CardModel extends PreviewModel {
     hint: string
     /**
      * The host's real ASCII form, when the link is not spelled the way it
@@ -22,54 +21,33 @@ export interface CardModel {
     showCopyLink: boolean
     showCopyPath: boolean
     showReveal: boolean
+    showInPane: boolean
     actions: LinkTooltipAction[]
-    loading: boolean
-    integrationName: string
-    preview: LinkPreview | null
-    /**
-     * Identity of what the card is showing. The frame's document is rewritten
-     * only when this changes — see `syncHtmlFrame`.
-     */
-    key: string
-    /** Whether a plugin's `html` may be rendered at all (`linkTooltip.allowHtml`). */
-    allowHtml: boolean
 }
 
-export interface CardHandlers {
+export interface CardHandlers extends PreviewHandlers {
     open: () => void
     copyLink: () => void
     copyPath: () => void
     reveal: () => void
+    /** Put this same preview in a pane, where there is room to read it. */
+    showInPane: () => void
     custom: (action: LinkTooltipAction) => void
     pointerEnter: () => void
     pointerLeave: () => void
-    /** The html frame changed size and the card needs placing again. */
-    htmlResized: () => void
-    /** The page asked for a link to be opened, the way the Open button would. */
-    htmlOpen: (url: string) => void
-    /**
-     * Apply an integration action and refresh the preview. Resolves to an error
-     * string, empty when it worked.
-     */
-    applyAction: (actionKey: string, optionId: string, fields: Record<string, string>) => Promise<string>
 }
 
 export function emptyModel (): CardModel {
     return {
-        text: '',
-        target: '',
+        ...emptyPreviewModel(),
         hint: '',
         punycode: '',
         showOpen: false,
         showCopyLink: false,
         showCopyPath: false,
         showReveal: false,
+        showInPane: false,
         actions: [],
-        loading: false,
-        integrationName: '',
-        preview: null,
-        key: '',
-        allowHtml: true,
     }
 }
 
@@ -79,310 +57,41 @@ export function emptyModel (): CardModel {
  * Created imperatively by `LinkTooltipDecorator` and mounted inside
  * `.xterm-screen`, so it has no `@Input()`s in the usual sense — the decorator
  * writes `model` and calls `refresh()`.
+ *
+ * What the card *is* has not changed: a hover affordance, sized to the pane it
+ * floats over. Everything below the link line is `link-preview-view`, which the
+ * preview pane renders too.
  */
 @Component({
     selector: 'link-hover-card',
     templateUrl: './linkHoverCard.component.pug',
     styleUrls: ['./linkHoverCard.component.scss'],
 })
-export class LinkHoverCardComponent implements OnDestroy {
+export class LinkHoverCardComponent {
     model: CardModel = emptyModel()
     handlers: CardHandlers | null = null
 
     @ViewChild('root') root?: ElementRef<HTMLElement>
-    @ViewChild('htmlFrame') htmlFrame?: ElementRef<HTMLIFrameElement>
 
-    /** The card whose document is currently in the frame. */
-    private appliedKey = ''
-    private frameLoads = 0
-
-    /** Which tab the user picked, when the card offers more than one. */
-    activeTabKey = ''
-    // `| undefined` on purpose: without `noUncheckedIndexedAccess` an index
-    // signature reads as always-present, and the guards below — which are real —
-    // would be flagged as redundant.
-    /** Chosen option per choice action, before it is applied. */
-    chosen: Record<string, string | undefined> = {}
-    /** What the user typed into an option's required-field form. */
-    pendingFields: Record<string, Record<string, string | undefined> | undefined> = {}
-    /** The action currently in flight, so its control can show it. */
-    applying = ''
-    actionError = ''
-    /** Where the last applied action came *from*, so an undo can look for it. */
-    private undoTarget: { actionKey: string, stateId: string } | null = null
-    private markdownCacheKey = ''
-    private markdownCache: MarkdownBlock[] = []
-
-    constructor (private changeDetector: ChangeDetectorRef) {
-        window.addEventListener('message', this.onFrameMessage)
-    }
-
-    ngOnDestroy (): void {
-        window.removeEventListener('message', this.onFrameMessage)
-    }
+    constructor (private changeDetector: ChangeDetectorRef) { }
 
     refresh (): void {
         // Everything that drives this component arrives from xterm's own DOM
         // listeners, which run outside Angular's zone, so a change-detection
-        // pass has to be asked for explicitly.
+        // pass has to be asked for explicitly. The preview's html frame is
+        // written from the child's own `ngAfterViewChecked`, which this pass
+        // runs.
         this.changeDetector.detectChanges()
-        this.syncHtmlFrame()
     }
 
     get hasActions (): boolean {
         return this.model.showOpen || this.model.showCopyLink
             || this.model.showCopyPath || this.model.showReveal
+            || this.model.showInPane
             || !!this.model.actions.length
-    }
-
-    get showPreviewSection (): boolean {
-        return this.model.loading || !!this.model.preview
-    }
-
-    /** Whether this card renders a plugin's document instead of the field list. */
-    get showHtml (): boolean {
-        return this.model.allowHtml && !!this.model.preview?.html && !this.model.preview.error
-    }
-
-    // ── tabs ─────────────────────────────────────────────────────────────────
-
-    /** The tab on screen. Falls back to the first, so one is always selected. */
-    get activeTab (): PreviewTab | null {
-        const tabs = this.model.preview?.tabs ?? []
-        if (!tabs.length) {
-            return null
-        }
-        return tabs.find(t => t.key === this.activeTabKey) ?? tabs[0]
-    }
-
-    selectTab (tab: PreviewTab): void {
-        this.activeTabKey = tab.key
-    }
-
-    /**
-     * A markdown body, parsed to blocks.
-     *
-     * Memoised on the text itself: change detection asks for this on every pass,
-     * and re-parsing a comment thread each time would be a needless cost on a
-     * card that is already redrawn whenever the terminal scrolls.
-     */
-    blocksFor (tab: PreviewTab): MarkdownBlock[] {
-        if (!tab.markdown) {
-            return []
-        }
-        if (this.markdownCacheKey !== tab.body) {
-            this.markdownCacheKey = tab.body
-            this.markdownCache = parseMarkdown(tab.body)
-        }
-        return this.markdownCache
-    }
-
-    // ── actions ──────────────────────────────────────────────────────────────
-
-    optionFor (action: PreviewAction): PreviewActionOption | null {
-        const chosen = this.chosen[action.key]
-        return action.options.find(o => o.id === chosen) ?? null
-    }
-
-    chooseOption (action: PreviewAction, optionId: string): void {
-        this.chosen[action.key] = optionId
-        this.actionError = ''
-    }
-
-    /** The fields the chosen option demands, if any. */
-    requiredFields (action: PreviewAction): { key: string, label: string, required: boolean }[] {
-        return this.optionFor(action)?.fields ?? []
-    }
-
-    fieldValue (action: PreviewAction, key: string): string {
-        return this.pendingFields[action.key]?.[key] ?? ''
-    }
-
-    setFieldValue (action: PreviewAction, key: string, value: string): void {
-        this.pendingFields[action.key] = { ...this.pendingFields[action.key], [key]: value }
-    }
-
-    /** Only the entries actually filled in, as plain strings. */
-    private filledFields (action: PreviewAction): Record<string, string> {
-        const out: Record<string, string> = {}
-        for (const [key, value] of Object.entries(this.pendingFields[action.key] ?? {})) {
-            if (value) {
-                out[key] = value
-            }
-        }
-        return out
-    }
-
-    /** Every field the far end insists on has to be filled before Apply lights. */
-    canApply (action: PreviewAction): boolean {
-        if (this.applying) {
-            return false
-        }
-        if (action.kind === 'button') {
-            return true
-        }
-        const option = this.optionFor(action)
-        if (!option) {
-            return false
-        }
-        return option.fields.every(f => !f.required || this.fieldValue(action, f.key))
-    }
-
-    async apply (action: PreviewAction): Promise<void> {
-        if (!this.handlers || !this.canApply(action)) {
-            return
-        }
-        this.applying = action.key
-        this.actionError = ''
-        // Remembered before the change, because an undo is "the option whose
-        // target is where we just came from" — and after the refresh that value
-        // is gone.
-        const cameFrom = action.currentState
-        try {
-            const error = await this.handlers.applyAction(
-                action.key,
-                this.chosen[action.key] ?? '',
-                this.filledFields(action),
-            )
-            this.actionError = error
-            if (!error) {
-                this.undoTarget = cameFrom ? { actionKey: action.key, stateId: cameFrom } : null
-                Reflect.deleteProperty(this.chosen, action.key)
-                Reflect.deleteProperty(this.pendingFields, action.key)
-            }
-        } finally {
-            this.applying = ''
-            this.refresh()
-        }
-    }
-
-    /**
-     * The option that leads back to where we were, when the far end offers one.
-     *
-     * Jira workflows are frequently one-directional, so this is often absent —
-     * in which case the card says nothing rather than offering an undo that
-     * would fail.
-     */
-    undoOption (action: PreviewAction): PreviewActionOption | null {
-        if (this.undoTarget?.actionKey !== action.key) {
-            return null
-        }
-        const target = this.undoTarget.stateId
-        return action.options.find(o => o.targetId && o.targetId === target) ?? null
-    }
-
-    async undo (action: PreviewAction): Promise<void> {
-        const option = this.undoOption(action)
-        if (!option) {
-            return
-        }
-        this.chosen[action.key] = option.id
-        this.undoTarget = null
-        await this.apply(action)
-    }
-
-    optionBadgeBackground (option: PreviewActionOption): string {
-        return `${badgeColor(option.color)}55`
-    }
-
-    trackTab (_index: number, tab: PreviewTab): string {
-        return tab.key
-    }
-
-    trackGroup (_index: number, group: PreviewGroup): string {
-        return group.key
-    }
-
-    /** Distinct from `trackAction`, which tracks a *rule's* custom buttons. */
-    trackIntegrationAction (_index: number, action: PreviewAction): string {
-        return action.key
-    }
-
-    trackItem (index: number): number {
-        return index
-    }
-
-    badgeBackground (field: PreviewField): string {
-        // Translucent over the card's own background: readable in either theme
-        // without computing a contrasting foreground for every badge.
-        return `${badgeColor(field.color)}55`
-    }
-
-    trackField (_index: number, field: PreviewField): string {
-        return field.key
     }
 
     trackAction (index: number, action: LinkTooltipAction): string {
         return `${index}:${action.name}`
-    }
-
-    // ── the html frame ───────────────────────────────────────────────────────
-
-    /**
-     * Write the plugin's document into the frame — but only when the card is
-     * showing something new.
-     *
-     * This guard is the whole reason the model carries a key. The Linkifier
-     * re-asks for a link on every rendered-viewport change that touches the
-     * hovered row, which during output is many times a second; assigning
-     * `srcdoc` reloads the frame and restarts the page's script, so rewriting it
-     * on each pass would leave the card permanently blank and re-running.
-     */
-    private syncHtmlFrame (): void {
-        const frame = this.htmlFrame?.nativeElement
-        if (!frame) {
-            this.appliedKey = ''
-            return
-        }
-        if (this.appliedKey === this.model.key) {
-            return
-        }
-        this.appliedKey = this.model.key
-        this.frameLoads = 0
-        frame.style.height = `${HTML_DEFAULT_HEIGHT}px`
-        frame.srcdoc = buildHtmlDocument(
-            this.model.preview?.html ?? '',
-            this.model.preview?.data ?? {},
-            this.model.target || this.model.text,
-        )
-    }
-
-    /**
-     * A sandboxed frame cannot navigate the top window, but nothing stops it
-     * navigating *itself* — which would take `window.__data` along in a URL. The
-     * document we wrote is the only one it gets; a second load means it went
-     * somewhere, so it loses its contents.
-     */
-    onFrameLoad (): void {
-        this.frameLoads++
-        if (this.frameLoads > 1 && this.htmlFrame) {
-            this.htmlFrame.nativeElement.srcdoc = ''
-            this.appliedKey = ''
-        }
-    }
-
-    /**
-     * The page's side of the contract. The frame has an opaque origin, so
-     * `event.origin` is the string "null" and proves nothing — identity of the
-     * source window is what tells us this came from our own frame and not from
-     * some other window that found us.
-     */
-    private onFrameMessage = (event: MessageEvent): void => {
-        const frame = this.htmlFrame?.nativeElement
-        if (!frame || event.source !== frame.contentWindow) {
-            return
-        }
-        const message = parseHtmlHostMessage(event.data)
-        if (!message) {
-            return
-        }
-        if (message.height !== undefined) {
-            frame.style.height = `${message.height}px`
-            // A taller card may no longer fit where it was put.
-            this.handlers?.htmlResized()
-        }
-        if (message.open !== undefined) {
-            this.handlers?.htmlOpen(message.open)
-        }
     }
 }

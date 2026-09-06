@@ -1,0 +1,60 @@
+.link-pane
+    .pane-head
+        i.fas.fa-fw.fa-circle-notch.fa-spin.pane-spinner(*ngIf='busy')
+        .pane-link(title='{{request.text}}') {{request.text}}
+        .pane-head-buttons
+            button.btn.btn-sm.btn-secondary(
+                (click)='refresh()',
+                [disabled]='busy',
+                title='{{"Refresh" | translate}}',
+            )
+                i.fas.fa-fw.fa-rotate-right
+            button.btn.btn-sm.btn-secondary(
+                (click)='close()',
+                title='{{"Close" | translate}}',
+            )
+                i.fas.fa-fw.fa-xmark
+
+    .pane-target(*ngIf='resolved')
+        span.arrow →
+        span.path {{resolved}}
+
+    .pane-buttons(*ngIf='request.showOpen || request.showCopyLink || request.showCopyPath || request.showReveal || request.actions.length')
+        button.btn.btn-sm.btn-secondary(*ngIf='request.showOpen', (click)='open()')
+            i.fas.fa-fw.fa-arrow-up-right-from-square.me-1
+            span(translate) Open
+        button.btn.btn-sm.btn-secondary(*ngIf='request.showCopyLink', (click)='copyLink()')
+            i.fas.fa-fw.fa-link.me-1
+            span(translate) Copy link
+        button.btn.btn-sm.btn-secondary(*ngIf='request.showCopyPath', (click)='copyPath()')
+            i.fas.fa-fw.fa-copy.me-1
+            span(translate) Copy path
+        button.btn.btn-sm.btn-secondary(*ngIf='request.showReveal', (click)='reveal()')
+            i.fas.fa-fw.fa-folder-open.me-1
+            span(translate) Show in folder
+        button.btn.btn-sm.btn-secondary(
+            *ngFor='let action of request.actions; trackBy: trackAction',
+            (click)='custom(action)',
+        )
+            i.fas.fa-fw.me-1(*ngIf='action.icon', class='fa-{{action.icon}}')
+            span {{action.name}}
+
+    //- The same renderer the card uses, told it may take the room.
+    .pane-body
+        link-preview-view(
+            [model]='model',
+            [handlers]='handlers',
+            [pane]='true',
+            [maxHtmlHeight]='maxHtmlHeight',
+        )
+
+        .pane-error(*ngIf='error') {{error}}
+
+        .pane-empty(*ngIf='unclaimed && !error')
+            span(translate) No integration has anything to show for this link.
+
+    //- The switch the pane exists to offer: while one is open, hovering a link
+    //- in a terminal need not also throw a card over it.
+    .pane-foot
+        .pane-toggle-label(translate) Hide link tooltips while a preview pane is open
+        toggle([(ngModel)]='hideTooltips')

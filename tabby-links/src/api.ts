@@ -56,6 +56,7 @@ export interface LinkTooltipRule {
     suppressCopyLink: boolean
     suppressCopyPath: boolean
     suppressReveal: boolean
+    suppressShowInPane: boolean
 
     /**
      * What each click chord does for links this rule matches: a built-in action
@@ -91,6 +92,7 @@ export function newRule (): LinkTooltipRule {
         suppressCopyLink: false,
         suppressCopyPath: false,
         suppressReveal: false,
+        suppressShowInPane: false,
         primaryAction: '',
         alternativeAction: '',
         actions: [],
@@ -127,6 +129,7 @@ export interface EffectiveTooltipSettings {
     showCopyLink: boolean
     showCopyPath: boolean
     showReveal: boolean
+    showInPane: boolean
     integration: string
     showPreview: boolean
     actions: LinkTooltipAction[]

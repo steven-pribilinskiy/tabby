@@ -132,6 +132,7 @@ export class LinkRulesService {
             showCopyLink: showButtons,
             showCopyPath: showButtons,
             showReveal: showButtons,
+            showInPane: showButtons,
             integration: '',
             showPreview: true,
             actions: [],
@@ -165,6 +166,7 @@ export class LinkRulesService {
         settings.showCopyLink = settings.showCopyLink && !rule.suppressCopyLink
         settings.showCopyPath = settings.showCopyPath && !rule.suppressCopyPath
         settings.showReveal = settings.showReveal && !rule.suppressReveal
+        settings.showInPane = settings.showInPane && !rule.suppressShowInPane
         settings.integration = rule.integration
         settings.showPreview = rule.preview
         settings.actions = showButtons ? rule.actions : []

@@ -69,6 +69,7 @@ TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/wslPath.cdp.js      # WSL path
 TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/delimitedLinks.cdp.js  # <uri|label>, column by column
 TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/presets.cdp.js      # both preset entry points
 TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/clicks.cdp.js       # click chords, end to end
+TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/pane.cdp.js         # Show in pane, and what it must not break
 ```
 
 With more than one instance up, say which: `CDP_PORT=9247 node …`.
@@ -124,6 +125,15 @@ worth knowing before editing it:
 session — and it replaces the whole `profile` object, because `profile.options`
 is a `ConfigProxy` member and an assignment to it goes to the config file and
 comes straight back as what it was.
+
+`pane.cdp.js` opens the pane the way a person does — a real hover, then a real click on the card's
+own button — and then asserts three things that are not about how it looks. That a plugin's `html`
+document is **exactly** as sealed there as on the card, because a second host is precisely how that
+guarantee would quietly stop holding. That hover cards go quiet while a pane is open and come back
+when it closes. And that nothing loops: an `*ngFor` over a method that builds objects has frozen
+this window before, and that failure does not fail a test, it *hangs* one — so change-detection
+passes over the pane are counted while it sits idle (measured: 0 over 2.5s) and the renderer is
+pinged with a deadline, the way `integrationsFreeze.cdp.js` does it.
 
 Pass `TABBY_CONFIG_DIRECTORY` so the suites can read the profile they are driving. `html.cdp.js`
 is where the sandbox is asserted — **that the frame's `sandbox` is exactly `allow-scripts` and

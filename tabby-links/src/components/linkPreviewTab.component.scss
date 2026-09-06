@@ -1,0 +1,116 @@
+// The split host sizes and positions this element itself (`layoutInternal`
+// writes left/top/width/height on it), so the only job here is to fill it.
+:host {
+    display: block;
+    overflow: hidden;
+}
+
+.link-pane {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: var(--theme-bg-more);
+    color: var(--theme-fg);
+    font-family: var(--bs-body-font-family);
+    font-size: 12px;
+    line-height: 1.45;
+    padding: 8px 10px;
+    // A terminal pane's contents never leak into its neighbour; neither may
+    // this one's.
+    overflow: hidden;
+}
+
+.pane-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+}
+
+.pane-spinner {
+    font-size: 10px;
+    opacity: .7;
+}
+
+.pane-link {
+    font-weight: 500;
+    // The link is often a path or a URL and the pane is often narrow; one line
+    // that ends in an ellipsis reads better than three that wrap.
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.pane-head-buttons {
+    display: flex;
+    gap: 4px;
+    flex: none;
+
+    .btn {
+        font-size: 11px;
+        padding: 2px 6px;
+    }
+}
+
+.pane-target {
+    margin-top: 3px;
+    opacity: .75;
+    word-break: break-all;
+    flex: none;
+
+    .arrow {
+        opacity: .6;
+        margin-right: 4px;
+    }
+}
+
+.pane-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 7px;
+    flex: none;
+
+    .btn {
+        font-size: 11px;
+        padding: 2px 8px;
+    }
+}
+
+// Everything the integration answered with, and the only part that scrolls.
+.pane-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(127, 127, 127, .25);
+}
+
+.pane-error {
+    color: #d03c3c;
+    overflow-wrap: anywhere;
+}
+
+.pane-empty {
+    opacity: .6;
+    font-style: italic;
+}
+
+.pane-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(127, 127, 127, .25);
+}
+
+.pane-toggle-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    opacity: .75;
+}

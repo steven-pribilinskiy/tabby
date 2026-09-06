@@ -1,0 +1,380 @@
+// The preview, drawn identically on the hover card and in the preview pane.
+// Colours and fonts are inherited from whichever host it is in, so it reads as
+// app chrome in a pane and as part of the card over a terminal.
+//
+// The only thing the two disagree about is room, and that is these five
+// variables: a card is a hover affordance that must not grow without limit, and
+// a pane is a place the user opened on purpose and can resize.
+:host {
+    display: block;
+    --preview-body-max: 190px;
+    --preview-options-max: 96px;
+    --preview-title-lines: 3;
+    --preview-multiline-lines: 6;
+    --preview-image-max: 120px;
+}
+
+:host(.pane) {
+    --preview-body-max: none;
+    --preview-options-max: none;
+    --preview-title-lines: none;
+    --preview-multiline-lines: none;
+    --preview-image-max: 320px;
+}
+
+.preview {
+    margin-top: 7px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(127, 127, 127, .25);
+}
+
+// In a pane the preview *is* the content, so it needs no rule to separate it
+// from the link line above it.
+:host(.pane) .preview {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+}
+
+.preview-head {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    opacity: .65;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    min-height: 14px;
+}
+
+.spinner {
+    font-size: 10px;
+}
+
+.preview-icon {
+    width: 12px;
+    height: 12px;
+    object-fit: contain;
+    flex: none;
+}
+
+.preview-error {
+    margin-top: 3px;
+    color: #d03c3c;
+    word-break: break-word;
+}
+
+.preview-fields {
+    margin-top: 3px;
+}
+
+.group-label {
+    margin: 6px 0 2px;
+    font-size: 10px;
+    opacity: .55;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+
+    &:first-child {
+        margin-top: 2px;
+    }
+}
+
+// ── tabs ────────────────────────────────────────────────────────────────────
+
+.tabs {
+    margin-top: 6px;
+}
+
+.tab-strip {
+    display: flex;
+    gap: 2px;
+    border-bottom: 1px solid rgba(127, 127, 127, .25);
+    margin-bottom: 4px;
+}
+
+.tab {
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    color: inherit;
+    opacity: .6;
+    padding: 2px 6px;
+    font-size: 11px;
+    cursor: pointer;
+
+    &.active {
+        opacity: 1;
+        border-bottom-color: currentColor;
+    }
+}
+
+// A description or a comment thread can be long; the card must not grow with
+// it. The pane scrolls as a whole instead, so there the cap is lifted.
+.tab-body,
+.tab-list {
+    max-height: var(--preview-body-max);
+    overflow-y: auto;
+}
+
+.tab-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    opacity: .9;
+}
+
+.md {
+    margin: 0 0 4px;
+    overflow-wrap: anywhere;
+
+    &.md-h {
+        font-weight: 600;
+    }
+
+    &.md-li {
+        padding-left: 2px;
+    }
+
+    &.md-quote {
+        border-left: 2px solid rgba(127, 127, 127, .4);
+        padding-left: 6px;
+        opacity: .8;
+    }
+
+    &.md-code {
+        white-space: pre-wrap;
+    }
+}
+
+.md-code,
+code.md-code {
+    font-family: monospace;
+    background: rgba(127, 127, 127, .16);
+    border-radius: 3px;
+    padding: 0 3px;
+}
+
+.md-link {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+
+.tab-item {
+    padding: 4px 0;
+
+    & + .tab-item {
+        border-top: 1px solid rgba(127, 127, 127, .18);
+    }
+}
+
+.tab-item-head {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    opacity: .7;
+}
+
+.tab-avatar {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex: none;
+}
+
+.tab-author {
+    font-weight: 600;
+}
+
+.tab-time {
+    margin-left: auto;
+}
+
+.tab-item-body {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    margin-top: 2px;
+}
+
+// ── actions ─────────────────────────────────────────────────────────────────
+
+.integration-actions {
+    margin-top: 7px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(127, 127, 127, .25);
+}
+
+.action-label {
+    font-size: 10px;
+    opacity: .55;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 3px;
+}
+
+.action-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    // A workflow can offer a lot of transitions; the row scrolls rather than
+    // making the card taller than the pane.
+    max-height: var(--preview-options-max);
+    overflow-y: auto;
+}
+
+.option {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(127, 127, 127, .12);
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: inherit;
+    padding: 2px 7px;
+    cursor: pointer;
+
+    &:hover {
+        background: rgba(127, 127, 127, .22);
+    }
+
+    &.selected {
+        border-color: currentColor;
+        background: rgba(127, 127, 127, .28);
+    }
+}
+
+.option-badge {
+    border-radius: 8px;
+    padding: 0 6px;
+    font-size: 10px;
+}
+
+.action-fields {
+    margin-top: 5px;
+}
+
+.action-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+
+    .action-field-label {
+        min-width: 74px;
+        opacity: .6;
+    }
+
+    input {
+        flex: 1;
+    }
+}
+
+.action-buttons {
+    margin-top: 6px;
+}
+
+.action-error {
+    margin-top: 5px;
+    color: #d03c3c;
+    overflow-wrap: anywhere;
+}
+
+.preview-html {
+    display: block;
+    margin-top: 3px;
+    width: 100%;
+    // 240px matches the WebView2 host's MinWidth, so a document laid out for one
+    // fork is not reflowed by the other. The height is set from the page's own
+    // measurement and clamped in `htmlHost.ts`. Capped for the same reason the
+    // card's own minimum is: in a pane too narrow for it, fitting wins.
+    min-width: min(240px, var(--link-card-max-width, 100vw));
+    border: 0;
+    // The page paints its own background against `color-scheme: light dark`;
+    // anything behind it would show through as a band while it loads.
+    background: transparent;
+    color-scheme: light dark;
+}
+
+.field-title {
+    display: flex;
+    align-items: flex-start;
+    gap: 5px;
+    font-weight: 600;
+    margin-bottom: 3px;
+    // A summary line can be long; three lines is enough to recognise it by.
+    display: -webkit-box;
+    -webkit-line-clamp: var(--preview-title-lines);
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.field-subtitle {
+    opacity: .75;
+    margin-bottom: 2px;
+    overflow-wrap: anywhere;
+}
+
+.field-image {
+    max-width: 100%;
+    max-height: var(--preview-image-max);
+    border-radius: 3px;
+    object-fit: contain;
+}
+
+a.field-text {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+
+.field-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 2px;
+}
+
+.field-label {
+    flex: 0 0 auto;
+    min-width: 72px;
+    opacity: .55;
+}
+
+.field-value {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.field-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    flex: none;
+    object-fit: cover;
+}
+
+.field-text {
+    word-break: break-word;
+
+    &.multiline {
+        display: -webkit-box;
+        -webkit-line-clamp: var(--preview-multiline-lines);
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        white-space: pre-wrap;
+    }
+}
+
+.badge-pill {
+    border-radius: 4px;
+    padding: 0 6px;
+    font-size: 11px;
+    line-height: 17px;
+    display: inline-block;
+}

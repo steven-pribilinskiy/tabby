@@ -415,6 +415,20 @@ export class IntegrationRuntimeService {
         return preview
     }
 
+    /**
+     * Forget what is cached for one link, so the next `preview` really fetches.
+     *
+     * The preview pane's Refresh button, which would otherwise be a no-op for
+     * however long the manifest's `cacheSeconds` says — and a Refresh that
+     * quietly does nothing is worse than none.
+     */
+    invalidate (kind: LinkMatchKind, text: string, hint: string): void {
+        const match = this.findMatch(kind, text, hint)
+        if (match) {
+            this.cache.delete(`${match.integration.id}|${text}`)
+        }
+    }
+
     // ── matching ─────────────────────────────────────────────────────────────
 
     /**

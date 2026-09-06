@@ -86,12 +86,16 @@ async function main () {
             el = el.parentElement
         }
         const card = window.ng.getComponent(host)
-        // The card component outlives any one run of this suite, so a choice
-        // and a filled-in form survive from last time and the "blocked before
-        // you choose" assertions below would pass against stale state.
-        card.chosen = {}
-        card.pendingFields = {}
-        card.actionError = ''
+        // The preview itself — groups, tabs, actions — is rendered by
+        // link-preview-view, which the preview pane renders through too. The
+        // choice state lives there.
+        const view = window.ng.getComponent(host.querySelector('link-preview-view'))
+        // That component outlives any one run of this suite, so a choice and a
+        // filled-in form survive from last time and the "blocked before you
+        // choose" assertions below would pass against stale state.
+        view.chosen = {}
+        view.pendingFields = {}
+        view.actionError = ''
         card.model = Object.assign(card.model, {
             key: 'rich:' + Date.now(),
             allowHtml: true, loading: false,
@@ -137,12 +141,12 @@ async function main () {
 
         // Pick the option that demands a form, and see the form appear.
         const applyBefore = host.querySelector('.action-buttons .btn-primary').disabled
-        card.chooseOption(card.model.preview.actions[0], '21')
+        view.chooseOption(card.model.preview.actions[0], '21')
         window.ng.applyChanges(card)
         await new Promise(r => setTimeout(r, 200))
         const fieldsShown = [...host.querySelectorAll('.action-field-label')].map(x => x.textContent.trim())
         const applyBlocked = host.querySelector('.action-buttons .btn-primary').disabled
-        card.setFieldValue(card.model.preview.actions[0], 'resolution', 'Done')
+        view.setFieldValue(card.model.preview.actions[0], 'resolution', 'Done')
         window.ng.applyChanges(card)
         await new Promise(r => setTimeout(r, 200))
         const applyAfter = host.querySelector('.action-buttons .btn-primary').disabled

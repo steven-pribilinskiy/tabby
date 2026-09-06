@@ -503,7 +503,11 @@ Two things are injected before any of the page's own script runs:
 
 The page talks back through `chrome.webview.postMessage`:
 
-- `{ "height": <number> }` — resize the card to fit, clamped to **40–320 px**.
+- `{ "height": <number> }` — resize the frame to fit, clamped to **40–320 px** on the hover card
+  and to **40–4000 px** in a preview pane. The ceiling belongs to the host, not to the page: a card
+  appeared because the pointer passed over something and must not cover the terminal, while a pane
+  was asked for and can be resized. A page that reports `document.body.scrollHeight` needs no
+  branch for this — it simply gets more of what it asked for in the pane.
 - `{ "open": "https://…" }` — open a link through the terminal's normal link handling, the same
   path the Open button takes, so the unsafe-scheme prompt still applies.
 

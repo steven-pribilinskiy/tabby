@@ -8,6 +8,8 @@ import { TerminalDecorator } from 'tabby-terminal'
 
 import { IntegrationsSettingsTabComponent } from './components/integrationsSettingsTab.component'
 import { LinkHoverCardComponent } from './components/linkHoverCard.component'
+import { LinkPreviewTabComponent } from './components/linkPreviewTab.component'
+import { LinkPreviewViewComponent } from './components/linkPreviewView.component'
 import { LinkTooltipSettingsTabComponent } from './components/linkTooltipSettingsTab.component'
 import { LinksConfigProvider } from './config'
 import { LinkTooltipDecorator } from './decorator'
@@ -24,6 +26,8 @@ import { LinkClicksService } from './services/linkClicks.service'
     ],
     declarations: [
         LinkHoverCardComponent,
+        LinkPreviewTabComponent,
+        LinkPreviewViewComponent,
         LinkTooltipSettingsTabComponent,
         IntegrationsSettingsTabComponent,
     ],
@@ -72,7 +76,9 @@ export default class LinksModule {
 
 export * from './api'
 export * from './clickChords'
+export { LinkPreviewTabComponent, LinkPreviewRequest } from './components/linkPreviewTab.component'
 export { IntegrationRegistryService } from './services/integrationRegistry.service'
 export { IntegrationRuntimeService } from './services/integrationRuntime.service'
 export { LinkClicksService } from './services/linkClicks.service'
+export { LinkPanesService } from './services/linkPanes.service'
 export { LinkRulesService } from './services/linkRules.service'

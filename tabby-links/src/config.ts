@@ -34,6 +34,13 @@ export class LinksConfigProvider extends ConfigProvider {
             hideDelay: 400,
             showButtons: true,
             /**
+             * Whether hover cards go quiet while a preview pane is open. Both
+             * halves are required — the pane and this — so closing the last
+             * pane brings hovers back without anyone having to remember to turn
+             * this off again.
+             */
+            hideTooltipsWithPane: false,
+            /**
              * Whether a plugin's own `html` document is rendered. It runs in a
              * sandboxed frame with an opaque origin and a CSP that blocks the
              * network, so it can reach neither Tabby nor the outside — but it is
