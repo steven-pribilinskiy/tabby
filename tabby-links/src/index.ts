@@ -12,6 +12,7 @@ import { LinkTooltipSettingsTabComponent } from './components/linkTooltipSetting
 import { LinksConfigProvider } from './config'
 import { LinkTooltipDecorator } from './decorator'
 import { IntegrationsSettingsTabProvider, LinkTooltipSettingsTabProvider } from './providers'
+import { LinkClicksService } from './services/linkClicks.service'
 
 /** @hidden */
 @NgModule({
@@ -38,6 +39,7 @@ export default class LinksModule {
     constructor (
         config: ConfigService,
         platform: PlatformService,
+        clicks: LinkClicksService,
     ) {
         // `PlatformService.openExternal` asks for confirmation for any scheme it
         // does not know, and it cannot read the config itself without a
@@ -45,12 +47,32 @@ export default class LinksModule {
         const apply = () => {
             platform.extraSafeSchemes = config.store.linkTooltip?.safeSchemes ?? []
         }
-        config.ready$.subscribe(() => apply())
-        config.changed$.subscribe(() => apply())
+        // The legacy modifier is carried onto the chords here rather than in the
+        // decorator or the settings page, because both of those only exist once
+        // you open a terminal or that page — and until it runs, an existing
+        // `clickableLinks.modifier` and the chords are both live and disagreeing.
+        //
+        // On every change as well as at startup, because upstream's own Terminal
+        // settings page still writes that key ("Require a key to click links").
+        // Migrating only at startup would leave a control that appears to do
+        // nothing and then overwrites the chords at the next launch. This way it
+        // keeps working, as a shorthand: it takes effect at once, and springs
+        // back to "No modifier" because the setting has moved.
+        const migrate = () => clicks.migrateLegacyModifier()
+        config.ready$.subscribe(() => {
+            apply()
+            migrate()
+        })
+        config.changed$.subscribe(() => {
+            apply()
+            migrate()
+        })
     }
 }
 
 export * from './api'
+export * from './clickChords'
 export { IntegrationRegistryService } from './services/integrationRegistry.service'
 export { IntegrationRuntimeService } from './services/integrationRuntime.service'
+export { LinkClicksService } from './services/linkClicks.service'
 export { LinkRulesService } from './services/linkRules.service'

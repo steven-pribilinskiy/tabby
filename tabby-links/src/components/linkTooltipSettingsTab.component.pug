@@ -23,12 +23,6 @@ h4.mt-4.mb-2(translate) Defaults
 
 .form-line
     .header
-        .title(translate) Open links with a single click, without holding Ctrl
-        .description(translate) The link opens when the mouse button is released. Dragging across a URL still selects it
-    toggle([(ngModel)]='openOnSingleClick')
-
-.form-line
-    .header
         .title(translate) Maximum width of the link tooltip
         .description(translate) How far a URI may run before it wraps, in pixels. Set to 0 for no maximum
     reset-to-default([proxy]='config.store.linkTooltip', key='maxWidth')
@@ -98,6 +92,89 @@ h4.mt-4.mb-2(translate) Defaults
         placeholder='vscode, stith',
         [(ngModel)]='safeSchemes',
     )
+
+h4.mt-4.mb-2(translate) Clicking
+
+.form-line
+    .header
+        .title(translate) Clicking a link activates it
+        .description(translate) Off, links are still detected, highlighted and previewed — the hover card's buttons are then how you act on one
+    reset-to-default([proxy]='config.store.linkTooltip', key='clickable')
+    toggle(
+        [(ngModel)]='config.store.linkTooltip.clickable',
+        (ngModelChange)='saveConfiguration()',
+    )
+
+div(*ngIf='config.store.linkTooltip.clickable')
+    .form-line
+        .header
+            .title(translate) Which links a click reaches
+            .description(translate) The kinds left unticked stay hoverable and previewable — they just do not respond to a click
+        .click-kinds
+            .form-check.form-check-inline(*ngFor='let kind of clickKinds')
+                input.form-check-input(
+                    type='checkbox',
+                    [id]='"click-kind-" + kind.value',
+                    [checked]='hasKind(kind.value)',
+                    (change)='toggleKind(kind.value)',
+                )
+                label.form-check-label(
+                    [for]='"click-kind-" + kind.value',
+                ) {{kind.label|translate}}
+
+    //- Two chords, each a modifier plus a gesture plus what it runs. Modifiers
+    //- are matched exactly, so a Ctrl chord does not fire while Ctrl+Shift is
+    //- held. A left-click chord resolves on release and only if the click did
+    //- not become a selection; middle and double resolve on the press.
+    .form-line
+        .header
+            .title(translate) Primary click
+            .description {{chordDescription('primary')}}
+        .chord-row
+            select.form-control(
+                [(ngModel)]='config.store.linkTooltip.primaryClickModifier',
+                (ngModelChange)='saveConfiguration()',
+            )
+                option(*ngFor='let modifier of clickModifiers', [value]='modifier.value') {{modifier.label|translate}}
+            select.form-control(
+                [(ngModel)]='config.store.linkTooltip.primaryClickGesture',
+                (ngModelChange)='saveConfiguration()',
+            )
+                option(*ngFor='let gesture of clickGestures', [value]='gesture.value') {{gesture.label|translate}}
+            select.form-control(
+                [(ngModel)]='config.store.linkTooltip.primaryAction',
+                (ngModelChange)='saveConfiguration()',
+            )
+                option(value='none') {{'Do nothing'|translate}}
+                option(value='open') {{'Open'|translate}}
+                option(value='copyLink') {{'Copy link'|translate}}
+                option(value='copyPath') {{'Copy path'|translate}}
+                option(value='reveal') {{'Show in folder'|translate}}
+
+    .form-line
+        .header
+            .title(translate) Alternative click
+            .description {{chordDescription('alternative')}}
+        .chord-row
+            select.form-control(
+                [(ngModel)]='config.store.linkTooltip.alternativeClickModifier',
+                (ngModelChange)='saveConfiguration()',
+            )
+                option(*ngFor='let modifier of clickModifiers', [value]='modifier.value') {{modifier.label|translate}}
+            select.form-control(
+                [(ngModel)]='config.store.linkTooltip.alternativeClickGesture',
+                (ngModelChange)='saveConfiguration()',
+            )
+                option(*ngFor='let gesture of clickGestures', [value]='gesture.value') {{gesture.label|translate}}
+            select.form-control(
+                [(ngModel)]='config.store.linkTooltip.alternativeAction',
+                (ngModelChange)='saveConfiguration()',
+            )
+                option(value='none') {{'Do nothing'|translate}}
+                option(value='open') {{'Open'|translate}}
+                option(value='copyLink') {{'Copy link'|translate}}
+                option(value='copyPath') {{'Copy path'|translate}}
+                option(value='reveal') {{'Show in folder'|translate}}
 
 h4.mt-4.mb-2(translate) Rules
 
@@ -348,6 +425,44 @@ h4.mt-4.mb-2(translate) Rules
         .header
             .title(translate) Hide "Show in folder"
         toggle([(ngModel)]='currentRule.suppressReveal', (ngModelChange)='saveConfiguration()')
+
+    h6.mt-3.mb-2(translate) On click
+
+    .text-muted.mb-2(translate) What each click chord does for links this rule matches. The chords themselves are set above, and are the same everywhere.
+
+    .form-line
+        .header
+            .title(translate) Primary click
+            .description {{chordDescription('primary')}}
+        select.form-control(
+            [(ngModel)]='currentRule.primaryAction',
+            (ngModelChange)='saveConfiguration()',
+        )
+            option(value='') {{'Inherit the default'|translate}}
+            option(value='none') {{'Do nothing'|translate}}
+            option(value='open') {{'Open'|translate}}
+            option(value='copyLink') {{'Copy link'|translate}}
+            option(value='copyPath') {{'Copy path'|translate}}
+            option(value='reveal') {{'Show in folder'|translate}}
+            //- Over the rule's own array, so the identity stays stable and the
+            //- list follows an action being renamed below.
+            option(*ngFor='let action of currentRule.actions', [value]='action.name') {{action.name || ('Unnamed action'|translate)}}
+
+    .form-line
+        .header
+            .title(translate) Alternative click
+            .description {{chordDescription('alternative')}}
+        select.form-control(
+            [(ngModel)]='currentRule.alternativeAction',
+            (ngModelChange)='saveConfiguration()',
+        )
+            option(value='') {{'Inherit the default'|translate}}
+            option(value='none') {{'Do nothing'|translate}}
+            option(value='open') {{'Open'|translate}}
+            option(value='copyLink') {{'Copy link'|translate}}
+            option(value='copyPath') {{'Copy path'|translate}}
+            option(value='reveal') {{'Show in folder'|translate}}
+            option(*ngFor='let action of currentRule.actions', [value]='action.name') {{action.name || ('Unnamed action'|translate)}}
 
     h6.mt-3.mb-2(translate) Custom actions
 

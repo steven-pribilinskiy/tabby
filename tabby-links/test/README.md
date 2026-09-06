@@ -68,6 +68,7 @@ TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/html.cdp.js         # the sand
 TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/wslPath.cdp.js      # WSL paths: service, card, click
 TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/delimitedLinks.cdp.js  # <uri|label>, column by column
 TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/presets.cdp.js      # both preset entry points
+TABBY_CONFIG_DIRECTORY="$P" node tabby-links/test/clicks.cdp.js       # click chords, end to end
 ```
 
 With more than one instance up, say which: `CDP_PORT=9247 node …`.
@@ -101,6 +102,22 @@ the real provider for that row, then looks every column up through the ranges it
 got back — which is the only way to exercise the line window, the string-index →
 buffer-position mapping and the priority arbitration against every `LinkHandler`
 at once.
+
+`clicks.cdp.js` dispatches real `mousemove`/`mousedown`/`mouseup` at a link's own
+cell rather than calling the decorator's callbacks, because everything it covers
+lives in the wiring: which listener sees a press, whether a drag counts as a
+click, and whether a gesture reaches the terminal underneath. Two consequences
+worth knowing before editing it:
+
+- It **turns `terminal.rightClick` and `terminal.pasteOnMiddleClick` off** for the
+  run and puts them back. Both fire on the same presses a chord does, and the
+  second pastes the real clipboard into the terminal — not something a test may
+  do to a machine.
+- It **hides the card before every click.** The card is deliberately never
+  rebuilt while it is open, and the settings it was built from are what a click
+  on it uses — so a case that changes a rule and clicks again would otherwise
+  measure the previous case's answer. A person moves the pointer away and back;
+  this does the same.
 
 `wslPath.cdp.js` needs the link handlers, so launch it with
 `--enable links,linkifier`. It fakes a tab's profile rather than opening a WSL

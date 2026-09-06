@@ -94,6 +94,27 @@
     }
 }
 
+// A chord is one statement — modifier, gesture, action — so its three selects
+// sit on one row rather than as three settings that happen to be adjacent.
+.chord-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 60%;
+
+    .form-control {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+}
+
+.click-kinds {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 18px;
+    justify-content: flex-end;
+}
+
 .action-card {
     border: 1px solid rgba(127, 127, 127, .3);
     border-radius: 6px;

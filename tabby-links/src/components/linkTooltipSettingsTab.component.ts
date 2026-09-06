@@ -1,11 +1,21 @@
 import { Component } from '@angular/core'
-import { ConfigService, HostAppService, Platform, PlatformService } from 'tabby-core'
+import { ConfigService, PlatformService } from 'tabby-core'
 
 import { Integration, LinkTooltipAction, LinkTooltipRule, hydrateRule, newRule } from '../api'
+import {
+    CLICKABLE_KINDS,
+    CLICK_GESTURES,
+    CLICK_MODIFIERS,
+    ChordName,
+    ClickGesture,
+    ClickModifier,
+    ClickableKind,
+} from '../clickChords'
 import { FILE_TYPE_GROUP_LABELS } from '../fileTypes'
 import { RulePreset, applyPreset, rulePresets } from '../presets'
 import { checkPattern } from '../regexGuard'
 import { IntegrationRegistryService } from '../services/integrationRegistry.service'
+import { LinkClicksService } from '../services/linkClicks.service'
 
 /** A comma-separated field, cleaned up. Empty entries are dropped, not stored. */
 function splitList (value: string): string[] {
@@ -25,13 +35,36 @@ function checkPresetPattern (pattern: string): string {
     return pattern ? checkPattern(pattern).error : ''
 }
 
+const MODIFIER_LABELS: Record<ClickModifier, string> = {
+    none: 'No modifier',
+    ctrl: 'Ctrl',
+    alt: 'Alt',
+    shift: 'Shift',
+    meta: 'Win / Cmd',
+    ctrlAlt: 'Ctrl+Alt',
+    ctrlShift: 'Ctrl+Shift',
+    altShift: 'Alt+Shift',
+    ctrlAltShift: 'Ctrl+Alt+Shift',
+}
+
+const GESTURE_LABELS: Record<ClickGesture, string> = {
+    left: 'Left click',
+    middle: 'Middle click',
+    'double': 'Double click',
+}
+
+const KIND_LABELS: Record<ClickableKind, string> = {
+    detected: 'Detected URLs and paths',
+    rules: 'Text matched by a rule',
+    osc8: 'Links a program marked itself',
+}
+
 @Component({
     selector: 'link-tooltip-settings-tab',
     templateUrl: './linkTooltipSettingsTab.component.pug',
     styleUrls: ['./linkTooltipSettingsTab.component.scss'],
 })
 export class LinkTooltipSettingsTabComponent {
-    Platform = Platform
     fileTypeGroups = FILE_TYPE_GROUP_LABELS
     currentRule: LinkTooltipRule | null = null
     patternError = ''
@@ -44,10 +77,19 @@ export class LinkTooltipSettingsTabComponent {
      */
     presets: RulePreset[] = []
 
+    /**
+     * Fields, not methods: `*ngFor` tracks by identity, so a method handing back
+     * a fresh array would re-create every `<option>` on every change-detection
+     * pass. Same reason as `presets` above.
+     */
+    clickModifiers = CLICK_MODIFIERS.map(value => ({ value, label: MODIFIER_LABELS[value] }))
+    clickGestures = CLICK_GESTURES.map(value => ({ value, label: GESTURE_LABELS[value] }))
+    clickKinds = CLICKABLE_KINDS.map(value => ({ value, label: KIND_LABELS[value] }))
+
     constructor (
         public config: ConfigService,
-        public hostApp: HostAppService,
         private platform: PlatformService,
+        private clicks: LinkClicksService,
         registry: IntegrationRegistryService,
     ) {
         registry.integrations$.subscribe(list => {
@@ -69,18 +111,27 @@ export class LinkTooltipSettingsTabComponent {
         return stored as LinkTooltipRule[]
     }
 
-    /**
-     * The "single click" toggle drives `clickableLinks.modifier`, which already
-     * existed, rather than a second setting that could disagree with it.
-     */
-    get openOnSingleClick (): boolean {
-        return !this.config.store.clickableLinks?.modifier
+    // ── clicking ─────────────────────────────────────────────────────────────
+
+    /** "Ctrl+Click", as the chord currently reads. */
+    chordDescription (name: ChordName): string {
+        return this.clicks.describe(name)
     }
 
-    set openOnSingleClick (value: boolean) {
-        this.config.store.clickableLinks.modifier = value
-            ? null
-            : this.hostApp.platform === Platform.macOS ? 'metaKey' : 'ctrlKey'
+    hasKind (kind: ClickableKind): boolean {
+        return this.clicks.kinds().includes(kind)
+    }
+
+    /**
+     * Written back as a whole array rather than mutated in place: the stored
+     * value may be the default array the config provider handed out, and
+     * pushing into that would edit the default for everyone.
+     */
+    toggleKind (kind: ClickableKind): void {
+        const kinds = this.clicks.kinds()
+        this.config.store.linkTooltip.clickableKinds = this.hasKind(kind)
+            ? kinds.filter(x => x !== kind)
+            : [...kinds, kind]
         this.saveConfiguration()
     }
 

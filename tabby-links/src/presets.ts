@@ -295,5 +295,7 @@ export function applyPreset (preset: RulePreset, rule: LinkTooltipRule = newRule
     rule.suppressCopyLink = false
     rule.suppressCopyPath = false
     rule.suppressReveal = false
+    rule.primaryAction = ''
+    rule.alternativeAction = ''
     return rule
 }

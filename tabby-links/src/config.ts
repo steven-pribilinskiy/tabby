@@ -1,5 +1,7 @@
 import { ConfigProvider } from 'tabby-core'
 
+import { CLICKABLE_KINDS, DEFAULT_CHORDS } from './clickChords'
+
 /** @hidden */
 export class LinksConfigProvider extends ConfigProvider {
     defaults = {
@@ -8,6 +10,25 @@ export class LinksConfigProvider extends ConfigProvider {
             enabled: true,
             /** Whether links are detected and made clickable at all. */
             detectLinks: true,
+            /**
+             * Whether clicking a link activates it at all. Off, links are still
+             * detected, highlighted and previewed — the card's buttons are then
+             * how you act on one.
+             */
+            clickable: true,
+            /** Which kinds of link a click reaches: detected, rules, osc8. */
+            clickableKinds: [...CLICKABLE_KINDS],
+            /**
+             * The two click chords. Each is a modifier — matched exactly, so
+             * Ctrl+Shift does not satisfy a plain-Ctrl chord — plus a gesture,
+             * plus the action id it runs. A rule may override either action.
+             */
+            primaryClickModifier: DEFAULT_CHORDS.primary.modifier,
+            primaryClickGesture: DEFAULT_CHORDS.primary.gesture,
+            primaryAction: DEFAULT_CHORDS.primary.action,
+            alternativeClickModifier: DEFAULT_CHORDS.alternative.modifier,
+            alternativeClickGesture: DEFAULT_CHORDS.alternative.gesture,
+            alternativeAction: DEFAULT_CHORDS.alternative.action,
             maxWidth: 640,
             showDelay: 250,
             hideDelay: 400,

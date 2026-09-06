@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core'
 import { ConfigService, NotificationsService } from 'tabby-core'
 
 import { EffectiveTooltipSettings, LinkTooltipRule, LinkMatchKind, hydrateRule, newRule } from '../api'
+import { DEFAULT_CHORDS } from '../clickChords'
 import { matchesFileType } from '../fileTypes'
 import { GuardedRegex, MAX_TEXT_INPUT } from '../regexGuard'
 import { IntegrationRegistryService } from './integrationRegistry.service'
@@ -134,6 +135,12 @@ export class LinkRulesService {
             integration: '',
             showPreview: true,
             actions: [],
+            primaryAction: typeof store?.primaryAction === 'string'
+                ? store.primaryAction
+                : DEFAULT_CHORDS.primary.action,
+            alternativeAction: typeof store?.alternativeAction === 'string'
+                ? store.alternativeAction
+                : DEFAULT_CHORDS.alternative.action,
             rule: null,
         }
 
@@ -161,6 +168,18 @@ export class LinkRulesService {
         settings.integration = rule.integration
         settings.showPreview = rule.preview
         settings.actions = showButtons ? rule.actions : []
+        // An empty action id inherits the global chord action; `'none'` is a
+        // deliberate "this rule has no such click" and is kept as-is, so the
+        // dispatcher can tell it apart from inheriting. Unlike button
+        // suppression this *replaces* rather than ANDing — a rule saying what a
+        // click does has to be able to say "open" where the global says
+        // "copyLink", not merely take things away.
+        if (rule.primaryAction) {
+            settings.primaryAction = rule.primaryAction
+        }
+        if (rule.alternativeAction) {
+            settings.alternativeAction = rule.alternativeAction
+        }
         return settings
     }
 

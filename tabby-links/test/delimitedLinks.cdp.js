@@ -154,7 +154,9 @@ async function main () {
         decorator.actions.open = (uri, filePath) => { opens.push([uri, filePath]) }
         decorator.handlers.forEach(h => { h.handle = (uri) => { handles.push([h.constructor.name, uri]) } })
         try {
-            link.activate({})
+            // Plain left click, the default primary chord — a press with no
+            // \`button\` matches no chord at all now.
+            link.activate({ button: 0, detail: 1, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false })
             await new Promise(r => setTimeout(r, 300))
         } finally {
             decorator.actions.open = savedOpen

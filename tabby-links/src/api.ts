@@ -57,6 +57,19 @@ export interface LinkTooltipRule {
     suppressCopyPath: boolean
     suppressReveal: boolean
 
+    /**
+     * What each click chord does for links this rule matches: a built-in action
+     * id (`open`, `copyLink`, `copyPath`, `reveal`), the `name` of one of this
+     * rule's own `actions`, `'none'` to say this rule has no such click, or
+     * `''` to inherit the global `linkTooltip.primaryAction` /
+     * `linkTooltip.alternativeAction`.
+     *
+     * The chords themselves stay global — only the action is per-rule, because
+     * a rule is about one kind of link and a chord is a habit of the hand.
+     */
+    primaryAction: string
+    alternativeAction: string
+
     actions: LinkTooltipAction[]
 }
 
@@ -78,6 +91,8 @@ export function newRule (): LinkTooltipRule {
         suppressCopyLink: false,
         suppressCopyPath: false,
         suppressReveal: false,
+        primaryAction: '',
+        alternativeAction: '',
         actions: [],
     }
 }
@@ -115,6 +130,13 @@ export interface EffectiveTooltipSettings {
     integration: string
     showPreview: boolean
     actions: LinkTooltipAction[]
+    /**
+     * The action id each click chord runs for this link: the matched rule's,
+     * when it names one, otherwise the global default. `'none'` means the chord
+     * does nothing here — already resolved, so `''` never reaches a caller.
+     */
+    primaryAction: string
+    alternativeAction: string
     /** The rule that produced these, if any — for debugging and the summary line. */
     rule: LinkTooltipRule | null
 }

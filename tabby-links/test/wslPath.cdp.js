@@ -136,8 +136,14 @@ async function main () {
                 configurable: true, writable: true,
             })
             const range = { start: { x: 0, y: 0 }, end: { x: 0, y: 0 } }
-            decorator.activate(state, { kind: 'link', text, range, handlerIndex: handlerNamed(handlerName), rule: null },
-                { ctrlKey: true, metaKey: true })
+            // A press has to look like one: the click that reaches activate is
+            // now matched against the configured chords, so an event with no
+            // button property matches nothing. Plain left is the default primary.
+            decorator.activate(
+                state,
+                { kind: 'link', clickKind: 'detected', text, range, handlerIndex: handlerNamed(handlerName), rule: null },
+                { button: 0, detail: 1, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false },
+            )
             await new Promise(r => setTimeout(r, 250))
         }
         try {

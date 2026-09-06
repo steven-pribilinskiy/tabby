@@ -457,6 +457,62 @@ fork", which was wrong and cost a rediscovery.
   the frame's own viewport, so a page that reports it just asks to stay the size
   it already is — a silent no-op that looks exactly like a broken channel.
 
+### Click chords
+
+What a click does is configurable: two chords, primary and alternative, each a
+**modifier × gesture × action**, plus which kinds of link a click reaches at all
+(`detected`, `rules`, `osc8`) and a master `linkTooltip.clickable`. A rule may
+override either chord's action — `''` inherits, `'none'` suppresses.
+`clickChords.ts` is the whole decision, kept pure so `logic.test.js` measures it.
+
+- **`clickableLinks.modifier` is upstream's and is migrated, not dropped.** It
+  may be in a real `config.yaml` — the Windows Terminal fork could retire its
+  equivalent without a migration only because that one was in nobody's settings
+  file. `LinkClicksService.migrateLegacyModifier()` moves the modifier onto the
+  primary chord, silences the alternative (which defaults to Ctrl+click and would
+  otherwise re-enable the very click the user turned off), and **clears the key as
+  it reads it** — which is what makes it idempotent without a `config.version`
+  bump. A fork-owned bump would make upstream's own migrations skip these configs
+  at the next sync. It runs from `config.ready$` in the module constructor,
+  because the decorator and the settings page only exist once you open a terminal
+  or that page, and until it runs both settings are live and disagreeing.
+- **Modifiers match exactly**, so a Ctrl chord does not fire mid-Ctrl+Shift-drag.
+  The cost is that alt+click and shift+click no longer follow a link, which
+  `!modifier` used to allow — both are selection gestures, and this is what
+  Windows Terminal does.
+- **Left resolves on release; middle and double resolve on the press.** A press is
+  also the start of a selection drag, so a left chord has to wait and then refuse
+  if a selection was made. The other two have something to beat on the same
+  event: the terminal pastes on a middle *mousedown* (`baseTerminalTab`, via the
+  frontend host, an ancestor of `.xterm-screen`), and a double press selects a
+  word — waiting would mean the drag guard finding that selection and refusing.
+  So `onPress` listens on `.xterm-screen` itself and `stopPropagation()`s, but
+  **only once it knows an action will actually run**; a chord resolving to `none`
+  leaves the press for whoever else wanted it.
+- **A mousedown resets xterm's selection model**, which is what makes
+  `hasSelection()` at mouseup mean "this press selected something" rather than
+  "something is selected". The cell-distance check beside it is the second
+  opinion.
+- **xterm calls `activate` on *any* button's mouseup**, with no button check
+  (`Linkifier._handleMouseUp`), so a middle release would fire a second time
+  after the press already did. `activate` therefore handles left gestures only.
+- **OSC 8 clicks are taken over, not forwarded.** `tabby-linkifier`'s own
+  `linkHandler.activate` decides for itself from `clickableLinks.modifier`;
+  leaving it in the wrapper would mean an OSC 8 link ignoring both the chords and
+  the `osc8` filter, and opening twice whenever they agreed.
+- **A press uses xterm's `currentLink` to decide there is a link under the
+  pointer**, not our own `state.hovered` — that outlives the hover by the hide
+  delay, so a middle click a moment after leaving a link would run against the
+  link just left.
+- **`state.settings` is dropped on every new hover.** It is the answer for the
+  link just left, and a click on a second link on the same row beats the show
+  delay easily — the click would otherwise inherit the neighbour's rule.
+- `terminal.rightClick: 'menu'` (the Windows default) already treats ctrl+left as
+  a right click, so the default alternative chord pops a context menu as well as
+  following the link. Unchanged from before — `clickableLinks.modifier: null` had
+  exactly the same overlap — but it is the reason `clicks.cdp.js` turns that
+  setting off for its run.
+
 ### Fixed in the second pass
 
 Each of these was shipped and wrong; they are listed because the shape recurs.

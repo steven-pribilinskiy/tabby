@@ -895,5 +895,155 @@ check('preset and "Add as rule" agree',
     [viaPreset.name, viaPreset.pattern, viaPreset.integration, viaPreset.match],
     [`Jira: ${suggested.description}`, suggested.pattern, 'jira', 'text'])
 
+// ── click chords ────────────────────────────────────────────────────────────
+// What a click does is easy to get wrong and hard to notice, because the wrong
+// answer is almost always "nothing happened". So the matching is measured here
+// rather than only in the UI: exact modifiers, each gesture, and what a rule
+// does to the action a chord runs.
+
+console.log('\n── click chords ──')
+const chords = loadSource('tabby-links/src/clickChords.ts')
+
+const press = (over = {}) => Object.assign({
+    button: 0, clickCount: 1, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false,
+}, over)
+const chordSet = (primary, alternative) => ({
+    primary: Object.assign({ modifier: 'none', gesture: 'left', action: 'open' }, primary),
+    alternative: Object.assign({ modifier: 'ctrl', gesture: 'left', action: 'open' }, alternative),
+})
+
+check('defaults: a plain left click is the primary',
+    chords.matchChord(chordSet(), press()), 'primary')
+check('defaults: ctrl+click is the alternative',
+    chords.matchChord(chordSet(), press({ ctrlKey: true })), 'alternative')
+
+// The whole point of matching exactly: an extra modifier held is a *different*
+// chord, so ctrl+shift+dragging cannot trip a plain-ctrl chord.
+check('ctrl+shift does not satisfy a plain-ctrl chord',
+    chords.matchChord(chordSet(), press({ ctrlKey: true, shiftKey: true })), null)
+check('ctrl+shift satisfies a ctrlShift chord',
+    chords.matchChord(chordSet({ modifier: 'ctrlShift' }), press({ ctrlKey: true, shiftKey: true })), 'primary')
+check('a modifier held does not satisfy a "none" chord',
+    chords.matchChord(chordSet({}, { modifier: 'alt' }), press({ altKey: true, shiftKey: true })), null)
+check('every modifier is exact',
+    chords.CLICK_MODIFIERS.filter(m => chords.modifierMatches(m, { ctrl: true, alt: false, shift: false, meta: false })),
+    ['ctrl'])
+
+// Gestures.
+check('a middle press matches a middle chord',
+    chords.matchChord(chordSet({ gesture: 'middle' }), press({ button: 1 })), 'primary')
+check('a middle press matches no left chord',
+    chords.matchChord(chordSet(), press({ button: 1 })), null)
+check('a left press matches no middle chord',
+    chords.matchChord(chordSet({ gesture: 'middle' }, { gesture: 'middle', modifier: 'alt' }), press()), null)
+check('the second click of a double matches a double chord',
+    chords.matchChord(chordSet({ gesture: 'double' }), press({ clickCount: 2 })), 'primary')
+check('the first click of a double does not',
+    chords.matchChord(chordSet({ gesture: 'double' }), press({ clickCount: 1 })), null)
+check('right button matches nothing',
+    chords.matchChord(chordSet(), press({ button: 2 })), null)
+
+// A double click is also a left click, so when both chords fit one press the
+// more specific gesture has to win — otherwise a double-click alternative could
+// never be reached past a plain-click primary.
+check('the more specific gesture wins a tie',
+    chords.matchChord(chordSet({ gesture: 'left' }, { modifier: 'none', gesture: 'double' }), press({ clickCount: 2 })),
+    'alternative')
+check('a tie on specificity goes to the primary',
+    chords.matchChord(chordSet({ modifier: 'none' }, { modifier: 'none' }), press()), 'primary')
+
+// A config file is hand-editable, so every value that comes out of one is
+// normalised rather than trusted.
+check('the Windows Terminal spelling of the Windows key is accepted',
+    chords.normalizeModifier('win'), 'meta')
+check('junk falls back rather than matching nothing forever',
+    [chords.normalizeModifier('nonsense'), chords.normalizeGesture('quadruple')], ['none', 'left'])
+check('a prototype key is not a modifier',
+    chords.normalizeModifier('constructor'), 'none')
+check('an unknown modifier matches no press at all',
+    chords.modifierMatches('nonsense', { ctrl: false, alt: false, shift: false, meta: false }), false)
+
+check('a chord reads as a person would say it',
+    [
+        chords.describeChord({ modifier: 'none', gesture: 'left', action: 'open' }),
+        chords.describeChord({ modifier: 'ctrl', gesture: 'left', action: 'open' }),
+        chords.describeChord({ modifier: 'ctrlShift', gesture: 'middle', action: 'open' }),
+        chords.describeChord({ modifier: 'meta', gesture: 'double', action: 'open' }, true),
+    ],
+    ['Click', 'Ctrl+Click', 'Ctrl+Shift+Middle-click', '⌘+Double-click'])
+
+// `MouseEvent.detail` is the browser's own click counter; 0 on an event that is
+// not part of a click sequence, which must not read as "no clicks".
+check('a press is read off the event',
+    chords.pressFromEvent({ button: 1, detail: 0, ctrlKey: true, altKey: false, shiftKey: false, metaKey: false }),
+    { button: 1, clickCount: 1, ctrlKey: true, altKey: false, shiftKey: false, metaKey: false })
+
+// The migration. `clickableLinks.modifier` is upstream's, it predates the
+// chords, and unlike the Windows Terminal fork's `openLinksOnSingleClick` it may
+// well be in a real config.yaml — so it is carried over, not dropped.
+check('an unset legacy modifier migrates to nothing',
+    [chords.migrateLegacyModifier(null), chords.migrateLegacyModifier(undefined), chords.migrateLegacyModifier('')],
+    [null, null, null])
+check('ctrlKey moves onto the primary chord and silences the alternative',
+    chords.migrateLegacyModifier('ctrlKey'),
+    { primaryClickModifier: 'ctrl', primaryClickGesture: 'left', primaryAction: 'open', alternativeAction: 'none' })
+check('metaKey migrates too, as the platform-neutral name',
+    chords.migrateLegacyModifier('metaKey').primaryClickModifier, 'meta')
+
+// A rule's override of what each chord runs. '' inherits, 'none' suppresses,
+// anything else replaces — unlike button suppression, which only ANDs.
+const chordRule = api.newRule()
+check('a fresh rule inherits both chords',
+    [chordRule.primaryAction, chordRule.alternativeAction], ['', ''])
+check('a stored rule with no action keys is completed',
+    (() => {
+        const raw = { name: 'old', match: 'link' }
+        api.hydrateRule(raw)
+        return [raw.primaryAction, raw.alternativeAction]
+    })(), ['', ''])
+check('a preset resets the click actions with the rest of the overrides',
+    (() => {
+        const existing = api.newRule()
+        existing.primaryAction = 'copyLink'
+        existing.alternativeAction = 'none'
+        presets.applyPreset(allPresets.find(p => p.id === 'media-files'), existing)
+        return [existing.primaryAction, existing.alternativeAction]
+    })(), ['', ''])
+
+// `LinkRulesService.resolve` is where inherit-vs-suppress is decided. Driven
+// through a stub config, because the resolution is the thing under test and the
+// service reads nothing else from it here.
+const chordConfig = {
+    store: { linkTooltip: { rules: [], primaryAction: 'open', alternativeAction: 'copyLink' } },
+    changed$: { subscribe: () => undefined },
+}
+const chordRules = new rules.LinkRulesService(
+    chordConfig, { error: () => undefined }, { detectPatterns: () => [] })
+const resolveWith = over => {
+    const rule = Object.assign(api.newRule(), { name: 'r', match: 'link' }, over)
+    return chordRules.resolve('link', 'https://example.com/x', '', rule)
+}
+check('no override inherits both globals',
+    (({ primaryAction, alternativeAction }) => [primaryAction, alternativeAction])(resolveWith({})),
+    ['open', 'copyLink'])
+check('an override replaces just that chord',
+    (({ primaryAction, alternativeAction }) => [primaryAction, alternativeAction])(resolveWith({ primaryAction: 'reveal' })),
+    ['reveal', 'copyLink'])
+check('"none" survives resolution rather than reading as absent',
+    resolveWith({ alternativeAction: 'none' }).alternativeAction, 'none')
+check('with no rule at all, the globals stand',
+    (({ primaryAction, alternativeAction }) => [primaryAction, alternativeAction])(
+        chordRules.resolve('link', 'https://example.com/x', '', null)),
+    ['open', 'copyLink'])
+check('an absent global falls back to the shipped default',
+    (() => {
+        const bare = new rules.LinkRulesService(
+            { store: { linkTooltip: { rules: [] } }, changed$: { subscribe: () => undefined } },
+            { error: () => undefined }, { detectPatterns: () => [] })
+        const settings = bare.resolve('link', 'https://example.com/x', '', null)
+        return [settings.primaryAction, settings.alternativeAction]
+    })(),
+    [chords.DEFAULT_CHORDS.primary.action, chords.DEFAULT_CHORDS.alternative.action])
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

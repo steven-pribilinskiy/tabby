@@ -1,20 +1,34 @@
 import { ApplicationRef, ComponentRef, createComponent, EnvironmentInjector, Inject, Injectable, NgZone, Optional } from '@angular/core'
-import { ConfigService, HostAppService, Platform } from 'tabby-core'
+import { ConfigService } from 'tabby-core'
 import { LinkHandler } from 'tabby-linkifier'
 import { BaseTerminalTabComponent, TerminalDecorator, XTermFrontend } from 'tabby-terminal'
 
-import { LinkMatchKind, LinkPreview, LinkTooltipAction, LinkTooltipRule } from './api'
+import { EffectiveTooltipSettings, LinkMatchKind, LinkPreview, LinkTooltipAction, LinkTooltipRule } from './api'
+import { ChordName, ClickableKind, NO_ACTION } from './clickChords'
 import { CardModel, CardHandlers, LinkHoverCardComponent, emptyModel } from './components/linkHoverCard.component'
 import { DELIMITED_LINK_PRIORITY, findDelimitedLinks } from './delimitedLinks'
 import { BufferRange, getLineWindow, rangeFor } from './linkComputer'
 import { MAX_TEXT_INPUT } from './regexGuard'
 import { IntegrationRuntimeService } from './services/integrationRuntime.service'
 import { LinkActionsService } from './services/linkActions.service'
+import { LinkClicksService } from './services/linkClicks.service'
 import { LinkRulesService } from './services/linkRules.service'
 import { LinkTargetService, punycodeHost } from './services/linkTarget.service'
 
 /** Gap kept between the card and every edge of the pane it belongs to. */
 const CARD_MARGIN = 6
+
+/**
+ * How far the pointer may travel between press and release and still count as a
+ * click rather than a drag, in cells.
+ *
+ * Measured in cells because that is the unit a selection is made in: a press and
+ * a release inside the same cell cannot have moved xterm's selection anchor,
+ * whatever the pixel distance. Kept as a second opinion beside `hasSelection()`,
+ * which is the real signal — a mousedown resets xterm's selection model, so a
+ * selection standing at mouseup is one this press made.
+ */
+const DRAG_SLOP_CELLS = 1
 
 /**
  * Where the card is allowed to be: the pane, not the window.
@@ -35,6 +49,8 @@ function paneBounds (screen: DOMRect): { left: number, top: number, right: numbe
 
 interface HoveredLink {
     kind: LinkMatchKind
+    /** Which of the three clickable kinds this match counts as. */
+    clickKind: ClickableKind
     text: string
     range: BufferRange
     handlerIndex: number
@@ -58,6 +74,11 @@ interface TabState {
     pointerInCard: boolean
     hovered: HoveredLink | null
     /**
+     * Where the last press landed, so a release can tell a click from a drag
+     * across a link — which has to keep selecting the text, not open it.
+     */
+    press: { x: number, y: number, button: number } | null
+    /**
      * The rule that won for the card on screen, resolved against the link's
      * real path. Kept so hiding uses the same answer showing did.
      */
@@ -73,10 +94,10 @@ export class LinkTooltipDecorator extends TerminalDecorator {
         private zone: NgZone,
         private appRef: ApplicationRef,
         private injector: EnvironmentInjector,
-        private hostApp: HostAppService,
         private rules: LinkRulesService,
         private targets: LinkTargetService,
         private actions: LinkActionsService,
+        private clicks: LinkClicksService,
         private runtime: IntegrationRuntimeService,
         @Optional() @Inject(LinkHandler) private handlers: LinkHandler[] | null,
     ) {
@@ -131,6 +152,7 @@ export class LinkTooltipDecorator extends TerminalDecorator {
             generation: 0,
             pointerInCard: false,
             hovered: null,
+            press: null,
             settings: null,
         }
         componentRef.instance.handlers = this.cardHandlers(state)
@@ -141,6 +163,17 @@ export class LinkTooltipDecorator extends TerminalDecorator {
                 this.provideLinks(state, y, callback),
         })
         state.disposables.push(registration)
+
+        // Ours, not xterm's: xterm only ever calls a link's `activate` from a
+        // mouseup, which is the right moment for a left-click chord and far too
+        // late for the other two. A middle click has to beat the paste that a
+        // mousedown on the terminal triggers, and a double click has to beat the
+        // word selection that the same press makes.
+        const onMouseDown = (event: MouseEvent) => this.onPress(state, event)
+        screen.addEventListener('mousedown', onMouseDown)
+        state.disposables.push({
+            dispose: () => screen.removeEventListener('mousedown', onMouseDown),
+        })
         this.promoteProvider(core)
         this.wrapLinkHandler(state)
         // `tabby-linkifier` writes `options.linkHandler` from its own decorator,
@@ -241,7 +274,7 @@ export class LinkTooltipDecorator extends TerminalDecorator {
             }
             for (const match of search.execAll(window.text.substring(0, MAX_TEXT_INPUT))) {
                 consider(match.index, match[0].length, 100, range => ({
-                    kind: 'text', text: match[0], range, handlerIndex: -1, rule,
+                    kind: 'text', clickKind: 'rules', text: match[0], range, handlerIndex: -1, rule,
                 }))
             }
         }
@@ -253,7 +286,7 @@ export class LinkTooltipDecorator extends TerminalDecorator {
         for (const link of findDelimitedLinks(window.text)) {
             const handlerIndex = this.handlerFor(link.uri)
             consider(link.index, link.text.length, DELIMITED_LINK_PRIORITY, range => ({
-                kind: 'link', text: link.uri, range, handlerIndex, rule: null,
+                kind: 'link', clickKind: 'detected', text: link.uri, range, handlerIndex, rule: null,
             }))
         }
 
@@ -279,7 +312,7 @@ export class LinkTooltipDecorator extends TerminalDecorator {
                 const text = match[0]
                 const index = match.index
                 consider(index, text.length, handler.priority, range => ({
-                    kind: 'link', text, range, handlerIndex: i, rule: null,
+                    kind: 'link', clickKind: 'detected', text, range, handlerIndex: i, rule: null,
                 }))
                 match = regex.exec(window.text)
             }
@@ -341,7 +374,18 @@ export class LinkTooltipDecorator extends TerminalDecorator {
         providers.splice(1, 0, ours)
     }
 
-    /** Add hover/leave to whatever OSC 8 handler is already installed. */
+    /**
+     * Add hover/leave to whatever OSC 8 handler is already installed, and take
+     * over its click.
+     *
+     * xterm registers its own `OscLinkProvider` at index 0 and earlier providers
+     * win, so an OSC 8 link never reaches ours — it reaches
+     * `xterm.options.linkHandler`. Its `activate` is *replaced* rather than
+     * forwarded, because `tabby-linkifier`'s own handler decides for itself
+     * whether to open, from `clickableLinks.modifier`; leaving it in would mean
+     * an OSC 8 link ignoring both the chords and the `osc8` kind filter, and
+     * opening twice whenever they agreed.
+     */
     private wrapLinkHandler (state: TabState): void {
         const existing = state.xterm.options.linkHandler
         if (existing?.__tabbyLinksWrapped) {
@@ -351,13 +395,17 @@ export class LinkTooltipDecorator extends TerminalDecorator {
             __tabbyLinksWrapped: true,
             allowNonHttpProtocols: existing?.allowNonHttpProtocols,
             activate: (event: MouseEvent, uri: string, range: BufferRange) => {
-                existing?.activate?.(event, uri, range)
+                this.activate(state, this.osc8Link(uri, range), event)
             },
             hover: (_event: MouseEvent, uri: string, range: BufferRange) => {
-                this.onHover(state, { kind: 'link', text: uri, range, handlerIndex: -1, rule: null })
+                this.onHover(state, this.osc8Link(uri, range))
             },
             leave: () => this.onLeave(state),
         }
+    }
+
+    private osc8Link (uri: string, range: BufferRange): HoveredLink {
+        return { kind: 'link', clickKind: 'osc8', text: uri, range, handlerIndex: -1, rule: null }
     }
 
     // ── hover lifecycle ──────────────────────────────────────────────────────
@@ -376,6 +424,12 @@ export class LinkTooltipDecorator extends TerminalDecorator {
             return
         }
         state.hovered = link
+        // The answer on file belongs to the link that has just been left, and a
+        // click can arrive before `show()` replaces it — moving to a second link
+        // on the same row and clicking it beats the show delay easily. Dropping
+        // it makes the click resolve fresh instead of inheriting the neighbour's
+        // rule.
+        state.settings = null
         const settings = this.rules.resolve(link.kind, link.text, '', link.rule)
         clearTimeout(state.showTimer)
         const show = () => this.show(state, link, settings, key)
@@ -457,7 +511,7 @@ export class LinkTooltipDecorator extends TerminalDecorator {
         // rather than on every re-ask. Same key the hover path dedupes on.
         model.key = key
         model.allowHtml = this.config.store.linkTooltip.allowHtml !== false
-        model.hint = link.kind === 'text' ? '' : this.followHint()
+        model.hint = link.kind === 'text' ? '' : this.followHint(link, settings)
         model.punycode = link.kind === 'link' ? punycodeHost(link.text) : ''
         const hasLink = link.kind === 'link' || !!this.runtime.resolveTextLink(link.text, settings.integration)
         model.showOpen = settings.showOpen && hasLink
@@ -626,15 +680,7 @@ export class LinkTooltipDecorator extends TerminalDecorator {
         filePath = '',
         integration = '',
     ): CardHandlers {
-        const uri = () => {
-            if (!link) {
-                return ''
-            }
-            if (link.kind === 'text') {
-                return this.runtime.resolveTextLink(link.text, integration) || link.text
-            }
-            return link.text
-        }
+        const uri = () => link ? this.linkUri(link, integration) : ''
         return {
             open: () => void this.actions.open(uri(), filePath),
             copyLink: () => this.actions.copy(uri()),
@@ -709,48 +755,278 @@ export class LinkTooltipDecorator extends TerminalDecorator {
         })
     }
 
-    private activate (state: TabState, link: HoveredLink, event: MouseEvent): void {
-        const modifier = this.config.store.clickableLinks?.modifier
-        if (modifier && !event[modifier]) {
+    /**
+     * A press on the terminal.
+     *
+     * Middle- and double-click chords resolve here, because both have something
+     * to beat: a middle press pastes, and a double press selects a word. A
+     * left-click chord deliberately does *not* — a press is also the start of a
+     * selection drag, so it waits for the release, which is `activate` below.
+     */
+    private onPress (state: TabState, event: MouseEvent): void {
+        state.press = { x: event.clientX, y: event.clientY, button: event.button }
+
+        const link = this.linkUnderPointer(state)
+        if (!link) {
             return
         }
+        const chord = this.clicks.match(event, link.clickKind)
+        if (!chord || this.clicks.chord(chord).gesture === 'left') {
+            return
+        }
+        const settings = this.settingsFor(state, link)
+        const actionId = chord === 'primary' ? settings.primaryAction : settings.alternativeAction
+        if (!actionId || actionId === NO_ACTION) {
+            // Nothing to run, so nothing to swallow — the middle-click paste and
+            // the word selection are still whoever's they were.
+            return
+        }
+        event.preventDefault()
+        event.stopPropagation()
+        this.swallowRelease(event.button)
+        void this.invokeAction(state, link, settings, actionId)
+    }
+
+    /**
+     * The link the pointer is on *right now*.
+     *
+     * `state.hovered` alone will not do: it outlives the hover by the hide
+     * delay, so a middle click a moment after leaving a link would run against
+     * the link just left. xterm's own Linkifier clears `currentLink` the instant
+     * the pointer leaves one, so it is the authority on "is there a link here";
+     * our record is what says which one, and for a text match, which rule found
+     * it.
+     */
+    private linkUnderPointer (state: TabState): HoveredLink | null {
+        const hovered = state.hovered
+        if (!hovered) {
+            return null
+        }
+        const linkifier = state.core?.linkifier
+        if (!linkifier) {
+            // An xterm that does not expose it: fall back to our own record
+            // rather than losing the gesture entirely.
+            return hovered
+        }
+        return linkifier.currentLink?.link?.text === hovered.text ? hovered : null
+    }
+
+    /**
+     * Stop the release of a press we consumed from also being a middle-click
+     * paste hotkey.
+     *
+     * The terminal's own paste runs off the *mousedown*, which stopping
+     * propagation on the screen element already covers. `HotkeysService`
+     * separately listens on `document` for a `mouseup`/`auxclick` with button 1
+     * — that is the `Mouse 3` hotkey, and it would otherwise fire alongside the
+     * action the chord just ran. One press, one thing.
+     */
+    private swallowRelease (button: number): void {
+        if (button !== 1) {
+            return
+        }
+        const swallow = (event: Event) => {
+            event.stopPropagation()
+        }
+        for (const name of ['mouseup', 'auxclick']) {
+            // Capture on `document` is ahead of everything, including the
+            // bubble-phase listener on `document` itself.
+            document.addEventListener(name, swallow, { capture: true, once: true })
+        }
+        // A press that never produces a release — the window losing focus
+        // mid-click — would otherwise leave the listeners armed for the next one.
+        setTimeout(() => {
+            for (const name of ['mouseup', 'auxclick']) {
+                document.removeEventListener(name, swallow, { capture: true })
+            }
+        }, 2000)
+    }
+
+    /**
+     * A release over a link, from xterm's Linkifier. Only left-click chords are
+     * decided here; the others already ran on the press.
+     */
+    private activate (state: TabState, link: HoveredLink, event: MouseEvent): void {
+        const chord = this.clicks.match(event, link.clickKind)
+        if (!chord || this.clicks.chord(chord).gesture !== 'left') {
+            return
+        }
+        if (this.wasDrag(state, event)) {
+            return
+        }
+        const settings = this.settingsFor(state, link)
+        const actionId = chord === 'primary' ? settings.primaryAction : settings.alternativeAction
+        void this.invokeAction(state, link, settings, actionId)
+    }
+
+    /**
+     * Whether the press that led to this release was a drag across the link
+     * rather than a click on it — in which case the user was selecting text and
+     * opening the link would be an ambush.
+     *
+     * A mousedown resets xterm's selection model, so a selection standing at
+     * mouseup is one this press made; the cell distance is the second opinion,
+     * for a shift-extended selection that happens to be empty and for any xterm
+     * that stops clearing on press.
+     */
+    private wasDrag (state: TabState, event: MouseEvent): boolean {
+        try {
+            if (state.xterm.hasSelection?.()) {
+                return true
+            }
+        } catch { /* an xterm mid-teardown answers nothing useful */ }
+        const press = state.press
+        if (!press) {
+            return false
+        }
+        const cell = this.cellSize(state)
+        return Math.abs(event.clientX - press.x) >= cell.width * DRAG_SLOP_CELLS
+            || Math.abs(event.clientY - press.y) >= cell.height * DRAG_SLOP_CELLS
+    }
+
+    /**
+     * The rules answer for this link.
+     *
+     * Prefer the one `show()` arrived at: it knew the link's resolved path, so a
+     * rule keyed on file type has already been applied. Falling back re-resolves
+     * without one, which is all there is when the click beat the show delay.
+     */
+    private settingsFor (state: TabState, link: HoveredLink): EffectiveTooltipSettings {
+        if (state.hovered === link && state.settings) {
+            return state.settings
+        }
+        return this.rules.resolve(link.kind, link.text, '', link.rule)
+    }
+
+    /**
+     * The one place that decides what an action id means, so a card button and a
+     * chord bound to the same id do the same thing.
+     *
+     * `''` is an override nobody resolved and `'none'` is a rule saying this
+     * link has no such click; both are no-ops.
+     */
+    private async invokeAction (
+        state: TabState,
+        link: HoveredLink,
+        settings: EffectiveTooltipSettings,
+        actionId: string,
+    ): Promise<void> {
+        if (!actionId || actionId === NO_ACTION) {
+            return
+        }
+        if (actionId === 'open') {
+            await this.openLink(state, link, settings)
+            return
+        }
+        // A rule's own button, by the name it shows. Looked up before the
+        // built-ins are, so a rule can shadow one deliberately — and taken from
+        // the rule rather than from `settings.actions`, which is emptied when
+        // the card's buttons are turned off. Hiding the buttons should not
+        // silently unbind a chord that names one.
+        const candidates = settings.rule?.actions ?? settings.actions
+        const custom = candidates.find(action => action.name === actionId)
+        if (custom) {
+            await this.actions.runCustom(custom, this.linkUri(link, settings.integration), state.tab)
+            return
+        }
+        if (actionId === 'copyLink') {
+            const uri = this.linkUri(link, settings.integration)
+            if (uri) {
+                this.actions.copy(uri)
+            }
+            return
+        }
+        if (actionId === 'copyPath' || actionId === 'reveal') {
+            const target = await this.resolveTarget(state, link)
+            if (!target.filePath) {
+                return
+            }
+            if (actionId === 'copyPath') {
+                this.actions.copy(target.filePath)
+            } else {
+                this.actions.reveal(target.filePath)
+            }
+            return
+        }
+        console.warn(`[tabby-links] unknown click action "${actionId}"`)
+    }
+
+    /** What a link points at, which for a text match only an integration knows. */
+    private linkUri (link: HoveredLink, integration: string): string {
         if (link.kind === 'text') {
-            const resolved = this.runtime.resolveTextLink(link.text, link.rule?.integration ?? '')
+            return this.runtime.resolveTextLink(link.text, integration) || link.text
+        }
+        return link.text
+    }
+
+    private async openLink (
+        state: TabState,
+        link: HoveredLink,
+        settings: EffectiveTooltipSettings,
+    ): Promise<void> {
+        if (link.kind === 'text') {
+            // `settings.integration` already *is* the matched rule's, because
+            // `resolve` copies it across — no second fallback needed here.
+            const resolved = this.runtime.resolveTextLink(link.text, settings.integration)
             if (resolved) {
-                void this.actions.open(resolved, '')
+                await this.actions.open(resolved, '')
             }
             return
         }
         const handler = link.handlerIndex >= 0 ? this.handlers?.[link.handlerIndex] : undefined
         if (!handler) {
-            void this.actions.open(link.text, '')
+            // No handler claimed it — an OSC 8 link, or a `<uri|label>` whose URI
+            // nothing recognises. Resolve it anyway, so a `file://` opens as a
+            // path rather than as a URL Windows cannot parse.
+            const target = await this.targets.resolve(link.text, link.text, state.tab)
+            await this.actions.open(target.filePath ? '' : link.text, target.filePath)
             return
         }
-        void (async () => {
-            const converted = await handler.convert(link.text, state.tab)
-            const target = await this.targets.resolve(link.text, converted, state.tab)
-            if (target.filePath && target.filePath !== converted) {
-                // Translation changed the path, so the handler's own `verify`
-                // would refuse it and `handle` would hand the shell a path it
-                // cannot open — a WSL path being the whole case. Open what the
-                // card said it would open, by the same route its button takes.
-                void this.actions.open('', target.filePath)
-                return
-            }
-            if (!await handler.verify(converted, state.tab)) {
-                return
-            }
-            handler.handle(converted, state.tab)
-        })()
+        const converted = await handler.convert(link.text, state.tab)
+        const target = await this.targets.resolve(link.text, converted, state.tab)
+        if (target.filePath && target.filePath !== converted) {
+            // Translation changed the path, so the handler's own `verify`
+            // would refuse it and `handle` would hand the shell a path it
+            // cannot open — a WSL path being the whole case. Open what the
+            // card said it would open, by the same route its button takes.
+            await this.actions.open('', target.filePath)
+            return
+        }
+        if (!await handler.verify(converted, state.tab)) {
+            return
+        }
+        handler.handle(converted, state.tab)
     }
 
-    private followHint (): string {
-        const modifier = this.config.store.clickableLinks?.modifier
-        if (!modifier) {
-            return 'Click to follow link'
+    /** The same convert-then-resolve `show()` does, for an action that needs a path. */
+    private async resolveTarget (state: TabState, link: HoveredLink): Promise<{ filePath: string, display: string }> {
+        const handler = link.handlerIndex >= 0 ? this.handlers?.[link.handlerIndex] : undefined
+        let converted = link.text
+        if (handler) {
+            try {
+                converted = await handler.convert(link.text, state.tab)
+            } catch {
+                converted = link.text
+            }
         }
-        return this.hostApp.platform === Platform.macOS && modifier === 'metaKey'
-            ? '⌘+Click to follow link'
-            : 'Ctrl+Click to follow link'
+        return this.targets.resolve(link.text, converted, state.tab)
+    }
+
+    /**
+     * The card's "click to follow link" line, describing the chord that would.
+     *
+     * Empty when nothing here follows a link: clicking is off, this kind of link
+     * is not clickable, or neither chord runs `open` for it. A hint promising a
+     * click that does nothing is worse than no hint.
+     */
+    private followHint (link: HoveredLink, settings: EffectiveTooltipSettings): string {
+        if (!this.clicks.reaches(link.clickKind)) {
+            return ''
+        }
+        const chord: ChordName | null =
+            settings.primaryAction === 'open' ? 'primary'
+                : settings.alternativeAction === 'open' ? 'alternative'
+                    : null
+        return chord ? `${this.clicks.describe(chord)} to follow link` : ''
     }
 }
