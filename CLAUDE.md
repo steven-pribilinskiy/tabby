@@ -831,6 +831,116 @@ one.
   `build/windows/icon.ico` in the checkout — the target there is `electron.exe`,
   whose icon is Electron's.
 
+## The jump list wears the profiles' own icons
+
+Right-clicking Tabby in the taskbar or the Start menu offers your profiles.
+Upstream already built that list (`tabby-electron/src/services/dockMenu.service.ts`)
+but gave **every entry `iconPath: process.execPath`**, so it was a column of
+identical Tabby logos that told you nothing about what you were about to open.
+`jumpList.service.ts` builds the list and `jumpListIcons.service.ts` draws each
+profile's own icon into a file the shell can read; both are add-only, and the
+edit to the upstream file is one call.
+
+A profile icon is a Font Awesome class or an inline SVG document, and
+`iconPath` takes neither — it wants a file plus an index. So rasterize them:
+the same conclusion the Windows Terminal maintainers reached in
+microsoft/terminal#10552, and what the reference fork does with
+Direct2D/DirectWrite. Here **the renderer already is a text-and-SVG rasterizer**,
+so a canvas does it with no native code and no new dependency.
+
+- **The glyph comes out of the stylesheet, not a table of codepoints.** A probe
+  element gets the class and `getComputedStyle(el, '::before').content` answers
+  with the character; the family and weight come from the same place. That
+  covers solid, regular and brands at once, survives a Font Awesome bump, and
+  a class that resolves to no icon font is how an unknown one is detected.
+- **`.ico` is written by hand** — nothing in this stack encodes one, and a
+  canvas produces PNG and nothing else. The container is a directory plus one
+  PNG per size (16/24/32/48, i.e. a 16px shell icon at 100–200%), which has
+  been legal since Vista.
+- **The blank check is the only honest test.** A font that had not loaded, an
+  SVG whose paths fall outside its viewBox and a mistyped class all produce a
+  perfectly well-formed file full of nothing. The canvas is scanned for a
+  non-transparent pixel before anything is written; failing that, the entry
+  falls back to the app icon. **An entry is never dropped and never blank.**
+- **The webfont has to be waited for.** `font-display: block` means the CSS
+  knows the family long before the file arrives, and a canvas silently
+  substitutes rather than waiting — so the first rebuild after a cold start
+  drew tofu until `document.fonts.load` was added.
+- **Resolve once, draw four times.** Reading the class out of the stylesheet is
+  a DOM insertion and a forced style recalc, and parsing an SVG is a whole
+  document; neither is per-size. Measured on the renderer thread, 28 profiles:
+  a cold pass draws 15 distinct icons in ~1.1s (~0.3s once the webfonts are
+  warm), a warm pass draws none and costs nothing. The loop awaits I/O between
+  icons, so that is not 1.1s of blocked event loop.
+- **Icons live in `<config dir>/jumplist-icons`**, keyed on the icon *and* the
+  colour, and pruned to what the last pass handed out. Beside `config.yaml`
+  because a slot's app files are read-only and `data\` is the only writable
+  part of one — and because two builds running side by side must not hand each
+  other a file drawn for the other's theme. `original-fs` throughout: a
+  portable build's config directory is a sibling of `resources\app.asar`, and
+  one patched `fs` call on an archive pins it for the process's life.
+- **The cache is re-checked, not trusted.** The shell's copy of the list
+  outlives the app, the build and the profile directory, so a cached path is
+  `access`ed every pass and redrawn if it has been swept — which is what
+  happens when a slot is deleted.
+- **The colour is `SystemUsesLightTheme`, not `AppsUseLightTheme`** and not
+  Tabby's own scheme, which the user may have forced the other way. The jump
+  list is taskbar chrome. A monochrome glyph baked in the wrong colour is
+  invisible against the flyout, which looks exactly like the blank tile this
+  set out to fix. A profile's own `color` wins when it has one.
+- **An empty custom category makes the shell reject the whole call**, not just
+  that category — so on a profile where nothing had been opened yet, upstream's
+  list was refused entire and *no* profiles appeared. Empty categories are now
+  dropped, and the result string is logged instead of discarded.
+- **`profile "<name>"` was interpolated, not quoted.** Profile names are free
+  text; one containing a quote produced an entry that opened the wrong profile
+  or none. `quoteArgument()` applies the CRT's rules (double the backslashes
+  before a quote, escape the quote). Two profiles sharing a name now produce
+  one entry, since `profile <name>` resolves by name and the second was
+  unreachable however it was listed.
+- **Staleness is already handled by `config.changed$`.** `DockMenuService`
+  subscribes to it, and `tabby-builds`' "make this the active build" ends in
+  `config.save()` — so activating a slot rebuilds the list, which is the
+  analogue of the reference fork's refresh-on-deploy. Asserted in the test
+  rather than assumed.
+- Entries launch `process.execPath` — *this* build, deliberately, not the
+  active one. They are built from this instance's profiles, and only this
+  build's config directory knows what those names mean.
+
+### What writes whose jump list
+
+A jump list is shell state keyed on the app's AppUserModelID, so this is the
+one thing here that is visible to the whole desktop. Measured on this machine
+by reading `%APPDATA%\Microsoft\Windows\Recent\CustomDestinations` — the files
+are shell links, so the paths inside are greppable as UTF-16:
+
+- **The dev build keeps its own file.** Its entries name
+  `…\projects\tabby\node_modules\electron\dist\electron.exe`; the packaged
+  builds' name a `Tabby.exe`. So running a dev instance does not overwrite a
+  packaged build's list — but that is asserted, not relied on:
+  `app/test/jumpList.test.js` hashes every jump list file naming a `Tabby.exe`
+  before the run and refuses to pass unless they are byte-identical after.
+- **Only one packaged Tabby has a file**, and its entries point at
+  `~\Tabby\builds\dev\Tabby.exe` — the slot, not the installed app. Either the
+  two share an identity and the slot wrote last, or the installed app's write
+  never landed. Not resolved; worth knowing before trusting a jump list to
+  belong to the build you think it does.
+- **The test publishes exactly once**, and only after giving the instance a
+  scratch AppUserModelID of its own, deleting the file that leaves behind.
+  Every other check runs against `JumpListService.build()`, which produces the
+  categories and the icon files and publishes nothing.
+- Dev entries are dead either way: `electron.exe profile "X"` has no app path,
+  so it starts nothing. Left alone — it is upstream's shape, and it now lands
+  on an identity nothing else uses.
+
+**`b8bc5aa7e` from the reference fork does not apply here** and was skipped
+deliberately: it keeps a local copy of profile icons given as http(s) URLs so
+settings load does not block on the network. Tabby has no URL profile icons —
+`profileIcon.component` renders a Font Awesome class or an inline HTML string
+and nothing else, and the settings field is a typeahead over class names.
+There is nothing to cache. (Such a string reaches the rasterizer as neither a
+glyph nor markup, so it falls back to the app icon rather than misbehaving.)
+
 ## A build must load its own plugins
 
 **A Tabby exports `NODE_PATH` to every shell it starts** — its own

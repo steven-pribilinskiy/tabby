@@ -198,3 +198,5 @@ export default class ElectronModule {
 }
 
 export { ElectronHostWindow, ElectronHostAppService, ElectronService }
+export { JumpListService } from './services/jumpList.service'
+export { JumpListIconsService } from './services/jumpListIcons.service'
